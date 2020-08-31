@@ -204,7 +204,7 @@ class CD_grape:
         betas_i = parameters[3*self.N_blocks:4*self.N_blocks]
         phis = parameters[4*self.N_blocks:5*self.N_blocks]
         thetas = parameters[5*self.N_blocks:6*self.N_blocks]
-        aux_params = parameters[6*self.N_blocks:-1]
+        aux_params = parameters[6*self.N_blocks:]
         alphas = alphas_r + 1j*alphas_i
         betas = betas_r + 1j*betas_i
         #temp
@@ -278,13 +278,13 @@ if __name__ == '__main__':
     sx = (q+q.dag())
     sy = 1j*(q.dag() - q)
     aux_ops = [a.dag()*a,sz,sx]
-    aux_params = np.array([0.0,0.0,0.0], dtype=np.float64)
+    aux_params = np.array([0,0,0], dtype=np.float64)
     aux_bounds = np.array([(-np.pi,np.pi),(-np.pi/2.0,np.pi/2.0),(-np.pi/2.0,np.pi/2.0)])
     #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
     a = CD_grape(init_state, target_state, N_blocks, max_abs_alpha=2,max_abs_beta = 2,
     aux_ops=aux_ops, aux_params=aux_params, aux_params_bounds=aux_bounds)
     a.randomize(alpha_scale=0.5, beta_scale = 0.5)
-    if 1:
+    if 0:
         #a.plot_initial_state()
         a.plot_final_state()
         #a.plot_target_state()
