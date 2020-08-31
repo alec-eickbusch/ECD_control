@@ -16,7 +16,9 @@ class CD_grape:
     def __init__(self, initial_state, target_state, N_blocks,
                  init_alphas = None, init_betas = None,
                  init_phis = None, init_thetas = None, 
-                 max_abs_alpha = 5, max_abs_beta = 5):
+                 max_abs_alpha = 5, max_abs_beta = 5,
+                 aux_ops = [], aux_params = [], 
+                 aux_params_bounds = []):
 
         self.initial_state = initial_state
         self.target_state = target_state
@@ -33,6 +35,9 @@ class CD_grape:
         self.N2 = self.initial_state.dims[0][1]
         self.max_abs_alpha = max_abs_alpha
         self.max_abs_beta = max_abs_beta
+        self.aux_ops = aux_ops
+        self.aux_params = aux_params
+        self.aux_params_bounds = aux_params_bounds
 
         self.a = qt.tensor(qt.destroy(self.N), qt.identity(self.N2))
         self.q = qt.tensor(qt.identity(self.N), qt.destroy(self.N2))
@@ -41,11 +46,13 @@ class CD_grape:
         self.sy = 1j*(self.q.dag() - self.q)
         self.n = self.a.dag()*self.a
         
-    def randomize(self):
+    def randomize(self, alpha_scale = None, beta_scale=None):
+        alpha_scale = self.max_abs_alpha if alpha_scale is None else alpha_scale
+        beta_scale = self.max_abs_beta if beta_scale is None else beta_scale
         ang_alpha = np.random.uniform(-np.pi,np.pi,self.N_blocks)
-        rho_alpha = np.random.uniform(-self.max_abs_alpha, self.max_abs_alpha, self.N_blocks)
+        rho_alpha = np.random.uniform(-alpha_scale, alpha_scale, self.N_blocks)
         ang_beta = np.random.uniform(-np.pi,np.pi,self.N_blocks)
-        rho_beta = np.random.uniform(-self.max_abs_beta, self.max_abs_beta, self.N_blocks)
+        rho_beta = np.random.uniform(-beta_scale, beta_scale, self.N_blocks)
         phis = np.random.uniform(-np.pi, np.pi, self.N_blocks)
         thetas = np.random.uniform(0,np.pi,self.N_blocks)
         self.alphas = np.array(np.exp(1j*ang_alpha)*rho_alpha, dtype=np.complex128)
@@ -90,28 +97,35 @@ class CD_grape:
     def U_i_block(self, i, alphas,betas,phis,thetas):
         return self.U_block(alphas[i], betas[i], phis[i], thetas[i])
 
-    def U_tot(self, alphas,betas,phis,thetas):
+    def U_tot(self, alphas,betas,phis,thetas, aux_params):
         U = qt.tensor(qt.identity(self.N),qt.identity(self.N2))
         for i in range(self.N_blocks):
             U = self.U_i_block(i, alphas, betas, phis, thetas) * U
+        for i in range(len(self.aux_ops)):
+            U = (1j*aux_params[i]*self.aux_ops[i]).expm()*U
         return U
 
-    def forward_states(self, alphas, betas, phis, thetas):
+    def forward_states(self, alphas, betas, phis, thetas, aux_params):
         psi_fwd = [self.initial_state]
         for i in range(self.N_blocks):
             psi_fwd.append(self.R(phis[i],thetas[i])*psi_fwd[-1])
             psi_fwd.append(self.D(alphas[i])*psi_fwd[-1])
             psi_fwd.append(self.CD(betas[i])*psi_fwd[-1])
+        for i in range(len(self.aux_ops)):
+            psi_fwd.append((1j*aux_params[i]*self.aux_ops[i]).expm()*psi_fwd[-1])
         return psi_fwd
     
-    def reverse_states(self, alphas, betas, phis, thetas):
+    def reverse_states(self, alphas, betas, phis, thetas, aux_params):
         psi_bwd = [self.target_state.dag()]
+        for i in np.arange(len(self.aux_ops))[::-1]:
+            psi_bwd.append(psi_bwd[-1]*(1j*aux_params[i]*self.aux_ops[i]).expm())
         for i in np.arange(self.N_blocks)[::-1]:
             psi_bwd.append(psi_bwd[-1]*self.CD(betas[i]))
             psi_bwd.append(psi_bwd[-1]*self.D(alphas[i]))
             psi_bwd.append(psi_bwd[-1]*self.R(phis[i],thetas[i]))
         return psi_bwd
 
+    #TODO: Modify for aux params
     def fid_and_grad_fid(self, alphas, betas, phis, thetas):
         psi_fwd = self.forward_states(alphas, betas, phis, thetas)
         psi_bwd = self.reverse_states(alphas, betas, phis, thetas)
@@ -147,24 +161,29 @@ class CD_grape:
  
         return fid, dalphar, dalphai, dbetar, dbetai, dphi, dtheta
 
-    def final_state(self, alphas=None,betas=None,phis=None,thetas=None):
+    def final_state(self, alphas=None,betas=None,phis=None,thetas=None, aux_params=None):
         alphas = self.alphas if alphas is None else alphas
         betas = self.betas if betas is None else betas
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
+        aux_params = self.aux_params if aux_params is None else aux_params
         psi = self.initial_state
         for i in range(self.N_blocks):
             psi = self.R(phis[i],thetas[i])*psi
             psi = self.D(alphas[i])*psi
             psi = self.CD(betas[i])*psi
+        for i in range(len(self.aux_ops)):
+            psi = (1j*aux_params[i]*self.aux_ops[i]).expm()*psi
         return psi
     
-    def fidelity(self, alphas=None, betas=None, phis = None, thetas=None):
+    def fidelity(self, alphas=None, betas=None, phis = None, thetas=None, aux_params=None):
         alphas = self.alphas if alphas is None else alphas
         betas = self.betas if betas is None else betas
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
-        return np.abs((self.target_state.dag() * self.final_state(alphas,betas,phis,thetas)).full()[0][0])**2
+        aux_params = self.aux_params if aux_params is None else aux_params
+        overlap =  (self.target_state.dag()*self.final_state(alphas,betas,phis,thetas, aux_params)).full()[0][0]
+        return np.abs(overlap)**2
     
     def plot_initial_state(self):
         plot_wigner(self.initial_state)
@@ -185,6 +204,7 @@ class CD_grape:
         betas_i = parameters[3*self.N_blocks:4*self.N_blocks]
         phis = parameters[4*self.N_blocks:5*self.N_blocks]
         thetas = parameters[5*self.N_blocks:6*self.N_blocks]
+        aux_params = parameters[6*self.N_blocks:-1]
         alphas = alphas_r + 1j*alphas_i
         betas = betas_r + 1j*betas_i
         #temp
@@ -192,10 +212,12 @@ class CD_grape:
         self.betas = betas
         self.phis = phis
         self.thetas = thetas
-        f = self.fidelity(alphas,betas,phis,thetas)
+        self.aux_params = aux_params
+        f = self.fidelity(alphas,betas,phis,thetas, aux_params)
         print('fid: %.3f' % f, end='\r')
         return -f
 
+    #todo: add aux params
     def cost_function_analytic(self, parameters):
         alphas_r = parameters[0:self.N_blocks]
         alphas_i = parameters[self.N_blocks:2*self.N_blocks]
@@ -218,12 +240,13 @@ class CD_grape:
         init_params = \
         np.array(np.concatenate([np.real(self.alphas),np.imag(self.alphas),
                   np.real(self.betas), np.imag(self.betas),
-                  self.phis, self.thetas]),dtype=np.float64)
+                  self.phis, self.thetas, self.aux_params]),dtype=np.float64)
         bounds = np.concatenate(
             [[(-self.max_abs_alpha,self.max_abs_alpha) for _ in range(2*N_blocks)],\
             [(-self.max_abs_beta,self.max_abs_beta) for _ in range(2*N_blocks)],\
             [(-np.pi,np.pi) for _ in range(N_blocks)],\
-            [(0,np.pi) for _ in range(N_blocks)]])
+            [(0,np.pi) for _ in range(N_blocks)],\
+            self.aux_params_bounds])
         result = minimize(self.cost_function,x0=init_params,method='L-BFGS-B',
                           bounds = bounds, jac=False, options={'maxiter':maxiter})
         return result
@@ -239,7 +262,7 @@ class CD_grape:
             [(-np.pi,np.pi) for _ in range(N_blocks)],\
             [(0,np.pi) for _ in range(N_blocks)]])
         result = minimize(self.cost_function_analytic,x0=[init_params],method='L-BFGS-B',
-                          bounds = bounds, jac=True), options={'maxiter':maxiter,'gtol':gtol,'ftol':ftol})
+                          bounds = bounds, jac=True, options={'maxiter':maxiter,'gtol':gtol,'ftol':ftol})
         return result
     
 #%%
@@ -249,13 +272,21 @@ if __name__ == '__main__':
     N_blocks = 4
     init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
     target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
+    a = qt.tensor(qt.destroy(N), qt.identity(N2))
+    q = qt.tensor(qt.identity(N), qt.destroy(N2))
+    sz = 1-2*q.dag()*q
+    sx = (q+q.dag())
+    sy = 1j*(q.dag() - q)
+    aux_ops = [a.dag()*a,sz,sx]
+    aux_params = np.array([0.0,0.0,0.0], dtype=np.float64)
+    aux_bounds = np.array([(-np.pi,np.pi),(-np.pi/2.0,np.pi/2.0),(-np.pi/2.0,np.pi/2.0)])
     #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
-    a = CD_grape(init_state, target_state, N_blocks, max_abs_alpha=1,
-                 max_abs_beta = 1)
-    a.randomize()
-    #if 1:
+    a = CD_grape(init_state, target_state, N_blocks, max_abs_alpha=2,max_abs_beta = 2,
+    aux_ops=aux_ops, aux_params=aux_params, aux_params_bounds=aux_bounds)
+    a.randomize(alpha_scale=0.5, beta_scale = 0.5)
+    if 1:
         #a.plot_initial_state()
-        #a.plot_final_state()
+        a.plot_final_state()
         #a.plot_target_state()
     print(a.fidelity())
 #%% 
