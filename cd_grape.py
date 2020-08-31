@@ -259,8 +259,10 @@ class CD_grape:
         bounds = np.concatenate(
             [[(-self.max_abs_alpha,self.max_abs_alpha) for _ in range(2*N_blocks)],\
             [(-self.max_abs_beta,self.max_abs_beta) for _ in range(2*N_blocks)],\
-            [(-np.pi,np.pi) for _ in range(N_blocks)],\
-            [(0,np.pi) for _ in range(N_blocks)]])
+            [(-1000,1000) for _ in range(N_blocks)],\
+            [(-1000,1000) for _ in range(N_blocks)]])
+            #note that for the cyclic variables the bounds are hard to define, you don't want to
+            #get stuck at the edge. For now, just give them enough room to move around.
         result = minimize(self.cost_function_analytic,x0=[init_params],method='L-BFGS-B',
                           bounds = bounds, jac=True, options={'maxiter':maxiter,'gtol':gtol,'ftol':ftol})
         return result
@@ -269,7 +271,7 @@ class CD_grape:
 if __name__ == '__main__':
     N = 50
     N2 = 2
-    N_blocks = 4
+    N_blocks = 3
     init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
     target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
     a = qt.tensor(qt.destroy(N), qt.identity(N2))
@@ -279,9 +281,10 @@ if __name__ == '__main__':
     sy = 1j*(q.dag() - q)
     aux_ops = [a.dag()*a,sz,sx]
     aux_params = np.array([0,0,0], dtype=np.float64)
-    aux_bounds = np.array([(-np.pi,np.pi),(-np.pi/2.0,np.pi/2.0),(-np.pi/2.0,np.pi/2.0)])
+    #aux_bounds = np.array([(-np.pi,np.pi),(-np.pi/2.0,np.pi/2.0),(-np.pi/2.0,np.pi/2.0)])
+    aux_bounds = np.array([(-1000,1000) for _ in range(len(aux_ops))])
     #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
-    a = CD_grape(init_state, target_state, N_blocks, max_abs_alpha=2,max_abs_beta = 2,
+    a = CD_grape(init_state, target_state, N_blocks, max_abs_alpha=4,max_abs_beta = 4,
     aux_ops=aux_ops, aux_params=aux_params, aux_params_bounds=aux_bounds)
     a.randomize(alpha_scale=0.5, beta_scale = 0.5)
     if 0:
@@ -316,4 +319,5 @@ print('alphas:' + str(a.alphas))
 print('betas:' + str(a.betas))
 print('phis:' + str(a.phis))
 print('thetas:' + str(a.thetas))
+print('aux params:' + str(a.aux_params))
 # %%
