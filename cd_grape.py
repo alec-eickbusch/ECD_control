@@ -61,27 +61,26 @@ class CD_grape:
     def R(self, phi, theta):
         return (1j*(theta/2.0)*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)).expm()
 
-    def dalphar_dD(self, alpha):
-        return (self.a.dag() - self.a - (np.conj(alpha) - alpha)/2.0)*self.D(alpha)
+    #derivative multipliers
+    def dalphar_dD_mul(self, alpha):
+        return (self.a.dag() - self.a - (np.conj(alpha) - alpha)/2.0)
 
-    def dalphai_dD(self, alpha):
-        return 1j*(self.a.dag() + self.a - (np.conj(alpha) + alpha)/2.0)*self.D(alpha)
+    def dalphai_dD_mul(self, alpha):
+        return 1j*(self.a.dag() + self.a - (np.conj(alpha) + alpha)/2.0)
 
-    def dbetar_dCD(self, beta):
-        return (self.a.dag() - self.a - (self.sz/2.0)*(np.conj(beta) - beta)/2.0)*self.CD(beta)
+    def dbetar_dCD_mul(self, beta):
+        return (self.a.dag() - self.a - (self.sz/2.0)*(np.conj(beta) - beta)/2.0)
 
-    def dbetai_dCD(self, beta):
-        return 1j*(self.a.dag() + self.a - (self.sz/2.0)*(np.conj(beta) + beta)/2.0)*self.CD(beta)
+    def dbetai_dCD_mul(self, beta):
+        return 1j*(self.a.dag() + self.a - (self.sz/2.0)*(np.conj(beta) + beta)/2.0)
 
-    def dtheta_dR(self, phi, theta):
+    def dtheta_dR_mul(self, phi, theta):
         return (1j/2.0)*((np.sinc(theta/np.pi))*(self.sx*np.cos(phi)+self.sy*np.sin(phi))+\
-            (1 - np.sinc(theta/np.pi))(self.sx*np.cos(phi)**2 + self.sy*np.sin(phi)**2))\
-                *self.R(phi,theta)
+            (1 - np.sinc(theta/np.pi))*(self.sx*np.cos(phi)**2 + self.sy*np.sin(phi)**2))
     
-    def dphi_dR(self, phi, theta):
+    def dphi_dR_mul(self, phi, theta):
         return (1j/2.0)*((np.sin(theta))*(self.sy*np.cos(phi)-self.sx*np.sin(phi)) +\
-            (1-np.cos(phi))*self.sz + np.cos(phi)*np.sin(phi)*(theta - np.sin(theta))(self.sy - self.sx))\
-                *self.R(phi, theta)
+            (1-np.cos(phi))*self.sz + np.cos(phi)*np.sin(phi)*(theta - np.sin(theta))*(self.sy - self.sx))
 
     def U_block(self, alpha, beta, phi, theta):
         U = self.CD(beta)*self.D(alpha)*self.R(phi, theta)
@@ -112,6 +111,41 @@ class CD_grape:
             psi_bwd.append(psi_bwd[-1]*self.R(phis[i],thetas[i]))
         return psi_bwd
 
+    def fid_and_grad_fid(self, alphas, betas, phis, thetas):
+        psi_fwd = self.forward_states(alphas, betas, phis, thetas)
+        psi_bwd = self.reverse_states(alphas, betas, phis, thetas)
+        overlap = (psi_bwd[0]*psi_fwd[-1]).full()[0][0] #might be positive or negative
+        fid = np.abs(overlap)**2
+        
+        dalphar = np.zeros(N_blocks, dtype=np.complex64)
+        dalphai = np.zeros(N_blocks, dtype=np.complex64)
+        dbetar = np.zeros(N_blocks, dtype=np.complex64)
+        dbetai = np.zeros(N_blocks, dtype=np.complex64)
+        dphi = np.zeros(N_blocks, dtype=np.complex64)
+        dtheta = np.zeros(N_blocks, dtype=np.complex64)
+
+        for i in range(self.N_blocks): #question: do I take the real part?
+            for j in [1,2,3]:
+                k = 3*i + j
+                print(k)
+                print(-(k+1))
+                if j == 1:
+                    dalphar[i] = (psi_bwd[-(k+1)]*self.dalphar_dD_mul(alphas[i])*psi_fwd[k]).full()[0][0]
+                    dalphai[i] = (psi_bwd[-(k+1)]*self.dalphai_dD_mul(alphas[i])*psi_fwd[k]).full()[0][0]
+                if j == 2:
+                    dbetar[i] = (psi_bwd[-(k+1)]*self.dbetar_dCD_mul(betas[i])*psi_fwd[k]).full()[0][0]
+                    dbetai[i] = (psi_bwd[-(k+1)]*self.dbetai_dCD_mul(betas[i])*psi_fwd[k]).full()[0][0]
+                if j == 3:
+                    dphi[i] = (psi_bwd[-(k+1)]*self.dphi_dR_mul(phis[i], thetas[i])*psi_fwd[k]).full()[0][0]
+                    dtheta[i] = (psi_bwd[-(k+1)]*self.dtheta_dR_mul(phis[i], thetas[i])*psi_fwd[k]).full()[0][0]
+        dalphar = np.real(overlap*np.conj(dalphar))/np.abs(overlap)
+        dalphai = np.real(overlap*np.conj(dalphar))/np.abs(overlap)
+        dbetar = np.real(overlap*np.conj(dbetar))/np.abs(overlap)
+        dbetai = np.real(overlap*np.conj(dbetai))/np.abs(overlap)
+        dphi = np.real(overlap*np.conj(dphi))/np.abs(overlap)
+        dtheta = np.real(overlap*np.conj(dtheta))/np.abs(overlap)
+ 
+        return fid, dalphar, dalphai, dbetar, dbetai, dphi, dtheta
 
     def final_state(self, alphas=None,betas=None,phis=None,thetas=None):
         alphas = self.alphas if alphas is None else alphas
