@@ -57,6 +57,33 @@ class CD_grape:
         return 1j*(self.a.dag() + self.a - (self.sz/2.0)*(np.conj(beta) + beta)/2.0)*self.CD(beta)
 
     def dtheta_dR(self, phi, theta):
-        (1j/2.0)*((np.sinc(theta/np.pi))*(self.sx*np.cos(phi)+self.sy*np.sin(phi))+\
-            (1 - np.sinc(theta/np.pi)(self.sx*np.cos(phi)**2 + self.sy*np.sin(phi)**2))\
+        return (1j/2.0)*((np.sinc(theta/np.pi))*(self.sx*np.cos(phi)+self.sy*np.sin(phi))+\
+            (1 - np.sinc(theta/np.pi))(self.sx*np.cos(phi)**2 + self.sy*np.sin(phi)**2))\
                 *self.R(phi,theta)
+    
+    def dphi_dR(self, phi, theta):
+        return (1j/2.0)*((np.sin(theta))*(self.sy*np.cos(phi)-self.sx*np.sin(phi)) +\
+            (1-np.cos(phi))*self.sz + np.cos(phi)*np.sin(phi)*(theta - np.sin(theta))(self.sy - self.sx))\
+                *self.R(phi, theta)
+
+    def U_block(self, alpha, beta, phi, theta):
+        U = self.CD(beta)*self.D(alpha)*self.R(phi, theta)
+        return U
+
+    def U_i_block(self, i):
+        return self.U_block(self.alphas[i], self.betas[i], self.phis[i], self.thetas[i])
+
+    def U_tot(self):
+        U = qt.tensor(qt.identity(self.N),qt.identity(self.N2))
+        for i in range(self.N_blocks):
+            U = self.U_i_block(i) * U
+        return U
+
+    def final_state(self):
+        U = self.U_tot
+        return U*self.initial_state
+
+    def fidelity(self):
+        return self.target_state.dag() * self.final_state()
+
+
