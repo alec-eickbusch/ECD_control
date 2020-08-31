@@ -126,11 +126,16 @@ class CD_grape:
         thetas = parameters[5*self.N_blocks:6*self.N_blocks]
         alphas = alphas_r + 1j*alphas_i
         betas = betas_r + 1j*betas_i
+        #temp
+        self.alphas = alphas
+        self.betas = betas
+        self.phis = phis
+        self.thetas = thetas
         f = self.fidelity(alphas,betas,phis,thetas)
         print('fid: %.3f' % f)
         return -f
     
-    def optimize(self):
+    def optimize(self, maxiter = None):
         init_params = \
         np.array([np.real(self.alphas),np.imag(self.alphas),
                   np.real(self.betas), np.imag(self.betas),
@@ -141,7 +146,8 @@ class CD_grape:
             [(-np.pi,np.pi) for _ in range(N_blocks)],\
             [(0,np.pi) for _ in range(N_blocks)]])
         result = minimize(self.cost_function,x0=init_params,method='L-BFGS-B',
-                          bounds = bounds, jac=False, options={'disp':True})
+                          bounds = bounds, jac=False, options={'disp':True,
+                                                               'maxiter':maxiter})
         return result
     
 #%%
