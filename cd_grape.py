@@ -96,6 +96,23 @@ class CD_grape:
             U = self.U_i_block(i, alphas, betas, phis, thetas) * U
         return U
 
+    def forward_states(self, alphas, betas, phis, thetas):
+        psi_fwd = [self.initial_state]
+        for i in range(self.N_blocks):
+            psi_fwd.append(self.R(phis[i],thetas[i])*psi_fwd[-1])
+            psi_fwd.append(self.D(alphas[i])*psi_fwd[-1])
+            psi_fwd.append(self.CD(betas[i])*psi_fwd[-1])
+        return psi_fwd
+    
+    def reverse_states(self, alphas, betas, phis, thetas):
+        psi_bwd = [self.target_state.dag()]
+        for i in np.arange(self.N_blocks)[::-1]:
+            psi_bwd.append(psi_bwd[-1]*self.CD(betas[i]))
+            psi_bwd.append(psi_bwd[-1]*self.D(alphas[i]))
+            psi_bwd.append(psi_bwd[-1]*self.R(phis[i],thetas[i]))
+        return psi_bwd
+
+
     def final_state(self, alphas=None,betas=None,phis=None,thetas=None):
         alphas = self.alphas if alphas is None else alphas
         betas = self.betas if betas is None else betas
@@ -105,15 +122,25 @@ class CD_grape:
         return U*self.initial_state
 
     def fidelity(self, alphas=None, betas=None, phis = None, thetas=None):
-        r= self.target_state.dag() *\
-            self.final_state(alphas, betas, phis, thetas)
-        return np.real(r.full()[0][0])    
+        alphas = self.alphas if alphas is None else alphas
+        betas = self.betas if betas is None else betas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+        #r= self.target_state.dag() *\
+            #self.final_state(alphas, betas, phis, thetas)
+        #return np.real(r.full()[0][0])
+        r = self.target_state.dag()*self.forward_states(alphas,betas,phis,thetas)[-1]
+        r2 = self.reverse_states(alphas,betas,phis,thetas)[-1]*self.initial_state
+        return np.real(r2.full()[0][0])    
     
     def plot_initial_state(self):
         plot_wigner(self.initial_state)
         
     def plot_final_state(self):
         plot_wigner(self.final_state())
+    
+    def plot_target_state(self):
+        plot_wigner(self.target_state)
         
     #for the optimization, we will flatten the parameters
     #the will be, in order, 
@@ -158,18 +185,27 @@ class CD_grape:
 if __name__ == '__main__':
     N = 50
     N2 = 2
-    N_blocks = 6
+    N_blocks = 4
     init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
-    target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
+    #target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
+    target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
     init_alphas = np.random.uniform(low=-3,high=+3,size=N_blocks)
     a = CD_grape(init_state, target_state, N_blocks, max_abs_alpha=1,
                  max_abs_beta = 1)
     a.randomize()
-    a.plot_initial_state()
-    a.plot_final_state()
+    if 0:
+        a.plot_initial_state()
+        a.plot_final_state()
+        a.plot_target_state()
     print(a.fidelity())
 
 
 # %%
 a.optimize(1000)
+# %%
+a.plot_final_state()
+print('alphas:' + str(a.alphas))
+print('betas:' + str(a.betas))
+print('phis:' + str(a.phis))
+print('thetas:' + str(a.thetas))
 # %%
