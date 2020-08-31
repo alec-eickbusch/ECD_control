@@ -1,3 +1,4 @@
+#%%
 #a minimial implementation of a discrete version of grape
 #consisting of a sequence of conditional displacement, 
 #displacement, and rotation pulses, with 
@@ -132,10 +133,13 @@ class CD_grape:
         self.phis = phis
         self.thetas = thetas
         f = self.fidelity(alphas,betas,phis,thetas)
-        print('fid: %.3f' % f)
+        if self.last_fidelity != f:
+            print('fid: %.3f' % f, end='\r')
+        self.last_fidelity = f
         return -f
     
     def optimize(self, maxiter = None):
+        self.last_fidelity = -2
         init_params = \
         np.array([np.real(self.alphas),np.imag(self.alphas),
                   np.real(self.betas), np.imag(self.betas),
@@ -165,3 +169,7 @@ if __name__ == '__main__':
     a.plot_final_state()
     print(a.fidelity())
 
+
+# %%
+a.optimize(1000)
+# %%
