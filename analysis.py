@@ -48,7 +48,7 @@ class cd_grape_analysis:
                                 Omega_CD, np.zeros(self.system.buffer_time)])
         return epsilon, Omega
 
-    def pulse_block(self):
+    def composite_pulse(self):
         epsilon = []
         Omega = []
         for i in self.cd_grape_object.N_blocks:
