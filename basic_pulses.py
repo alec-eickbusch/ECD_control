@@ -32,9 +32,27 @@ def disp(alpha, sigma=8, chop=6, dt=1):
     return (np.abs(alpha)/energy) * np.exp(1j*(np.pi/2.0 + np.angle(alpha))) * wave
 
 def CD(beta, alpha0 = 60, chi=2*np.pi*1e-3*0.03, sigma=4, chop=4, sigma_q=4, chop_q=4, buffer_time=0):
-    total_time = np.abs(2*beta/(alpha0*chi))
+    #will have to think about CDs where it's too to have any zero time given beta bare
+    
+    #beta = 2*chi*int(alpha)
+
+    #intermederiate pulse used to find the energy in the displacements
+    def beta_bare(sigma, chop):
+        epsilon_bare = np.concatenate([
+        disp(alpha0, sigma, chop),
+        disp(-1*alpha0, sigma, chop)])
+
+        alpha_bare = alpha_from_epsilon(epsilon_bare)
+        return 2*2*chi*np.sum(alpha_bare) #extra factor of 2 for negative part
+    while beta_bare(sigma, chop) > beta:
+        sigma = int(sigma - 1)
+    return beta_bare(sigma, chop), sigma, chop
+
+        
+
+    total_time = np.abs(beta/(2*alpha0*chi))
     zero_time = int(round(total_time/2))
-    alpha0 = np.abs(2*beta/(2*zero_time*chi)) #a slight readjustment due to the rounding
+    alpha0 = np.abs(beta/(2*2*zero_time*chi)) #a slight readjustment due to the rounding
     alpha_angle = np.angle(beta) + np.pi/2.0 #todo: is it + or - pi/2?
     alpha0 = alpha0*np.exp(1j*alpha_angle)
     
@@ -48,7 +66,7 @@ def CD(beta, alpha0 = 60, chi=2*np.pi*1e-3*0.03, sigma=4, chop=4, sigma_q=4, cho
     disp(alpha0, sigma, chop)])
 
     alpha = alpha_from_epsilon(epsilon)
-    energy = np.cumsum()
+    beta = 2*chi*np.sum(np.abs(alpha))
 
     Omega = np.concatenate([
         np.zeros(zero_time + 2*sigma*chop + buffer_time),
@@ -56,5 +74,7 @@ def CD(beta, alpha0 = 60, chi=2*np.pi*1e-3*0.03, sigma=4, chop=4, sigma_q=4, cho
         np.zeros(zero_time + 2*sigma*chop + buffer_time)
     ])
 
-    return epsilon, Omega
+    return epsilon, Omega, beta, alpha
+# %%
+
 # %%
