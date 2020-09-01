@@ -271,7 +271,7 @@ class CD_grape:
 if __name__ == '__main__':
     N = 50
     N2 = 2
-    N_blocks = 5
+    N_blocks = 4
     init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
     a = qt.tensor(qt.destroy(N), qt.identity(N2))
     q = qt.tensor(qt.identity(N), qt.destroy(N2))
@@ -283,42 +283,47 @@ if __name__ == '__main__':
     #aux_bounds = np.array([(-np.pi,np.pi),(-np.pi/2.0,np.pi/2.0),(-np.pi/2.0,np.pi/2.0)])
     aux_bounds = np.array([(-1000,1000) for _ in range(len(aux_ops))])
     #target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
-    target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
-    #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
+    #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
+    target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
     a = CD_grape(init_state, target_state, N_blocks, max_abs_alpha=4,max_abs_beta = 4,
     aux_ops=aux_ops, aux_params=aux_params, aux_params_bounds=aux_bounds)
-    a.randomize(alpha_scale=0.5, beta_scale = 1)
-    if 0:
+    #a.randomize(alpha_scale=0.5, beta_scale = 1)
+    a.alphas = np.array([ 0.26770958-0.14984806j, 0.43046834+0.2849068j, 0.44571901+0.22912736j, -1.14223082-0.36287999j])
+    a.betas =  np.array([-2.11342464+0.16635473j, 0.18959299-0.50403244j, -0.68346816-0.31073315j, 0.00263728-0.3142331j]) 
+    a.aux_params = np.array([0.12630521, -0.77663552, 0.78854091])
+    if 1:
         #a.plot_initial_state()
         a.plot_final_state()
         #a.plot_target_state()
     print(a.fidelity())
-#%% 
-init_params = \
-        np.array(np.concatenate([np.real(a.alphas),np.imag(a.alphas),
-                  np.real(a.betas), np.imag(a.betas),
-                  a.phis, a.thetas]),dtype=np.float64)
+    #%% 
+    '''
+    init_params = \
+            np.array(np.concatenate([np.real(a.alphas),np.imag(a.alphas),
+                    np.real(a.betas), np.imag(a.betas),
+                    a.phis, a.thetas]),dtype=np.float64)
 
-f, df = a.cost_function_analytic(init_params)
+    f, df = a.cost_function_analytic(init_params)
 
-test_d = np.zeros_like(init_params)
-test_d[4] = 0.001
-f2, df2 = a.cost_function_analytic(init_params + test_d)
+    test_d = np.zeros_like(init_params)
+    test_d[4] = 0.001
+    f2, df2 = a.cost_function_analytic(init_params + test_d)
 
-test_grad = (f2-f)/0.001
-print(df)
-print(test_grad)
-print(f)
-print(f2)
-#%%
-a.optimize()
-# %%
-a.optimize_analytic()
-# %%
-a.plot_final_state()
-print('alphas:' + str(a.alphas))
-print('betas:' + str(a.betas))
-print('phis:' + str(a.phis))
-print('thetas:' + str(a.thetas))
-print('aux params:' + str(a.aux_params))
-# %%
+    test_grad = (f2-f)/0.001
+    print(df)
+    print(test_grad)
+    print(f)
+    print(f2)
+    '''
+    #%%
+    #a.optimize()
+    # %%
+    #a.optimize_analytic()
+    # %%
+    a.plot_final_state()
+    print('alphas:' + str(a.alphas))
+    print('betas:' + str(a.betas))
+    print('phis:' + str(a.phis))
+    print('thetas:' + str(a.thetas))
+    print('aux params:' + str(a.aux_params))
+    # %%
