@@ -271,9 +271,8 @@ class CD_grape:
 if __name__ == '__main__':
     N = 50
     N2 = 2
-    N_blocks = 3
+    N_blocks = 5
     init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
-    target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
     a = qt.tensor(qt.destroy(N), qt.identity(N2))
     q = qt.tensor(qt.identity(N), qt.destroy(N2))
     sz = 1-2*q.dag()*q
@@ -283,10 +282,12 @@ if __name__ == '__main__':
     aux_params = np.array([0,0,0], dtype=np.float64)
     #aux_bounds = np.array([(-np.pi,np.pi),(-np.pi/2.0,np.pi/2.0),(-np.pi/2.0,np.pi/2.0)])
     aux_bounds = np.array([(-1000,1000) for _ in range(len(aux_ops))])
+    #target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
+    target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
     #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
     a = CD_grape(init_state, target_state, N_blocks, max_abs_alpha=4,max_abs_beta = 4,
     aux_ops=aux_ops, aux_params=aux_params, aux_params_bounds=aux_bounds)
-    a.randomize(alpha_scale=0.5, beta_scale = 0.5)
+    a.randomize(alpha_scale=0.5, beta_scale = 1)
     if 0:
         #a.plot_initial_state()
         a.plot_final_state()
