@@ -75,9 +75,6 @@ def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3
 
     epsilon = epsilon*(beta/beta2)
 
-    alpha = alpha_from_epsilon(epsilon)
-    beta3 = 2*chi*np.sum(np.abs(alpha))
-
     total_len = int(len(epsilon))
     qubit_delay = int(total_len/2 - sigma_q*chop_q/2)
     Omega = np.concatenate([
@@ -86,7 +83,7 @@ def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3
         np.zeros(total_len - qubit_delay - sigma_q*chop_q)
     ])
 
-    return epsilon, Omega, beta3, alpha, beta_bare
+    return epsilon, Omega, beta2
         
 
 
@@ -117,12 +114,13 @@ def CD(beta, alpha0 = 60, chi=2*np.pi*1e-3*0.03, sigma=24, chop=4, sigma_q=4, ch
     np.zeros(zero_time),
     disp(alpha0, sigma, chop)])
 
-    alpha = alpha_from_epsilon(epsilon)
+    alpha = alpha_from_epsilon(np.pad(epsilon,40))
     beta2 = 2*chi*np.sum(np.abs(alpha))
 
     epsilon = epsilon*(beta/beta2)
+    #for some reason, CD is still off by like 2 percent sometimes here. 
 
-    alpha = alpha_from_epsilon(epsilon)
+    alpha = alpha_from_epsilon(np.pad(epsilon,40))
     beta3 = 2*chi*np.sum(np.abs(alpha))
 
     Omega = np.concatenate([
@@ -136,7 +134,7 @@ def CD(beta, alpha0 = 60, chi=2*np.pi*1e-3*0.03, sigma=24, chop=4, sigma_q=4, ch
 
 # %% testing
 if __name__ == '__main__':
-    e, O, b, a, bb = fastest_CD(3, min_sigma=2, chop=4, sigma_q = 4, chop_q = 6)
+    e, O, b= fastest_CD(3, min_sigma=2, chop=4, sigma_q = 4, chop_q = 6, buffer_time = 0)
     plt.figure()
     plt.plot(1e3*e/2/np.pi)
     plt.plot(1e3*O/2/np.pi)

@@ -2,7 +2,7 @@
 import numpy as np
 import qutip as qt
 from cd_grape import *
-from basic_pulses import CD, rotate, disp
+from basic_pulses import fastest_CD, rotate, disp
 #from helper_functions import plot_pulse, alpha_from_epsilon
 from tqdm import tqdm
 #%%
@@ -26,9 +26,9 @@ class System:
         self.buffer_time = int(buffer_time)
 
     def CD_pulse(self, beta):
-        return CD(beta=beta, alpha0 = self.alpha0, chi=self.chi,\
-                sigma=self.sigma_cd, chop=self.chop_cd, sigma_q=self.sigma,\
-                chop_q=self.chop, buffer_time=self.buffer_time)
+        return fastest_CD(beta, alpha0 = self.alpha0, epsilon_m = self.epsilon_m,\
+                         chi=self.chi, buffer_time=self.buffer_time,\
+              sigma_q=6, chop_q=4,min_sigma = 2, chop=4)
     
     def rotate_displace_pulse(self, alpha, phi, theta):
         Omega = rotate(theta=theta, phi=phi, sigma=self.sigma, chop=self.chop)
