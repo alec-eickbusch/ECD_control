@@ -31,28 +31,80 @@ def disp(alpha, sigma=8, chop=6, dt=1):
     wave = (1 + 0j)*wave
     return (np.abs(alpha)/energy) * np.exp(1j*(np.pi/2.0 + np.angle(alpha))) * wave
 
-def CD(beta, alpha0 = 60, chi=2*np.pi*1e-3*0.03, sigma=4, chop=4, sigma_q=4, chop_q=4, buffer_time=0):
+def fastest_disp(alpha, epsilon_m=2*np.pi*1e-3*400, initial_sigma = 32, chop=4, min_sigma=2):
+    def valid(sigma):
+        epsilon = disp(alpha, sigma, chop)
+        return (np.max(np.abs(epsilon)) < epsilon_m) and (sigma >= min_sigma)
+    sigma = int(initial_sigma)
+    #reduce the sigma until the pulse is too large then back off by 1.
+    while valid(sigma):
+        sigma = int(sigma - 1)
+    sigma = int(sigma + 1)
+    return disp(alpha, sigma, chop)
+
+def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3*0.03, buffer_time=0,\
+              sigma_q=6, chop_q=4,min_sigma = 2, chop=4):
+    beta_bare = 100 #some large number
+    def beta_bare(alpha0): #calculate the beta from just the displacement part of the CD
+        epsilon_bare = np.concatenate([
+        fastest_disp(alpha0, epsilon_m=epsilon_m, chop=chop, min_sigma=min_sigma),
+        fastest_disp(-1*alpha0, epsilon_m=epsilon_m, chop=chop, min_sigma=min_sigma)])
+        alpha_bare = np.abs(alpha_from_epsilon(epsilon_bare))
+        beta_bare = np.abs(2*2*chi*np.sum(alpha_bare)) #extra factor of 2 for second half of pulse
+        return beta_bare
+    while beta_bare(alpha0) > beta:
+        alpha0 = alpha0*0.99 #step down alpha0 by 1%
+    
+    betab = beta_bare(alpha0)
+    total_time = np.abs((beta - betab)/(2*alpha0*chi))
+    zero_time = int(round(total_time/2))
+    alpha_angle = np.angle(beta) + np.pi/2.0 #todo: is it + or - pi/2?
+    alpha0 = alpha0*np.exp(1j*alpha_angle)
+    
+    epsilon = np.concatenate([
+    fastest_disp(alpha0, epsilon_m=epsilon_m, chop=chop, min_sigma=min_sigma),
+    np.zeros(zero_time),
+    fastest_disp(-1*alpha0, epsilon_m=epsilon_m, chop=chop, min_sigma=min_sigma),
+    np.zeros(buffer_time + sigma_q*chop_q + buffer_time),
+    fastest_disp(-1*alpha0, epsilon_m=epsilon_m, chop=chop, min_sigma=min_sigma),
+    np.zeros(zero_time),
+    fastest_disp(alpha0, epsilon_m=epsilon_m, chop=chop, min_sigma=min_sigma)])
+
+    alpha = alpha_from_epsilon(epsilon)
+    beta2 = 2*chi*np.sum(np.abs(alpha))
+
+    epsilon = epsilon*(beta/beta2)
+
+    alpha = alpha_from_epsilon(epsilon)
+    beta3 = 2*chi*np.sum(np.abs(alpha))
+
+    total_len = int(len(epsilon))
+    qubit_delay = int(total_len/2 - sigma_q*chop_q/2)
+    Omega = np.concatenate([
+        np.zeros(qubit_delay),
+        rotate(np.pi,sigma=sigma_q,chop=chop_q),
+        np.zeros(total_len - qubit_delay - sigma_q*chop_q)
+    ])
+
+    return epsilon, Omega, beta3, alpha, beta_bare
+        
+
+
+def CD(beta, alpha0 = 60, chi=2*np.pi*1e-3*0.03, sigma=24, chop=4, sigma_q=4, chop_q=6, buffer_time=0):
     #will have to think about CDs where it's too to have any zero time given beta bare
     
     #beta = 2*chi*int(alpha)
 
     #intermederiate pulse used to find the energy in the displacements
-    def beta_bare(sigma, chop):
-        epsilon_bare = np.concatenate([
-        disp(alpha0, sigma, chop),
-        disp(-1*alpha0, sigma, chop)])
+    epsilon_bare = np.concatenate([
+    disp(alpha0, sigma, chop),
+    disp(-1*alpha0, sigma, chop)])
+    alpha_bare = np.abs(alpha_from_epsilon(epsilon_bare))
+    beta_bare = np.abs(2*2*chi*np.sum(alpha_bare)) #extra factor of 2 for second half of pulse
 
-        alpha_bare = alpha_from_epsilon(epsilon_bare)
-        return 2*2*chi*np.sum(alpha_bare) #extra factor of 2 for negative part
-    while beta_bare(sigma, chop) > beta:
-        sigma = int(sigma - 1)
-    return beta_bare(sigma, chop), sigma, chop
-
-        
-
-    total_time = np.abs(beta/(2*alpha0*chi))
+    total_time = np.abs((beta - beta_bare)/(2*alpha0*chi))
     zero_time = int(round(total_time/2))
-    alpha0 = np.abs(beta/(2*2*zero_time*chi)) #a slight readjustment due to the rounding
+    alpha0 = np.abs((beta - beta_bare)/(2*2*zero_time*chi)) #a slight readjustment due to the rounding
     alpha_angle = np.angle(beta) + np.pi/2.0 #todo: is it + or - pi/2?
     alpha0 = alpha0*np.exp(1j*alpha_angle)
     
@@ -66,7 +118,12 @@ def CD(beta, alpha0 = 60, chi=2*np.pi*1e-3*0.03, sigma=4, chop=4, sigma_q=4, cho
     disp(alpha0, sigma, chop)])
 
     alpha = alpha_from_epsilon(epsilon)
-    beta = 2*chi*np.sum(np.abs(alpha))
+    beta2 = 2*chi*np.sum(np.abs(alpha))
+
+    epsilon = epsilon*(beta/beta2)
+
+    alpha = alpha_from_epsilon(epsilon)
+    beta3 = 2*chi*np.sum(np.abs(alpha))
 
     Omega = np.concatenate([
         np.zeros(zero_time + 2*sigma*chop + buffer_time),
@@ -74,7 +131,18 @@ def CD(beta, alpha0 = 60, chi=2*np.pi*1e-3*0.03, sigma=4, chop=4, sigma_q=4, cho
         np.zeros(zero_time + 2*sigma*chop + buffer_time)
     ])
 
-    return epsilon, Omega, beta, alpha
+    return epsilon, Omega, beta3, alpha, beta_bare
 # %%
 
+# %% testing
+if __name__ == '__main__':
+    e, O, b, a, bb = fastest_CD(3, min_sigma=2, chop=4, sigma_q = 4, chop_q = 6)
+    plt.figure()
+    plt.plot(1e3*e/2/np.pi)
+    plt.plot(1e3*O/2/np.pi)
+    plt.ylim([-450,450])
+    plt.grid()
+    print(b)
+    print(len(e))
+    print(len(O))
 # %%

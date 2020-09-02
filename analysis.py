@@ -35,6 +35,9 @@ class System:
         epsilon = disp(alpha=alpha, sigma=self.sigma, chop=self.chop)
         return epsilon, Omega
 
+
+
+
     def simulate_pulse_trotter(self, epsilon, Omega, psi0, use_kerr = False,\
                                use_chi_prime = False, use_kappa = False, dt=1):
         alphas = alpha_from_epsilon(epsilon)
@@ -136,6 +139,7 @@ if __name__ == '__main__':
     sz = 1-2*q.dag()*q
     sx = (q+q.dag())
     sy = 1j*(q.dag() - q)
+    epsilon_m = 2*np.pi*1e-3*400.0
     aux_ops = [a.dag()*a,sz,sx]
     aux_params = np.array([0,0,0], dtype=np.float64)
     alphas = np.array([0])
@@ -160,7 +164,7 @@ if __name__ == '__main__':
     Ec_GHz = 0.19267571 #measured anharmonicity
     Ec = (2*np.pi) * Ec_GHz
     sys = System(chi=2*np.pi*1e-3*0.03, Ec = Ec, alpha0=60,\
-         sigma=6, chop=4, sigma_cd=12, chop_cd=4, buffer_time = 8)
+         sigma=6, chop=4, epsilon_m = epsilon_m, buffer_time = 8)
     analysis = CD_grape_analysis(a,sys)
     e,O = analysis.composite_pulse()
     #%% 
