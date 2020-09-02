@@ -142,7 +142,7 @@ class CD_grape_analysis:
 if __name__ == '__main__':
     N = 40
     N2 = 2
-    N_blocks = 4
+    N_blocks = 1
     init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
     a = qt.tensor(qt.destroy(N), qt.identity(N2))
     q = qt.tensor(qt.identity(N), qt.destroy(N2))
@@ -163,15 +163,14 @@ if __name__ == '__main__':
     #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
     #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
     target_state = qt.tensor(qt.coherent(N,1j), qt.basis(N2, 1))
-    a = CD_grape(init_state, target_state, N_blocks, init_alphas=alphas,init_phis=phis, init_thetas=thetas,\
-                init_betas=betas, aux_params=aux_params, max_abs_alpha=4,max_abs_beta = 4,
+    a = CD_grape(init_state, target_state, N_blocks, max_abs_alpha=4,max_abs_beta = 4,
                 aux_ops=aux_ops, aux_params_bounds=aux_bounds)
     #a.randomize(alpha_scale=1, beta_scale = 2)
-    a.alphas = np.array([ 0.26770958-0.14984806j, 0.43046834+0.2849068j, 0.44571901+0.22912736j, -1.14223082-0.36287999j])
-    a.betas =  np.array([-2.11342464+0.16635473j, 0.18959299-0.50403244j, -0.68346816-0.31073315j, 0.00263728-0.3142331j]) 
+    a.alphas = np.array([ 0.26770958-0.14984806j])#, 0.43046834+0.2849068j, 0.44571901+0.22912736j, -1.14223082-0.36287999j])
+    a.betas =  np.array([-2.11342464+0.16635473j])#, 0.18959299-0.50403244j, -0.68346816-0.31073315j, 0.00263728-0.3142331j]) 
     a.aux_params = np.array([0.12630521, -0.77663552, 0.78854091])
-    a.phis = [ 0.08702158, 2.20541633, -0.19616032, -3.13239204] 
-    a.thetas = [1.57846148, 2.58277528, 2.28826452, 1.75862334]
+    a.phis = np.array([ 0.08702158])#, 2.20541633, -0.19616032, -3.13239204] 
+    a.thetas = np.array([1.57846148])#, 2.58277528, 2.28826452, 1.75862334]
     if 1:
         #a.plot_initial_state()
         a.plot_final_state()

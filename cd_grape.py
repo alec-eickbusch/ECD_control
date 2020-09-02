@@ -16,28 +16,23 @@ class CD_grape:
     def __init__(self, initial_state, target_state, N_blocks,
                  init_alphas = None, init_betas = None,
                  init_phis = None, init_thetas = None, 
-                 max_abs_alpha = 5, max_abs_beta = 5,
-                 aux_ops = [], aux_params = [], 
-                 aux_params_bounds = []):
+                 max_abs_alpha = 5, max_abs_beta = 5):
 
         self.initial_state = initial_state
         self.target_state = target_state
         self.N_blocks = N_blocks
         self.alphas = np.array(init_alphas, dtype=np.complex128) if init_alphas is not None \
-            else np.zeros(N_blocks, dtype=np.complex128)
+            else np.zeros(N_blocks+1, dtype=np.complex128)
         self.betas = np.array(init_betas, dtype=np.complex128) if init_betas is not None \
             else np.zeros(N_blocks, dtype=np.complex128)
         self.phis = np.array(init_phis, dtype=np.float64) if init_phis is not None \
-            else np.zeros(N_blocks, dtype=np.float64)
+            else np.zeros(N_blocks+1, dtype=np.float64)
         self.thetas = np.array(init_thetas, dtype=np.float64) if init_thetas is not None \
-            else np.zeros(N_blocks, dtype=np.float64)
+            else np.zeros(N_blocks+1, dtype=np.float64)
         self.N = self.initial_state.dims[0][0]
         self.N2 = self.initial_state.dims[0][1]
         self.max_abs_alpha = max_abs_alpha
         self.max_abs_beta = max_abs_beta
-        self.aux_ops = aux_ops
-        self.aux_params = aux_params
-        self.aux_params_bounds = aux_params_bounds
 
         self.a = qt.tensor(qt.destroy(self.N), qt.identity(self.N2))
         self.q = qt.tensor(qt.identity(self.N), qt.destroy(self.N2))
@@ -49,12 +44,12 @@ class CD_grape:
     def randomize(self, alpha_scale = None, beta_scale=None):
         alpha_scale = self.max_abs_alpha if alpha_scale is None else alpha_scale
         beta_scale = self.max_abs_beta if beta_scale is None else beta_scale
-        ang_alpha = np.random.uniform(-np.pi,np.pi,self.N_blocks)
-        rho_alpha = np.random.uniform(-alpha_scale, alpha_scale, self.N_blocks)
+        ang_alpha = np.random.uniform(-np.pi,np.pi,self.N_blocks+1)
+        rho_alpha = np.random.uniform(-alpha_scale, alpha_scale, self.N_blocks+1)
         ang_beta = np.random.uniform(-np.pi,np.pi,self.N_blocks)
         rho_beta = np.random.uniform(-beta_scale, beta_scale, self.N_blocks)
-        phis = np.random.uniform(-np.pi, np.pi, self.N_blocks)
-        thetas = np.random.uniform(0,np.pi,self.N_blocks)
+        phis = np.random.uniform(-np.pi, np.pi, self.N_blocks+1)
+        thetas = np.random.uniform(0,np.pi,self.N_blocks+1)
         self.alphas = np.array(np.exp(1j*ang_alpha)*rho_alpha, dtype=np.complex128)
         self.betas = np.array(np.exp(1j*ang_beta)*rho_beta, dtype=np.complex128)
         self.phis = np.array(phis, dtype=np.complex128)
@@ -64,12 +59,15 @@ class CD_grape:
         return (alpha*self.a.dag() - np.conj(alpha)*self.a).expm()
     
     def CD(self, beta):
+        if beta == 0:
+            return qt.tensor(qt.identity(N),qt.identity(N2))
         return ((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
 
     def R(self, phi, theta):
         return (1j*(theta/2.0)*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)).expm()
 
     #derivative multipliers
+    #todo: optimization with derivatives
     def dalphar_dD_mul(self, alpha):
         return (self.a.dag() - self.a - (np.conj(alpha) - alpha)/2.0)
 
@@ -95,16 +93,19 @@ class CD_grape:
         return U
 
     def U_i_block(self, i, alphas,betas,phis,thetas):
-        return self.U_block(alphas[i], betas[i], phis[i], thetas[i])
+        if i == self.N_blocks:
+            beta = 0
+        else:
+            beta = betas[i]
+        return self.U_block(alphas[i], beta, phis[i], thetas[i])
 
-    def U_tot(self, alphas,betas,phis,thetas, aux_params):
+    def U_tot(self, alphas,betas,phis,thetas):
         U = qt.tensor(qt.identity(self.N),qt.identity(self.N2))
-        for i in range(self.N_blocks):
+        for i in range(self.N_blocks + 1):
             U = self.U_i_block(i, alphas, betas, phis, thetas) * U
-        for i in range(len(self.aux_ops)):
-            U = (1j*aux_params[i]*self.aux_ops[i]).expm()*U
         return U
 
+    #TODO: work out optimization with the derivatives, include block # N_blocks + 1
     def forward_states(self, alphas, betas, phis, thetas, aux_params):
         psi_fwd = [self.initial_state]
         for i in range(self.N_blocks):
@@ -161,28 +162,25 @@ class CD_grape:
  
         return fid, dalphar, dalphai, dbetar, dbetai, dphi, dtheta
 
-    def final_state(self, alphas=None,betas=None,phis=None,thetas=None, aux_params=None):
+    def final_state(self, alphas=None,betas=None,phis=None,thetas=None):
         alphas = self.alphas if alphas is None else alphas
         betas = self.betas if betas is None else betas
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
-        aux_params = self.aux_params if aux_params is None else aux_params
         psi = self.initial_state
-        for i in range(self.N_blocks):
+        for i in range(self.N_blocks + 1):
             psi = self.R(phis[i],thetas[i])*psi
             psi = self.D(alphas[i])*psi
-            psi = self.CD(betas[i])*psi
-        for i in range(len(self.aux_ops)):
-            psi = (1j*aux_params[i]*self.aux_ops[i]).expm()*psi
+            if i < self.N_blocks:
+                psi = self.CD(betas[i])*psi
         return psi
     
-    def fidelity(self, alphas=None, betas=None, phis = None, thetas=None, aux_params=None):
+    def fidelity(self, alphas=None, betas=None, phis = None, thetas=None):
         alphas = self.alphas if alphas is None else alphas
         betas = self.betas if betas is None else betas
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
-        aux_params = self.aux_params if aux_params is None else aux_params
-        overlap =  (self.target_state.dag()*self.final_state(alphas,betas,phis,thetas, aux_params)).full()[0][0]
+        overlap =  (self.target_state.dag()*self.final_state(alphas,betas,phis,thetas)).full()[0][0]
         return np.abs(overlap)**2
     
     def plot_initial_state(self):
@@ -196,15 +194,14 @@ class CD_grape:
         
     #for the optimization, we will flatten the parameters
     #the will be, in order, 
-    #[alphas_r, alphas_i, betas_r, betas_i,  phis, thetas]
+    #[betas_r, betas_i, alphas_r, alphas_i,  phis, thetas]
     def cost_function(self, parameters):
-        alphas_r = parameters[0:self.N_blocks]
-        alphas_i = parameters[self.N_blocks:2*self.N_blocks]
-        betas_r = parameters[2*self.N_blocks:3*self.N_blocks]
-        betas_i = parameters[3*self.N_blocks:4*self.N_blocks]
-        phis = parameters[4*self.N_blocks:5*self.N_blocks]
-        thetas = parameters[5*self.N_blocks:6*self.N_blocks]
-        aux_params = parameters[6*self.N_blocks:]
+        betas_r = parameters[0:self.N_blocks]
+        betas_i = parameters[self.N_blocks:2*self.N_blocks]
+        alphas_r = parameters[2*self.N_blocks:(3*self.N_blocks + 1)]
+        alphas_i = parameters[(3*self.N_blocks + 1):(4*self.N_blocks + 2)]
+        phis = parameters[(4*self.N_blocks + 2):(5*self.N_blocks + 3)]
+        thetas = parameters[(5*self.N_blocks + 3):]
         alphas = alphas_r + 1j*alphas_i
         betas = betas_r + 1j*betas_i
         #temp
@@ -212,12 +209,11 @@ class CD_grape:
         self.betas = betas
         self.phis = phis
         self.thetas = thetas
-        self.aux_params = aux_params
-        f = self.fidelity(alphas,betas,phis,thetas, aux_params)
+        f = self.fidelity(alphas,betas,phis,thetas)
         print('fid: %.3f' % f, end='\r')
         return -f
 
-    #todo: add aux params
+    #TODO: include final rotation and displacement
     def cost_function_analytic(self, parameters):
         alphas_r = parameters[0:self.N_blocks]
         alphas_i = parameters[self.N_blocks:2*self.N_blocks]
@@ -238,15 +234,14 @@ class CD_grape:
     
     def optimize(self, maxiter = 1e4):
         init_params = \
-        np.array(np.concatenate([np.real(self.alphas),np.imag(self.alphas),
-                  np.real(self.betas), np.imag(self.betas),
-                  self.phis, self.thetas, self.aux_params]),dtype=np.float64)
+        np.array(np.concatenate([np.real(self.betas),np.imag(self.betas),
+                  np.real(self.alphas), np.imag(self.alphas),
+                  self.phis, self.thetas]),dtype=np.float64)
         bounds = np.concatenate(
-            [[(-self.max_abs_alpha,self.max_abs_alpha) for _ in range(2*N_blocks)],\
-            [(-self.max_abs_beta,self.max_abs_beta) for _ in range(2*N_blocks)],\
-            [(-np.pi,np.pi) for _ in range(N_blocks)],\
-            [(0,np.pi) for _ in range(N_blocks)],\
-            self.aux_params_bounds])
+            [[(-self.max_abs_beta,self.max_abs_beta) for _ in range(2*N_blocks)],\
+            [(-self.max_abs_alpha,self.max_abs_alpha) for _ in range(2*N_blocks + 2)],\
+            [(-np.inf,np.inf) for _ in range(N_blocks + 1)],\
+            [(-np.inf,np.inf) for _ in range(N_blocks + 1)]])
         result = minimize(self.cost_function,x0=init_params,method='L-BFGS-B',
                           bounds = bounds, jac=False, options={'maxiter':maxiter})
         return result
@@ -269,28 +264,18 @@ class CD_grape:
     
 #%%
 if __name__ == '__main__':
-    N = 50
+    N = 40
     N2 = 2
     N_blocks = 4
     init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
-    a = qt.tensor(qt.destroy(N), qt.identity(N2))
-    q = qt.tensor(qt.identity(N), qt.destroy(N2))
-    sz = 1-2*q.dag()*q
-    sx = (q+q.dag())
-    sy = 1j*(q.dag() - q)
-    aux_ops = [a.dag()*a,sz,sx]
-    aux_params = np.array([0,0,0], dtype=np.float64)
-    #aux_bounds = np.array([(-np.pi,np.pi),(-np.pi/2.0,np.pi/2.0),(-np.pi/2.0,np.pi/2.0)])
-    aux_bounds = np.array([(-1000,1000) for _ in range(len(aux_ops))])
-    #target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
+    target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
     #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
-    target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
-    a = CD_grape(init_state, target_state, N_blocks, max_abs_alpha=4,max_abs_beta = 4,
-    aux_ops=aux_ops, aux_params=aux_params, aux_params_bounds=aux_bounds)
-    #a.randomize(alpha_scale=0.5, beta_scale = 1)
-    a.alphas = np.array([ 0.26770958-0.14984806j, 0.43046834+0.2849068j, 0.44571901+0.22912736j, -1.14223082-0.36287999j])
-    a.betas =  np.array([-2.11342464+0.16635473j, 0.18959299-0.50403244j, -0.68346816-0.31073315j, 0.00263728-0.3142331j]) 
-    a.aux_params = np.array([0.12630521, -0.77663552, 0.78854091])
+    #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
+    a = CD_grape(init_state, target_state, N_blocks, max_abs_alpha=4,max_abs_beta = 4)
+    a.randomize(alpha_scale=0.5, beta_scale = 1)
+    #a.alphas = np.array([ 0.26770958-0.14984806j, 0.43046834+0.2849068j, 0.44571901+0.22912736j, -1.14223082-0.36287999j])
+    #a.betas =  np.array([-2.11342464+0.16635473j, 0.18959299-0.50403244j, -0.68346816-0.31073315j, 0.00263728-0.3142331j]) 
+    #a.aux_params = np.array([0.12630521, -0.77663552, 0.78854091])
     if 1:
         #a.plot_initial_state()
         a.plot_final_state()
@@ -316,7 +301,7 @@ if __name__ == '__main__':
     print(f2)
     '''
     #%%
-    #a.optimize()
+    a.optimize()
     # %%
     #a.optimize_analytic()
     # %%
@@ -325,5 +310,4 @@ if __name__ == '__main__':
     print('betas:' + str(a.betas))
     print('phis:' + str(a.phis))
     print('thetas:' + str(a.thetas))
-    print('aux params:' + str(a.aux_params))
     # %%
