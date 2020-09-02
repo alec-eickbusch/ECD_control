@@ -10,13 +10,16 @@ class System:
 
     #for now will use the same sigma and chop for the displacement and qubit pulses
     #the sigma_cd and chop_cd will be for the gaussian displacement pulses during the conditional displacement
-    def __init__(self, chi, Ec, alpha0, epsilon_m, sigma, chop, buffer_time =0):
+    def __init__(self, chi, Ec, alpha0, epsilon_m, sigma, chop, buffer_time =0,\
+                 min_sigma_cd = 2, chop_cd = 4):
         self.chi = chi
         self.Ec = Ec
         self.alpha0 = alpha0
         #sigma and chop for qubit pulse and displacements
         self.sigma = int(sigma)
         self.chop = int(chop)
+        self.min_sigma_cd = int(min_sigma_cd)
+        self.chop_cd = int(chop_cd)
 
         #sigma and chop for displacement during the conditional displacement 
         #calculated from provided value of epsilon_m
@@ -27,8 +30,8 @@ class System:
 
     def CD_pulse(self, beta):
         return fastest_CD(beta, alpha0 = self.alpha0, epsilon_m = self.epsilon_m,\
-                         chi=self.chi, buffer_time=self.buffer_time,\
-              sigma_q=6, chop_q=4,min_sigma = 2, chop=4)
+                         chi=self.chi, buffer_time=self.buffer_time,sigma_q=self.sigma,\
+                              chop_q=self.chop, min_sigma = self.min_sigma_cd, chop=self.chop_cd)
     
     def rotate_displace_pulse(self, alpha, phi, theta):
         Omega = rotate(theta=theta, phi=phi, sigma=self.sigma, chop=self.chop)
@@ -39,7 +42,9 @@ class System:
 
 
     def simulate_pulse_trotter(self, epsilon, Omega, psi0, use_kerr = False,\
-                               use_chi_prime = False, use_kappa = False, dt=1):
+                               use_chi_prime = False, use_kappa = False, dt=1, pad=20):
+        epsilon = np.pad(epsilon, 20)
+        Omega = np.pad(Omega, 20)
         alphas = alpha_from_epsilon(epsilon)
         N = psi0.dims[0][0]
         N2 = psi0.dims[0][1]
@@ -132,7 +137,7 @@ class CD_grape_analysis:
 if __name__ == '__main__':
     N = 20
     N2 = 2
-    N_blocks = 1
+    N_blocks = 4
     init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
     a = qt.tensor(qt.destroy(N), qt.identity(N2))
     q = qt.tensor(qt.identity(N), qt.destroy(N2))
@@ -142,8 +147,8 @@ if __name__ == '__main__':
     epsilon_m = 2*np.pi*1e-3*400.0
     aux_ops = [a.dag()*a,sz,sx]
     aux_params = np.array([0,0,0], dtype=np.float64)
-    alphas = np.array([0])
-    betas =  np.array([1]) 
+    alphas = np.array([0,0,0,0])
+    betas =  np.array([0,0,0,0]) 
     phis = [0] 
     thetas = [0]
     aux_params = np.array([0,0,0])
@@ -151,11 +156,12 @@ if __name__ == '__main__':
     aux_bounds = np.array([(-1000,1000) for _ in range(len(aux_ops))])
     #target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
     #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
-    target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
+    #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
+    target_state = qt.tensor(qt.coherent(N,1j), qt.basis(N2, 1))
     a = CD_grape(init_state, target_state, N_blocks, init_alphas=alphas,init_phis=phis, init_thetas=thetas,\
                 init_betas=betas, aux_params=aux_params, max_abs_alpha=4,max_abs_beta = 4,
                 aux_ops=aux_ops, aux_params_bounds=aux_bounds)
-    #a.randomize(alpha_scale=1, beta_scale = 2)
+    a.randomize(alpha_scale=1, beta_scale = 2)
     if 1:
         #a.plot_initial_state()
         a.plot_final_state()
@@ -164,7 +170,7 @@ if __name__ == '__main__':
     Ec_GHz = 0.19267571 #measured anharmonicity
     Ec = (2*np.pi) * Ec_GHz
     sys = System(chi=2*np.pi*1e-3*0.03, Ec = Ec, alpha0=60,\
-         sigma=6, chop=4, epsilon_m = epsilon_m, buffer_time = 8)
+         sigma=6, chop=4, epsilon_m = epsilon_m, buffer_time = 0)
     analysis = CD_grape_analysis(a,sys)
     e,O = analysis.composite_pulse()
     #%% 
@@ -175,6 +181,10 @@ if __name__ == '__main__':
     psif = sys.simulate_pulse_trotter(e,O,psi0)
 
     plot_wigner(psif)
+
+    fid2 = qt.fidelity(psif, target_state)
+
+    print('sim fid: ' + str(fid2))
 
 
 # %%
