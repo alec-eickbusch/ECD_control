@@ -104,8 +104,11 @@ class CD_grape_analysis:
     #a block is defined by a rotation and displacement pulse, followed by a CD pulse.
     #for now pulse block will end with buffer time zeros.
     def pulse_block(self, i):
-        alpha = self.cd_grape_object.alphas[i]
-        beta = self.cd_grape_object.betas[i]
+        if i == self.cd_grape_object.N_blocks:
+            beta = 0
+        else:
+            beta = self.cd_grape_object.betas[i]
+        alpha = self.cd_grape_object.alphas[i]    
         phi = self.cd_grape_object.phis[i]
         theta = self.cd_grape_object.thetas[i]
 
@@ -129,7 +132,7 @@ class CD_grape_analysis:
     def composite_pulse(self):
         e = []
         O = []
-        for i in range(self.cd_grape_object.N_blocks):
+        for i in range(self.cd_grape_object.N_blocks + 1):
             epsilon, Omega = self.pulse_block(i)
             e.append(epsilon)
             O.append(Omega)
@@ -140,46 +143,40 @@ class CD_grape_analysis:
 
 #%% Testing
 if __name__ == '__main__':
-    N = 40
+    N = 20
     N2 = 2
-    N_blocks = 1
-    init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
+    epsilon_m = 2*np.pi*1e-3*400.0
+    Ec_GHz = 0.19267571 #measured anharmonicity
+    Ec = (2*np.pi) * Ec_GHz
+    sys = System(chi=2*np.pi*1e-3*0.03, Ec = Ec, alpha0=60,\
+         sigma=6, chop=4, epsilon_m = epsilon_m, buffer_time = 0)
     a = qt.tensor(qt.destroy(N), qt.identity(N2))
     q = qt.tensor(qt.identity(N), qt.destroy(N2))
     sz = 1-2*q.dag()*q
     sx = (q+q.dag())
     sy = 1j*(q.dag() - q)
-    epsilon_m = 2*np.pi*1e-3*400.0
-    aux_ops = [a.dag()*a,sz,sx]
-    aux_params = np.array([0,0,0], dtype=np.float64)
-    alphas = np.array([0,0,0,0])
-    betas =  np.array([0,0,0,0]) 
-    phis = np.array([0,0,0,0]) 
-    thetas = np.array([0,0,0,0])
-    aux_params = np.array([0,0,0])
-    #aux_bounds = np.array([(-np.pi,np.pi),(-np.pi/2.0,np.pi/2.0),(-np.pi/2.0,np.pi/2.0)])
-    aux_bounds = np.array([(-1000,1000) for _ in range(len(aux_ops))])
-    #target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
+    
+    N_blocks = 1
+    init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
+    betas = np.array([1j])
+    alphas = np.array([1,1])
+    phis = np.array([0,0])
+    thetas = np.array([-np.pi/2.0,0])
+
+    target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
     #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
     #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
-    target_state = qt.tensor(qt.coherent(N,1j), qt.basis(N2, 1))
-    a = CD_grape(init_state, target_state, N_blocks, max_abs_alpha=4,max_abs_beta = 4,
-                aux_ops=aux_ops, aux_params_bounds=aux_bounds)
+    #target_state = qt.tensor(qt.coherent(N,1j), qt.basis(N2, 1))
+    a = CD_grape(init_state, target_state, N_blocks, init_betas = betas, init_alphas=alphas,\
+        init_phis = phis, init_thetas = thetas, max_abs_alpha=4,max_abs_beta = 4)
     #a.randomize(alpha_scale=1, beta_scale = 2)
-    a.alphas = np.array([ 0.26770958-0.14984806j])#, 0.43046834+0.2849068j, 0.44571901+0.22912736j, -1.14223082-0.36287999j])
-    a.betas =  np.array([-2.11342464+0.16635473j])#, 0.18959299-0.50403244j, -0.68346816-0.31073315j, 0.00263728-0.3142331j]) 
-    a.aux_params = np.array([0.12630521, -0.77663552, 0.78854091])
-    a.phis = np.array([ 0.08702158])#, 2.20541633, -0.19616032, -3.13239204] 
-    a.thetas = np.array([1.57846148])#, 2.58277528, 2.28826452, 1.75862334]
     if 1:
         #a.plot_initial_state()
         a.plot_final_state()
+        #a.plot_final_state()
         #a.plot_target_state()
     print(a.fidelity())
-    Ec_GHz = 0.19267571 #measured anharmonicity
-    Ec = (2*np.pi) * Ec_GHz
-    sys = System(chi=2*np.pi*1e-3*0.03, Ec = Ec, alpha0=60,\
-         sigma=6, chop=4, epsilon_m = epsilon_m, buffer_time = 0)
+    
     analysis = CD_grape_analysis(a,sys)
     e,O = analysis.composite_pulse()
     #%% 

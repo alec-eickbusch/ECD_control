@@ -306,8 +306,8 @@ if __name__ == '__main__':
     #a.optimize_analytic()
     # %%
     a.plot_final_state()
-    print('alphas:' + str(a.alphas))
-    print('betas:' + str(a.betas))
-    print('phis:' + str(a.phis))
-    print('thetas:' + str(a.thetas))
+    print('betas = np.' + repr(a.betas))
+    print('alphas = np.' + repr(a.alphas))
+    print('phis = np.' + repr(a.phis))
+    print('thetas = np.' + repr(a.thetas))
     # %%
