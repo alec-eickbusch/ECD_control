@@ -76,9 +76,8 @@ class System:
         ss = 0.0
 
         ts = np.arange(len(Omega))*dt
-        print('constructing H')
         H_array = []
-        for i in tqdm(range(len(Omega))):
+        for i in tqdm(range(len(Omega)), desc="constructing H"):
             alpha = alphas[i]
             O = Omega[i]
             H_array.append(-chi_qs*a.dag()*a*q.dag()*q -chi_qs*(alpha*a.dag() + np.conj(alpha)*a)*q.dag()*q - ss*chi_qs * np.abs(alpha)**2*q.dag()*q\
@@ -88,11 +87,12 @@ class System:
                 - (Ec/2.0)*q.dag()**2 * q**2 + np.real(O)*(q+q.dag()) + np.imag(O)*1j*(q.dag() - q))
 
         psi = psi0
-        print('trotterized simulation')
-        for H in tqdm(H_array):
+        for H in tqdm(H_array, desc='trotterized simulation'):
             U = (-1j*H*dt).expm()
             psi = U*psi
-        return psi
+        #finally, move psi to displaced frame
+        D = qt.tensor(qt.displace(N,alphas[-1]),qt.identity(N2))
+        return  D*psi
 
 
 class CD_grape_analysis:
@@ -113,12 +113,17 @@ class CD_grape_analysis:
         #evey other round.
         if i % 2 == 1:
             theta = -theta
+            beta = -beta
         epsilon_D, Omega_R = self.system.rotate_displace_pulse(alpha, phi, theta)
-        epsilon_CD, Omega_CD = self.system.CD_pulse(beta)
-        epsilon = np.concatenate([epsilon_D, np.zeros(self.system.buffer_time),
-                                  epsilon_CD, np.zeros(self.system.buffer_time)])
-        Omega = np.concatenate([Omega_R, np.zeros(self.system.buffer_time),
-                                Omega_CD, np.zeros(self.system.buffer_time)])
+        if beta!= 0:
+            epsilon_CD, Omega_CD = self.system.CD_pulse(beta)
+            epsilon = np.concatenate([epsilon_D, np.zeros(self.system.buffer_time),
+                                    epsilon_CD, np.zeros(self.system.buffer_time)])
+            Omega = np.concatenate([Omega_R, np.zeros(self.system.buffer_time),
+                                    Omega_CD, np.zeros(self.system.buffer_time)])
+        else:
+            epsilon = np.concatenate([epsilon_D, np.zeros(self.system.buffer_time)])
+            Omega = np.concatenate([Omega_R, np.zeros(self.system.buffer_time)])
         return epsilon, Omega
 
     def composite_pulse(self):
@@ -135,7 +140,7 @@ class CD_grape_analysis:
 
 #%% Testing
 if __name__ == '__main__':
-    N = 20
+    N = 40
     N2 = 2
     N_blocks = 4
     init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
@@ -149,8 +154,8 @@ if __name__ == '__main__':
     aux_params = np.array([0,0,0], dtype=np.float64)
     alphas = np.array([0,0,0,0])
     betas =  np.array([0,0,0,0]) 
-    phis = [0] 
-    thetas = [0]
+    phis = np.array([0,0,0,0]) 
+    thetas = np.array([0,0,0,0])
     aux_params = np.array([0,0,0])
     #aux_bounds = np.array([(-np.pi,np.pi),(-np.pi/2.0,np.pi/2.0),(-np.pi/2.0,np.pi/2.0)])
     aux_bounds = np.array([(-1000,1000) for _ in range(len(aux_ops))])
@@ -161,7 +166,12 @@ if __name__ == '__main__':
     a = CD_grape(init_state, target_state, N_blocks, init_alphas=alphas,init_phis=phis, init_thetas=thetas,\
                 init_betas=betas, aux_params=aux_params, max_abs_alpha=4,max_abs_beta = 4,
                 aux_ops=aux_ops, aux_params_bounds=aux_bounds)
-    a.randomize(alpha_scale=1, beta_scale = 2)
+    #a.randomize(alpha_scale=1, beta_scale = 2)
+    a.alphas = np.array([ 0.26770958-0.14984806j, 0.43046834+0.2849068j, 0.44571901+0.22912736j, -1.14223082-0.36287999j])
+    a.betas =  np.array([-2.11342464+0.16635473j, 0.18959299-0.50403244j, -0.68346816-0.31073315j, 0.00263728-0.3142331j]) 
+    a.aux_params = np.array([0.12630521, -0.77663552, 0.78854091])
+    a.phis = [ 0.08702158, 2.20541633, -0.19616032, -3.13239204] 
+    a.thetas = [1.57846148, 2.58277528, 2.28826452, 1.75862334]
     if 1:
         #a.plot_initial_state()
         a.plot_final_state()
@@ -182,9 +192,15 @@ if __name__ == '__main__':
 
     plot_wigner(psif)
 
-    fid2 = qt.fidelity(psif, target_state)
+    fid2 = qt.fidelity(psif, (a.sx)**N_blocks*a.final_state())
 
     print('sim fid: ' + str(fid2))
+#%%
+    alphas = alpha_from_epsilon(e)
+    plt.figure()
+    plt.plot(np.real(alphas),label='re(alpha)')
+    plt.plot(np.imag(alphas),label='im(alpha)')
+    plt.legend()
 
 
 # %%

@@ -31,6 +31,8 @@ def interp(data_array, dt=1):
     ts = np.arange(0,len(data_array))*dt
     return interp1d(ts,data_array,kind='cubic', bounds_error=False) #can test different kinds
 
+#still having problems with this version
+'''
 def alpha_from_epsilon(epsilon_array, dt=1, K = 0, alpha_init=0+0j, kappa_cavity=0):
     t_eval = np.linspace(0,len(epsilon_array)*dt-dt, len(epsilon_array))
     epsilon = interp(epsilon_array, dt)
@@ -38,5 +40,8 @@ def alpha_from_epsilon(epsilon_array, dt=1, K = 0, alpha_init=0+0j, kappa_cavity
     alpha = solve_ivp(dalpha_dt,(0,len(epsilon_array)*dt-dt),y0=[alpha_init],\
                       method='RK23',t_eval=t_eval).y[0]
     return alpha
-
+'''
+def alpha_from_epsilon(epsilon):
+    alpha = -1j*np.cumsum(epsilon)
+    return alpha
 # %%
