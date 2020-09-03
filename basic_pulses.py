@@ -15,7 +15,36 @@ def gaussian_wave(sigma, chop=4):
     P = np.exp(-ts**2 / (2.0 * sigma**2))
     ofs = P[0]
     return (P - ofs) / (1 - ofs)
-#rotate qubit angle theta around axis phi on the bloch sphere
+
+def ring_up_smootherstep(length):
+    dt = 1/length
+    ts = np.arange(length)*dt
+    return 6*ts**5 - 15*ts**4 + 10*ts**3
+
+def ring_up_smoothstep(length):
+    dt = 1/length
+    ts = np.arange(length)*dt
+    return 3*ts**2 - 2*ts**3
+
+def polynomial_ring_up(length, reverse=False, negative=False, ring_up_type='smootherstep'):
+    if ring_up_type == 'smoothstep':
+        wave = ring_up_smoothstep(length)
+    elif ring_up_type == 'smootherstep':
+        wave = ring_up_smootherstep(length)
+    else:
+        raise ValueError(
+            "Type must be 'smoothstep' or 'smootherstep', not %s" % type)
+    if reverse:
+        wave = wave[::-1]
+    if negative:
+        wave = -1*wave
+    return wave
+
+def trapezoid_pulse(ring_up_time, flat_time):
+    return np.concatenate([polynomial_ring_up(ring_up_time, ring_up_type='smootherstep'),\
+         np.ones(flat_time),\
+        polynomial_ring_up(ring_up_time, , reverse=True, negative=False, ring_up_type='smootherstep')])
+
 def rotate(theta, phi=0, sigma=8, chop=6, dt=1):
     wave = gaussian_wave(sigma=sigma, chop=chop)
     energy = np.trapz(wave, dx = dt)
@@ -24,13 +53,13 @@ def rotate(theta, phi=0, sigma=8, chop=6, dt=1):
     return (-theta/np.pi) * amp_pi * np.exp(1j*phi) * wave
 
 #displace cavity by an amount alpha
-def disp(alpha, sigma=8, chop=6, dt=1):
+def disp_gaussian(alpha, sigma=8, chop=6, dt=1):
     wave = gaussian_wave(sigma=sigma, chop=chop)
     energy = np.trapz(wave, dx = dt)
     wave = (1 + 0j)*wave
     return (np.abs(alpha)/energy) * np.exp(1j*(np.pi/2.0 + np.angle(alpha))) * wave
 
-def fastest_disp(alpha, epsilon_m=2*np.pi*1e-3*400, initial_sigma = 32, chop=4, min_sigma=2):
+def fastest_disp_gaussian(alpha, epsilon_m=2*np.pi*1e-3*400, initial_sigma = 32, chop=4, min_sigma=2):
     def valid(sigma):
         epsilon = disp(alpha, sigma, chop)
         return (np.max(np.abs(epsilon)) < epsilon_m) and (sigma >= min_sigma)
@@ -40,6 +69,13 @@ def fastest_disp(alpha, epsilon_m=2*np.pi*1e-3*400, initial_sigma = 32, chop=4, 
         sigma = int(sigma - 1)
     sigma = int(sigma + 1)
     return disp(alpha, sigma, chop)
+
+
+def disp_trapezoid(alpha, ring_up_time=8, flat_time=8):
+    wave = trapezoid_pulse(ring_up_time, flat_time)
+    energy = np.trapz(wave, dx=dt)
+    wave = (1 + 0j)*wave
+    return (np.abs(alpha)/energy) * np.exp(1j*(np.pi/2.0 + np.angle(alpha))) * wave
 
 def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3*0.03, buffer_time=0,\
               sigma_q=6, chop_q=4,min_sigma = 2, chop=4):

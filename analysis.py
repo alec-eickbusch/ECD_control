@@ -1,9 +1,9 @@
 #%%
 import numpy as np
 import qutip as qt
-from cd_grape import *
-from basic_pulses import fastest_CD, rotate, disp
-from helper_functions import plot_pulse, alpha_from_epsilon
+from CD_GRAPE.cd_grape import *
+from CD_GRAPE.basic_pulses import fastest_CD, rotate, disp
+from CD_GRAPE.helper_functions import plot_pulse, alpha_from_epsilon
 import matplotlib.pyplot as plt
 plt.rcParams.update({'font.size': 16, 'pdf.fonttype': 42, 'ps.fonttype': 42})
 from tqdm import tqdm
@@ -157,11 +157,12 @@ class CD_grape_analysis:
 if __name__ == '__main__':
     N = 60
     N2 = 2
-    epsilon_m = 2*np.pi*1e-3*250.0
+    epsilon_m = 2*np.pi*1e-3*400.0
     Ec_GHz = 0.19267571 #measured anharmonicity
     Ec = (2*np.pi) * Ec_GHz
     sys = System(chi=2*np.pi*1e-3*0.03, Ec = Ec, alpha0=60,\
-         sigma=4, chop=6, epsilon_m = epsilon_m, buffer_time = 4)
+         sigma=3, chop=4, epsilon_m = epsilon_m, buffer_time = 4,
+         min_sigma_cd=1, chop_cd=2)
     a = qt.tensor(qt.destroy(N), qt.identity(N2))
     q = qt.tensor(qt.identity(N), qt.destroy(N2))
     sz = 1-2*q.dag()*q
@@ -188,8 +189,8 @@ if __name__ == '__main__':
     #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
     #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
     #target_state = qt.tensor(qt.coherent(N,1j), qt.basis(N2, 1))
-    a = CD_grape(init_state, target_state, N_blocks, init_betas = betas, init_alphas=alphas,\
-        init_phis = phis, init_thetas = thetas, max_abs_alpha=4,max_abs_beta = 4)
+    a = CD_grape(init_state, target_state, N_blocks, betas = betas, alphas=alphas,\
+        phis = phis, thetas = thetas, max_alpha=4, max_beta = 4)
     #a.randomize(alpha_scale=0.1, beta_scale = 1)
     #a.optimize()
 #%%
@@ -198,7 +199,7 @@ if __name__ == '__main__':
         a.plot_final_state()
         #a.plot_final_state()
         #a.plot_target_state()
-    print(a.fidelity())
+    #print(a.fidelity())
     
     analysis = CD_grape_analysis(a,sys)
     e,O = analysis.composite_pulse()
@@ -207,6 +208,7 @@ if __name__ == '__main__':
     if 1:
         plt.figure(figsize = (10,6), dpi=200)
         plot_pulse(e,O)
+        plt.plot(np.abs(1e3*e/2/np.pi))
         plt.axhline(1e3*epsilon_m/2/np.pi)
         plt.axhline(-1e3*epsilon_m/2/np.pi)
         #plt.figure(figsize=(10, 6), dpi=200)
