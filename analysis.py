@@ -51,7 +51,8 @@ class System:
 
 
     def simulate_pulse_trotter(self, epsilon, Omega, psi0, use_kerr = False,\
-                               use_chi_prime = False, use_kappa = False, dt=1, pad=20):
+                               use_chi_prime = False, use_kappa = False, dt=1, pad=20,
+                               stark_shift = True):
         epsilon = np.pad(epsilon, 20)
         Omega = np.pad(Omega, 20)
         alphas = alpha_from_epsilon(epsilon)
@@ -79,10 +80,10 @@ class System:
             #kappa = self.kappa_cavity
         #else:   
         kappa = 0
-        #if stark_shift:
-           # ss = 1.0
-        #else:
-        ss = 0.0
+        if stark_shift:
+            ss = 1.0
+        else:
+            ss = 0.0
 
         ts = np.arange(len(Omega))*dt
         H_array = []
@@ -201,16 +202,16 @@ if __name__ == '__main__':
     
     analysis = CD_grape_analysis(a,sys)
     e,O = analysis.composite_pulse()
-    e2,O2 = sys.stark_shift_correction(e,O)
+    #e2,O2 = sys.stark_shift_correction(e,O)
     #%% 
-    if 0:
+    if 1:
         plt.figure(figsize = (10,6), dpi=200)
         plot_pulse(e,O)
-        plt.figure(figsize=(10, 6), dpi=200)
-        plot_pulse(e2,O2)
+        #plt.figure(figsize=(10, 6), dpi=200)
+        #plot_pulse(e2,O2)
 #%%
     psi0 = a.initial_state
-    psif = sys.simulate_pulse_trotter(e2,O2,psi0)
+    psif = sys.simulate_pulse_trotter(e,O,psi0, stark_shift=False)
 
     plot_wigner(psif)
     print('discrete sim:')

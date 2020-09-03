@@ -9,41 +9,47 @@ import qutip as qt
 from helper_functions import plot_wigner
 from scipy.optimize import minimize
 import scipy.optimize
+from datetime import datetime
 
 class CD_grape:
 
     #a block is defined as the unitary: CD(beta)D(alpha)R_phi(theta)
-    def __init__(self, initial_state, target_state, N_blocks,
-                 init_alphas = None, init_betas = None,
-                 init_phis = None, init_thetas = None, 
-                 max_abs_alpha = 5, max_abs_beta = 5):
+    def __init__(self, initial_state=None, target_state=None, N_blocks = 1,
+                 betas = None, alphas = None,
+                 phis = None, thetas = None, 
+                 max_alpha = 5, max_beta = 5,
+                 saving_directory = None, name = 'CD_grape'):
 
         self.initial_state = initial_state
         self.target_state = target_state
         self.N_blocks = N_blocks
-        self.alphas = np.array(init_alphas, dtype=np.complex128) if init_alphas is not None \
-            else np.zeros(N_blocks+1, dtype=np.complex128)
-        self.betas = np.array(init_betas, dtype=np.complex128) if init_betas is not None \
+        self.betas = np.array(alphas, dtype=np.complex128) if alphas is not None \
             else np.zeros(N_blocks, dtype=np.complex128)
-        self.phis = np.array(init_phis, dtype=np.float64) if init_phis is not None \
+        self.alphas = np.array(alphas, dtype=np.complex128) if alphas is not None \
+            else np.zeros(N_blocks+1, dtype=np.complex128)  
+        self.phis = np.array(phis, dtype=np.float64) if phis is not None \
             else np.zeros(N_blocks+1, dtype=np.float64)
-        self.thetas = np.array(init_thetas, dtype=np.float64) if init_thetas is not None \
+        self.thetas = np.array(thetas, dtype=np.float64) if thetas is not None \
             else np.zeros(N_blocks+1, dtype=np.float64)
-        self.N = self.initial_state.dims[0][0]
-        self.N2 = self.initial_state.dims[0][1]
-        self.max_abs_alpha = max_abs_alpha
-        self.max_abs_beta = max_abs_beta
 
-        self.a = qt.tensor(qt.destroy(self.N), qt.identity(self.N2))
-        self.q = qt.tensor(qt.identity(self.N), qt.destroy(self.N2))
-        self.sz = 1-2*self.q.dag()*self.q
-        self.sx = (self.q+self.q.dag())
-        self.sy = 1j*(self.q.dag() - self.q)
-        self.n = self.a.dag()*self.a
+        self.max_alpha = max_alpha
+        self.max_beta = max_beta
+        self.saving_directory = saving_directory
+        self.name = name 
+
+        if self.initial_state is not None:
+            self.N = self.initial_state.dims[0][0]
+            self.N2 = self.initial_state.dims[0][1]
+            self.a = qt.tensor(qt.destroy(self.N), qt.identity(self.N2))
+            self.q = qt.tensor(qt.identity(self.N), qt.destroy(self.N2))
+            self.sz = 1-2*self.q.dag()*self.q
+            self.sx = (self.q+self.q.dag())
+            self.sy = 1j*(self.q.dag() - self.q)
+            self.n = self.a.dag()*self.a
         
     def randomize(self, alpha_scale = None, beta_scale=None):
-        alpha_scale = self.max_abs_alpha if alpha_scale is None else alpha_scale
-        beta_scale = self.max_abs_beta if beta_scale is None else beta_scale
+        alpha_scale = self.max_alpha if alpha_scale is None else alpha_scale
+        beta_scale = self.max_beta if beta_scale is None else beta_scale
         ang_alpha = np.random.uniform(-np.pi,np.pi,self.N_blocks+1)
         rho_alpha = np.random.uniform(-alpha_scale, alpha_scale, self.N_blocks+1)
         ang_beta = np.random.uniform(-np.pi,np.pi,self.N_blocks)
@@ -52,8 +58,8 @@ class CD_grape:
         thetas = np.random.uniform(0,np.pi,self.N_blocks+1)
         self.alphas = np.array(np.exp(1j*ang_alpha)*rho_alpha, dtype=np.complex128)
         self.betas = np.array(np.exp(1j*ang_beta)*rho_beta, dtype=np.complex128)
-        self.phis = np.array(phis, dtype=np.complex128)
-        self.thetas = np.array(thetas, dtype=np.complex128)
+        self.phis = np.array(phis, dtype=np.float64)
+        self.thetas = np.array(thetas, dtype=np.float64)
 
     def D(self, alpha):
         return (alpha*self.a.dag() - np.conj(alpha)*self.a).expm()
@@ -238,8 +244,8 @@ class CD_grape:
                   np.real(self.alphas), np.imag(self.alphas),
                   self.phis, self.thetas]),dtype=np.float64)
         bounds = np.concatenate(
-            [[(-self.max_abs_beta,self.max_abs_beta) for _ in range(2*self.N_blocks)],\
-            [(-self.max_abs_alpha,self.max_abs_alpha) for _ in range(2*self.N_blocks + 2)],\
+            [[(-self.max_beta,self.max_beta) for _ in range(2*self.N_blocks)],\
+            [(-self.max_alpha,self.max_alpha) for _ in range(2*self.N_blocks + 2)],\
             [(-np.inf,np.inf) for _ in range(self.N_blocks + 1)],\
             [(-np.inf,np.inf) for _ in range(self.N_blocks + 1)]])
         result = minimize(self.cost_function,x0=init_params,method='L-BFGS-B',
@@ -252,8 +258,8 @@ class CD_grape:
                   np.real(self.betas), np.imag(self.betas),
                   self.phis, self.thetas]),dtype=np.float64)
         bounds = np.concatenate(
-            [[(-self.max_abs_alpha,self.max_abs_alpha) for _ in range(2*N_blocks)],\
-            [(-self.max_abs_beta,self.max_abs_beta) for _ in range(2*N_blocks)],\
+            [[(-self.max_alpha,self.max_alpha) for _ in range(2*N_blocks)],\
+            [(-self.max_beta,self.max_beta) for _ in range(2*N_blocks)],\
             [(-1000,1000) for _ in range(N_blocks)],\
             [(-1000,1000) for _ in range(N_blocks)]])
             #note that for the cyclic variables the bounds are hard to define, you don't want to
@@ -261,6 +267,35 @@ class CD_grape:
         result = minimize(self.cost_function_analytic,x0=[init_params],method='L-BFGS-B',
                           bounds = bounds, jac=True, options={'maxiter':maxiter,'gtol':gtol,'ftol':ftol})
         return result
+
+    def save(self):
+        datestr = datetime.now().strftime('%Y%m%d_%H_%M_%S')
+        filestring = self.saving_directory + self.name + '_' + datestr
+        filename_np = filestring + '.npz'
+        filename_qt = filestring + '.qt'
+        np.savez(filename_np, betas=self.betas, alphas=self.alphas, phis=self.phis, thetas=self.thetas,
+                 max_alpha = self.max_alpha, max_beta = self.max_beta, name=self.name)
+        print('parameters saved as: ' + filename_np)
+        qt.qsave([self.initial_state,self.target_state], filename_qt)
+        print('states saved as: ' + filename_qt)
+       # print('name for loading:' + filestring)
+        return filestring
+
+    def load(self, filestring):
+        filename_np = filestring + '.npz'
+        filename_qt = filestring + '.qt'
+        f = np.load(filename_np)
+        betas, alphas, phis, thetas, max_alpha, max_beta, name =\
+             f['betas'], f['alphas'], f['phis'],f['thetas'], f['max_alpha'], f['max_beta'], f['name']
+        print('loaded parameters from:' + filename_np)
+        f.close()
+        states = qt.qload(filename_qt)
+        initial_state, target_state = states[0], states[1]
+        print('loaded states from:' + filename_qt)
+        self.__init__(initial_state, target_state, len(betas),\
+                 betas, alphas, phis, thetas, max_alpha, max_beta, None, name)
+        
+
     
 #%%
 if __name__ == '__main__':
@@ -271,12 +306,17 @@ if __name__ == '__main__':
     target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
     #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
     #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
-    a = CD_grape(init_state, target_state, N_blocks, max_abs_alpha=4,max_abs_beta = 4)
+    name = "test_CD"
+    saving_directory = "C:\\Users\\Alec Eickbusch\\Desktop\\cd_grape_results\\"
+    a = CD_grape(init_state, target_state, N_blocks, max_alpha=4,max_beta = 4, name=name, saving_directory=saving_directory)
     a.randomize(alpha_scale=0.5, beta_scale = 1)
+    fs = a.save()
+    b = CD_grape()
+    b.load(fs)
     #a.alphas = np.array([ 0.26770958-0.14984806j, 0.43046834+0.2849068j, 0.44571901+0.22912736j, -1.14223082-0.36287999j])
     #a.betas =  np.array([-2.11342464+0.16635473j, 0.18959299-0.50403244j, -0.68346816-0.31073315j, 0.00263728-0.3142331j]) 
     #a.aux_params = np.array([0.12630521, -0.77663552, 0.78854091])
-    if 1:
+    if 0:
         #a.plot_initial_state()
         a.plot_final_state()
         #a.plot_target_state()
@@ -301,7 +341,7 @@ if __name__ == '__main__':
     print(f2)
     '''
     #%%
-    a.optimize()
+    #a.optimize()
     # %%
     #a.optimize_analytic()
     # %%
