@@ -22,7 +22,7 @@ def rotate(theta, phi=0, sigma=8, chop=6, dt=1):
     energy = np.trapz(wave, dx = dt)
     amp_pi = np.pi / (2*energy)
     wave = (1 + 0j)*wave
-    return (theta/np.pi) * amp_pi * np.exp(1j*phi) * wave
+    return (-theta/np.pi) * amp_pi * np.exp(1j*phi) * wave
 
 #displace cavity by an amount alpha
 def disp(alpha, sigma=8, chop=6, dt=1):

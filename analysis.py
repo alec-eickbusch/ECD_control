@@ -3,7 +3,9 @@ import numpy as np
 import qutip as qt
 from cd_grape import *
 from basic_pulses import fastest_CD, rotate, disp
-#from helper_functions import plot_pulse, alpha_from_epsilon
+from helper_functions import plot_pulse, alpha_from_epsilon
+import matplotlib.pyplot as plt
+plt.rcParams.update({'font.size': 16, 'pdf.fonttype': 42, 'ps.fonttype': 42})
 from tqdm import tqdm
 #%%
 class System:
@@ -16,6 +18,7 @@ class System:
         self.Ec = Ec
         self.alpha0 = alpha0
         #sigma and chop for qubit pulse and displacements
+    
         self.sigma = int(sigma)
         self.chop = int(chop)
         self.min_sigma_cd = int(min_sigma_cd)
@@ -80,11 +83,11 @@ class System:
         for i in tqdm(range(len(Omega)), desc="constructing H"):
             alpha = alphas[i]
             O = Omega[i]
-            H_array.append(-chi_qs*a.dag()*a*q.dag()*q -chi_qs*(alpha*a.dag() + np.conj(alpha)*a)*q.dag()*q - ss*chi_qs * np.abs(alpha)**2*q.dag()*q\
+            H_array.append(-chi_qs*a.dag()*a*q.dag()*q -chi_qs*(alpha*a.dag() + np.conj(alpha)*a)*q.dag()*q+ - ss*chi_qs * np.abs(alpha)**2*q.dag()*q\
                         - 1j*(kappa/2.0)*alpha*(a.dag() - a) + \
                         -kerr * (a.dag() + np.conj(alpha))**2 * (a + alpha)**2 + \
                     -chip*(a.dag()+np.conj(alpha))**2 * (a + alpha)**2 * q.dag() * q + \
-                - (Ec/2.0)*q.dag()**2 * q**2 + np.real(O)*(q+q.dag()) + np.imag(O)*1j*(q.dag() - q))
+                - (Ec/2.0)*q.dag()**2 * q**2 + np.real(O)*(q+q.dag()) +  np.imag(O)*1j*(q.dag() - q))
 
         psi = psi0
         for H in tqdm(H_array, desc='trotterized simulation'):
@@ -114,9 +117,9 @@ class CD_grape_analysis:
 
         #each CD pulse contains a pi pulse, so we need to flip the dfn of the bloch sphere
         #evey other round.
-        if i % 2 == 1:
-            theta = -theta
-            beta = -beta
+        #if i % 2 == 1:
+            #theta = -theta
+            #beta = -beta
         epsilon_D, Omega_R = self.system.rotate_displace_pulse(alpha, phi, theta)
         if beta!= 0:
             epsilon_CD, Omega_CD = self.system.CD_pulse(beta)
@@ -149,19 +152,20 @@ if __name__ == '__main__':
     Ec_GHz = 0.19267571 #measured anharmonicity
     Ec = (2*np.pi) * Ec_GHz
     sys = System(chi=2*np.pi*1e-3*0.03, Ec = Ec, alpha0=60,\
-         sigma=6, chop=4, epsilon_m = epsilon_m, buffer_time = 0)
+         sigma=3, chop=4, epsilon_m = epsilon_m, buffer_time = 0)
     a = qt.tensor(qt.destroy(N), qt.identity(N2))
     q = qt.tensor(qt.identity(N), qt.destroy(N2))
     sz = 1-2*q.dag()*q
     sx = (q+q.dag())
     sy = 1j*(q.dag() - q)
     
-    N_blocks = 1
+    N_blocks = 2
     init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
-    betas = np.array([1j])
-    alphas = np.array([1,1])
-    phis = np.array([0,0])
-    thetas = np.array([-np.pi/2.0,0])
+    betas = np.array([1e-5])
+    alphas = np.array([0,0])
+    phis = np.array([np.pi/2.0,0])
+    thetas = np.array([np.pi/3.0,0])
+   #betas, alphas, phis, thetas = None, None, None, None
 
     target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
     #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
@@ -169,7 +173,7 @@ if __name__ == '__main__':
     #target_state = qt.tensor(qt.coherent(N,1j), qt.basis(N2, 1))
     a = CD_grape(init_state, target_state, N_blocks, init_betas = betas, init_alphas=alphas,\
         init_phis = phis, init_thetas = thetas, max_abs_alpha=4,max_abs_beta = 4)
-    #a.randomize(alpha_scale=1, beta_scale = 2)
+    a.randomize(alpha_scale=1, beta_scale = 2)
     if 1:
         #a.plot_initial_state()
         a.plot_final_state()
@@ -187,8 +191,12 @@ if __name__ == '__main__':
     psif = sys.simulate_pulse_trotter(e,O,psi0)
 
     plot_wigner(psif)
+    print('discrete sim:')
+    print(a.final_state().ptrace(1))
+    print('trotter sim:')
+    print(psif.ptrace(1))
 
-    fid2 = qt.fidelity(psif, (a.sx)**N_blocks*a.final_state())
+    fid2 = qt.fidelity(psif, a.final_state())
 
     print('sim fid: ' + str(fid2))
 #%%
