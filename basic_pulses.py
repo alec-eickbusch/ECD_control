@@ -8,8 +8,7 @@ Created on Tue Nov  5 14:18:08 2019
 
 import numpy as np
 import qutip as qt
-from helper_functions import alpha_from_epsilon
-
+from CD_GRAPE.helper_functions import alpha_from_epsilon, plot_pulse
 #%%
 def gaussian_wave(sigma, chop=4):
     ts = np.linspace(-chop/2*sigma, chop/2*sigma, chop*sigma)
@@ -54,12 +53,9 @@ def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3
     #return beta_bare
     while np.abs(beta_bare(alpha0)) > np.abs(beta):
         alpha0 = alpha0*0.99 #step down alpha0 by 1%
-
     betab = beta_bare(alpha0)
     total_time = (np.abs(beta) - np.abs(betab))/(alpha0*chi)
     zero_time = int(round(total_time/2))
-    if zero_time != 0:
-        alpha0 = (np.abs(beta) - np.abs(betab))/(2*zero_time*chi) # a slight readjustment due to the rounding
     alpha_angle = np.angle(beta) + np.pi/2.0 #todo: is it + or - pi/2?
     alpha0 = alpha0*np.exp(1j*alpha_angle)
 
@@ -71,6 +67,7 @@ def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3
     fastest_disp(-1*alpha0, epsilon_m=epsilon_m, chop=chop, min_sigma=min_sigma),
     np.zeros(zero_time),
     fastest_disp(alpha0, epsilon_m=epsilon_m, chop=chop, min_sigma=min_sigma)])
+
 
     alpha = alpha_from_epsilon(np.pad(epsilon,40))
     beta2 = chi*np.sum(np.abs(alpha))

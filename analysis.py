@@ -157,7 +157,7 @@ class CD_grape_analysis:
 if __name__ == '__main__':
     N = 60
     N2 = 2
-    epsilon_m = 2*np.pi*1e-3*400.0
+    epsilon_m = 2*np.pi*1e-3*250.0
     Ec_GHz = 0.19267571 #measured anharmonicity
     Ec = (2*np.pi) * Ec_GHz
     sys = System(chi=2*np.pi*1e-3*0.03, Ec = Ec, alpha0=60,\
@@ -207,6 +207,8 @@ if __name__ == '__main__':
     if 1:
         plt.figure(figsize = (10,6), dpi=200)
         plot_pulse(e,O)
+        plt.axhline(1e3*epsilon_m/2/np.pi)
+        plt.axhline(-1e3*epsilon_m/2/np.pi)
         #plt.figure(figsize=(10, 6), dpi=200)
         #plot_pulse(e2,O2)
 #%%
