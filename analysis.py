@@ -46,7 +46,7 @@ class System:
         alphas = alpha_from_epsilon(epsilon)
         stark_shift = -self.chi*np.abs(alphas**2)
         ts = np.arange(len(Omega))
-        Omega_corrected = Omega*np.exp(-1j*stark_shift*ts)
+        Omega_corrected = Omega*np.exp(1j*stark_shift*ts)
         return epsilon, Omega_corrected
 
 
@@ -203,10 +203,11 @@ if __name__ == '__main__':
     e,O = analysis.composite_pulse()
     e2,O2 = sys.stark_shift_correction(e,O)
     #%% 
-    plt.figure(figsize = (10,6), dpi=200)
-    plot_pulse(e,O)
-    plt.figure(figsize=(10, 6), dpi=200)
-    plot_pulse(e2,O2)
+    if 0:
+        plt.figure(figsize = (10,6), dpi=200)
+        plot_pulse(e,O)
+        plt.figure(figsize=(10, 6), dpi=200)
+        plot_pulse(e2,O2)
 #%%
     psi0 = a.initial_state
     psif = sys.simulate_pulse_trotter(e2,O2,psi0)
