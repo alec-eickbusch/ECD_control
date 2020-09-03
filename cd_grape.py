@@ -6,7 +6,7 @@
 
 import numpy as np
 import qutip as qt 
-from helper_functions import plot_wigner
+from CD_GRAPE.helper_functions import plot_wigner
 from scipy.optimize import minimize
 import scipy.optimize
 from datetime import datetime
@@ -250,7 +250,7 @@ class CD_grape:
             [(-np.inf,np.inf) for _ in range(self.N_blocks + 1)]])
         result = minimize(self.cost_function,x0=init_params,method='L-BFGS-B',
                           bounds = bounds, jac=False, options={'maxiter':maxiter})
-        return result
+        return self.fidelity()
 
     def optimize_analytic(self, check=False, maxiter = 1e4, gtol=1e-10, ftol=1e-10):
         init_params = \
