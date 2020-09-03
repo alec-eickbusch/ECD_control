@@ -268,6 +268,11 @@ class CD_grape:
             [(-self.max_alpha,self.max_alpha) for _ in range(2*self.N_blocks + 2)],\
             [(-np.inf,np.inf) for _ in range(self.N_blocks + 1)],\
             [(-np.inf,np.inf) for _ in range(self.N_blocks + 1)]])
+<<<<<<< HEAD
+        result = minimize(self.cost_function,x0=init_params,method='L-BFGS-B',
+                          bounds = bounds, jac=False, options={'maxiter':maxiter})
+        return self.fidelity()
+=======
         try:
             print("\n\nStarting optimization.\n\n")
             result = minimize(self.cost_function, x0=init_params, method='L-BFGS-B',
@@ -279,6 +284,7 @@ class CD_grape:
             print("\n\noptimization failed to reach desired fidelity.\n\n")
             print('fidelity: ' + str(self.fidelity()))
 
+>>>>>>> refs/remotes/origin/master
 
     #TODO: understand gtol and ftol
     def optimize_analytic(self, check=False, maxiter = 1e4, gtol=1e-4, ftol=1e-4):
