@@ -238,10 +238,10 @@ class CD_grape:
                   np.real(self.alphas), np.imag(self.alphas),
                   self.phis, self.thetas]),dtype=np.float64)
         bounds = np.concatenate(
-            [[(-self.max_abs_beta,self.max_abs_beta) for _ in range(2*N_blocks)],\
-            [(-self.max_abs_alpha,self.max_abs_alpha) for _ in range(2*N_blocks + 2)],\
-            [(-np.inf,np.inf) for _ in range(N_blocks + 1)],\
-            [(-np.inf,np.inf) for _ in range(N_blocks + 1)]])
+            [[(-self.max_abs_beta,self.max_abs_beta) for _ in range(2*self.N_blocks)],\
+            [(-self.max_abs_alpha,self.max_abs_alpha) for _ in range(2*self.N_blocks + 2)],\
+            [(-np.inf,np.inf) for _ in range(self.N_blocks + 1)],\
+            [(-np.inf,np.inf) for _ in range(self.N_blocks + 1)]])
         result = minimize(self.cost_function,x0=init_params,method='L-BFGS-B',
                           bounds = bounds, jac=False, options={'maxiter':maxiter})
         return result

@@ -80,6 +80,7 @@ class System:
 
         ts = np.arange(len(Omega))*dt
         H_array = []
+        #TODO: make H construction parallel
         for i in tqdm(range(len(Omega)), desc="constructing H"):
             alpha = alphas[i]
             O = Omega[i]
@@ -146,26 +147,26 @@ class CD_grape_analysis:
 
 #%% Testing
 if __name__ == '__main__':
-    N = 20
+    N = 60
     N2 = 2
     epsilon_m = 2*np.pi*1e-3*400.0
     Ec_GHz = 0.19267571 #measured anharmonicity
     Ec = (2*np.pi) * Ec_GHz
     sys = System(chi=2*np.pi*1e-3*0.03, Ec = Ec, alpha0=60,\
-         sigma=3, chop=4, epsilon_m = epsilon_m, buffer_time = 0)
+         sigma=4, chop=6, epsilon_m = epsilon_m, buffer_time = 4)
     a = qt.tensor(qt.destroy(N), qt.identity(N2))
     q = qt.tensor(qt.identity(N), qt.destroy(N2))
     sz = 1-2*q.dag()*q
     sx = (q+q.dag())
     sy = 1j*(q.dag() - q)
     
-    N_blocks = 2
+    N_blocks = 4
     init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
-    betas = np.array([1e-5])
-    alphas = np.array([0,0])
-    phis = np.array([np.pi/2.0,0])
-    thetas = np.array([np.pi/3.0,0])
-   #betas, alphas, phis, thetas = None, None, None, None
+    #betas = np.array([1e-5])
+    #alphas = np.array([0,0])
+    #phis = np.array([np.pi/2.0,0])
+    #thetas = np.array([np.pi/3.0,0])
+    betas, alphas, phis, thetas = None, None, None, None
 
     target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
     #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
@@ -173,7 +174,9 @@ if __name__ == '__main__':
     #target_state = qt.tensor(qt.coherent(N,1j), qt.basis(N2, 1))
     a = CD_grape(init_state, target_state, N_blocks, init_betas = betas, init_alphas=alphas,\
         init_phis = phis, init_thetas = thetas, max_abs_alpha=4,max_abs_beta = 4)
-    a.randomize(alpha_scale=1, beta_scale = 2)
+    a.randomize(alpha_scale=0.1, beta_scale = 1)
+    a.optimize()
+#%%
     if 1:
         #a.plot_initial_state()
         a.plot_final_state()
@@ -199,6 +202,10 @@ if __name__ == '__main__':
     fid2 = qt.fidelity(psif, a.final_state())
 
     print('sim fid: ' + str(fid2))
+
+    fid3 = qt.fidelity(psif.ptrace(0), a.final_state().ptrace(0))
+
+    print('sim fid cav: ' + str(fid3))
 #%%
     alphas = alpha_from_epsilon(e)
     plt.figure()
