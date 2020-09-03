@@ -274,11 +274,13 @@ class CD_grape:
                               bounds=bounds, jac=False, options={'maxiter': maxiter})
         except OptFinishedException as e:
             print("\n\ndesired fidelity reached.\n\n")
-            print('fidelity: ' + str(self.fidelity()))
+            fid = self.fidelity()
+            print('fidelity: ' + str(fid))
         else:
             print("\n\noptimization failed to reach desired fidelity.\n\n")
-            print('fidelity: ' + str(self.fidelity()))
-
+            fid = self.fidelity()
+            print('fidelity: ' + str(fid))
+        return fid
 
     #TODO: understand gtol and ftol
     def optimize_analytic(self, check=False, maxiter = 1e4, gtol=1e-4, ftol=1e-4):

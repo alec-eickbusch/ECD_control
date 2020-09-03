@@ -26,12 +26,13 @@ saving_directory = "Z:\\Data\\Tennessee2020\\20200318_cooldown\\CD_grape\\optimi
 savefiles = []
 fidelities = []
 N_blocks_attempt = [3,4,5,6]
-term_fid = 
+term_fid = 0.99
 for name, target_state in target_states.items():
     for N_blocks in N_blocks_attempt:
         name2 = name + '_N_blocks_' + str(N_blocks)
         print("\n\n" + name2 + "\n\n")
-        a = CD_grape(initial_state, target_state, N_blocks, max_alpha=4,max_beta = 4, name=name2, saving_directory=saving_directory)
+        a = CD_grape(initial_state, target_state, N_blocks, max_alpha=4,max_beta = 4, name=name2,\
+                     saving_directory=saving_directory, term_fid = term_fid)
         a.randomize(alpha_scale=0.5, beta_scale = 1)
         fid = a.optimize()
         fidelities.append(fid)
