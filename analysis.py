@@ -41,7 +41,13 @@ class System:
         epsilon = disp(alpha=alpha, sigma=self.sigma, chop=self.chop)
         return epsilon, Omega
 
-
+    #TODO: include case where alpha does not start at 0
+    def stark_shift_correction(self, epsilon, Omega):
+        alphas = alpha_from_epsilon(epsilon)
+        stark_shift = -self.chi*np.abs(alphas**2)
+        ts = np.arange(len(Omega))
+        Omega_corrected = Omega*np.exp(-1j*stark_shift*ts)
+        return epsilon, Omega_corrected
 
 
     def simulate_pulse_trotter(self, epsilon, Omega, psi0, use_kerr = False,\
@@ -143,6 +149,7 @@ class CD_grape_analysis:
         epsilon = np.concatenate(e)
         Omega = np.concatenate(O)
         return epsilon, Omega
+        
 
 
 #%% Testing
@@ -162,11 +169,19 @@ if __name__ == '__main__':
     
     N_blocks = 4
     init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
+    
+    betas = np.array([-1.36234495+0.06757008j,  0.22142574-0.67359083j,
+       -0.6176627 -0.45383865j,  0.47641324-0.16478542j])
+    alphas = np.array([ 0.09225012-0.05002766j,  0.18467285+0.19299275j,
+       -0.07992844+0.01357778j, -0.13970461-0.01943885j,
+       -0.08920646-0.18281873j])
+    phis = np.array([ 0.33571763, -2.0362122 , -1.85860465, -1.02817261, -0.58735507])
+    thetas = np.array([1.60209962, 1.09499735, 2.25532292, 1.59027321, 1.44970562])
     #betas = np.array([1e-5])
     #alphas = np.array([0,0])
     #phis = np.array([np.pi/2.0,0])
     #thetas = np.array([np.pi/3.0,0])
-    betas, alphas, phis, thetas = None, None, None, None
+    #betas, alphas, phis, thetas = None, None, None, None
 
     target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
     #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
@@ -174,10 +189,10 @@ if __name__ == '__main__':
     #target_state = qt.tensor(qt.coherent(N,1j), qt.basis(N2, 1))
     a = CD_grape(init_state, target_state, N_blocks, init_betas = betas, init_alphas=alphas,\
         init_phis = phis, init_thetas = thetas, max_abs_alpha=4,max_abs_beta = 4)
-    a.randomize(alpha_scale=0.1, beta_scale = 1)
-    a.optimize()
+    #a.randomize(alpha_scale=0.1, beta_scale = 1)
+    #a.optimize()
 #%%
-    if 1:
+    if 0:
         #a.plot_initial_state()
         a.plot_final_state()
         #a.plot_final_state()
@@ -186,12 +201,15 @@ if __name__ == '__main__':
     
     analysis = CD_grape_analysis(a,sys)
     e,O = analysis.composite_pulse()
+    e2,O2 = sys.stark_shift_correction(e,O)
     #%% 
     plt.figure(figsize = (10,6), dpi=200)
     plot_pulse(e,O)
-
+    plt.figure(figsize=(10, 6), dpi=200)
+    plot_pulse(e2,O2)
+#%%
     psi0 = a.initial_state
-    psif = sys.simulate_pulse_trotter(e,O,psi0)
+    psif = sys.simulate_pulse_trotter(e2,O2,psi0)
 
     plot_wigner(psif)
     print('discrete sim:')
@@ -215,3 +233,7 @@ if __name__ == '__main__':
 
 
 # %%
+print('betas = np.' + repr(a.betas))
+print('alphas = np.' + repr(a.alphas))
+print('phis = np.' + repr(a.phis))
+print('thetas = np.' + repr(a.thetas))
