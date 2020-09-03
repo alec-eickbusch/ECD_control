@@ -2,7 +2,7 @@
 import numpy as np
 import qutip as qt
 from CD_GRAPE.cd_grape import *
-from CD_GRAPE.basic_pulses import fastest_CD, rotate, disp
+from CD_GRAPE.basic_pulses import fastest_CD, rotate, disp_gaussian
 from CD_GRAPE.helper_functions import plot_pulse, alpha_from_epsilon
 import matplotlib.pyplot as plt
 plt.rcParams.update({'font.size': 16, 'pdf.fonttype': 42, 'ps.fonttype': 42})
@@ -13,7 +13,7 @@ class System:
     #for now will use the same sigma and chop for the displacement and qubit pulses
     #the sigma_cd and chop_cd will be for the gaussian displacement pulses during the conditional displacement
     def __init__(self, chi, Ec, alpha0, epsilon_m, sigma, chop, buffer_time =0,\
-                 min_sigma_cd = 2, chop_cd = 4):
+                 ring_up_time = 8):
         self.chi = chi
         self.Ec = Ec
         self.alpha0 = alpha0
@@ -21,8 +21,7 @@ class System:
     
         self.sigma = int(sigma)
         self.chop = int(chop)
-        self.min_sigma_cd = int(min_sigma_cd)
-        self.chop_cd = int(chop_cd)
+        self.ring_up_time = ring_up_time
 
         #sigma and chop for displacement during the conditional displacement 
         #calculated from provided value of epsilon_m
@@ -34,11 +33,11 @@ class System:
     def CD_pulse(self, beta):
         return fastest_CD(beta, alpha0 = self.alpha0, epsilon_m = self.epsilon_m,\
                          chi=self.chi, buffer_time=self.buffer_time,sigma_q=self.sigma,\
-                              chop_q=self.chop, min_sigma = self.min_sigma_cd, chop=self.chop_cd)
+                              chop_q=self.chop,ring_up_time=self.ring_up_time)
     
     def rotate_displace_pulse(self, alpha, phi, theta):
         Omega = rotate(theta=theta, phi=phi, sigma=self.sigma, chop=self.chop)
-        epsilon = disp(alpha=alpha, sigma=self.sigma, chop=self.chop)
+        epsilon = disp_gaussian(alpha=alpha, sigma=self.sigma, chop=self.chop)
         return epsilon, Omega
 
     #TODO: include case where alpha does not start at 0
@@ -157,12 +156,13 @@ class CD_grape_analysis:
 if __name__ == '__main__':
     N = 60
     N2 = 2
+    alpha0 = 60
     epsilon_m = 2*np.pi*1e-3*400.0
     Ec_GHz = 0.19267571 #measured anharmonicity
     Ec = (2*np.pi) * Ec_GHz
-    sys = System(chi=2*np.pi*1e-3*0.03, Ec = Ec, alpha0=60,\
+    sys = System(chi=2*np.pi*1e-3*0.03, Ec = Ec, alpha0=alpha0,\
          sigma=3, chop=4, epsilon_m = epsilon_m, buffer_time = 4,
-         min_sigma_cd=1, chop_cd=2)
+         ring_up_time=0)
     a = qt.tensor(qt.destroy(N), qt.identity(N2))
     q = qt.tensor(qt.identity(N), qt.destroy(N2))
     sz = 1-2*q.dag()*q
@@ -193,7 +193,6 @@ if __name__ == '__main__':
         phis = phis, thetas = thetas, max_alpha=4, max_beta = 4)
     #a.randomize(alpha_scale=0.1, beta_scale = 1)
     #a.optimize()
-#%%
     if 0:
         #a.plot_initial_state()
         a.plot_final_state()
@@ -203,6 +202,10 @@ if __name__ == '__main__':
     
     analysis = CD_grape_analysis(a,sys)
     e,O = analysis.composite_pulse()
+    alphas = alpha_from_epsilon(e)
+    plt.figure(figsize=(10, 6), dpi=200)
+    plt.plot(np.abs(alphas))
+    plt.axhline(alpha0)
     #e2,O2 = sys.stark_shift_correction(e,O)
     #%% 
     if 1:

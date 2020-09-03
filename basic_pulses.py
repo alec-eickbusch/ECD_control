@@ -27,6 +27,8 @@ def ring_up_smoothstep(length):
     return 3*ts**2 - 2*ts**3
 
 def polynomial_ring_up(length, reverse=False, negative=False, ring_up_type='smootherstep'):
+    if length == 0:
+        return np.array([])
     if ring_up_type == 'smoothstep':
         wave = ring_up_smoothstep(length)
     elif ring_up_type == 'smootherstep':
@@ -43,7 +45,7 @@ def polynomial_ring_up(length, reverse=False, negative=False, ring_up_type='smoo
 def trapezoid_pulse(ring_up_time, flat_time):
     return np.concatenate([polynomial_ring_up(ring_up_time, ring_up_type='smootherstep'),\
          np.ones(flat_time),\
-        polynomial_ring_up(ring_up_time, , reverse=True, negative=False, ring_up_type='smootherstep')])
+        polynomial_ring_up(ring_up_time, reverse=True, negative=False, ring_up_type='smootherstep')])
 
 def rotate(theta, phi=0, sigma=8, chop=6, dt=1):
     wave = gaussian_wave(sigma=sigma, chop=chop)
@@ -61,28 +63,40 @@ def disp_gaussian(alpha, sigma=8, chop=6, dt=1):
 
 def fastest_disp_gaussian(alpha, epsilon_m=2*np.pi*1e-3*400, initial_sigma = 32, chop=4, min_sigma=2):
     def valid(sigma):
-        epsilon = disp(alpha, sigma, chop)
+        epsilon = disp_gaussian(alpha, sigma, chop)
         return (np.max(np.abs(epsilon)) < epsilon_m) and (sigma >= min_sigma)
     sigma = int(initial_sigma)
     #reduce the sigma until the pulse is too large then back off by 1.
     while valid(sigma):
         sigma = int(sigma - 1)
     sigma = int(sigma + 1)
-    return disp(alpha, sigma, chop)
+    return disp_gaussian(alpha, sigma, chop)
 
-
-def disp_trapezoid(alpha, ring_up_time=8, flat_time=8):
+def disp_trapezoid(alpha, ring_up_time=8, flat_time=8, dt=1):
     wave = trapezoid_pulse(ring_up_time, flat_time)
     energy = np.trapz(wave, dx=dt)
     wave = (1 + 0j)*wave
     return (np.abs(alpha)/energy) * np.exp(1j*(np.pi/2.0 + np.angle(alpha))) * wave
 
+def fastest_disp_trapezoid(alpha, epsilon_m=2*np.pi*1e-3*400, ring_up_time=8, initial_flat_time=100):
+    def valid(flat_time):
+        if flat_time == -1:
+            return False
+        epsilon = disp_trapezoid(alpha, ring_up_time, flat_time)
+        return (np.max(np.abs(epsilon)) < epsilon_m)
+    flat_time = int(initial_flat_time)
+    #reduce the flat_time until the pulse is too large then back off by 1.
+    while valid(flat_time):
+        flat_time = int(flat_time - 1)
+    flat_time = int(flat_time + 1)
+    return disp_trapezoid(alpha, ring_up_time, flat_time)
+
 def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3*0.03, buffer_time=0,\
-              sigma_q=6, chop_q=4,min_sigma = 2, chop=4):
+              sigma_q=6, chop_q=4, ring_up_time = 8):
     def beta_bare(alpha0): #calculate the beta from just the displacement part of the CD
         epsilon_bare = np.concatenate([
-        fastest_disp(alpha0, epsilon_m=epsilon_m, chop=chop, min_sigma=min_sigma),
-        fastest_disp(-1*alpha0, epsilon_m=epsilon_m, chop=chop, min_sigma=min_sigma)])
+        fastest_disp_trapezoid(alpha0, epsilon_m=epsilon_m, ring_up_time=ring_up_time),
+        fastest_disp_trapezoid(-1*alpha0, epsilon_m=epsilon_m, ring_up_time=ring_up_time)])
         alpha_bare = np.abs(alpha_from_epsilon(epsilon_bare))
         beta_bare = np.abs(2*chi*np.sum(alpha_bare)) #extra factor of 2 for second half of pulse
         return beta_bare
@@ -96,13 +110,13 @@ def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3
     alpha0 = alpha0*np.exp(1j*alpha_angle)
 
     epsilon = np.concatenate([
-    fastest_disp(alpha0, epsilon_m=epsilon_m, chop=chop, min_sigma=min_sigma),
+    fastest_disp_trapezoid(alpha0, epsilon_m=epsilon_m, ring_up_time=ring_up_time),
     np.zeros(zero_time),
-    fastest_disp(-1*alpha0, epsilon_m=epsilon_m, chop=chop, min_sigma=min_sigma),
+    fastest_disp_trapezoid(-1*alpha0, epsilon_m=epsilon_m, ring_up_time=ring_up_time),
     np.zeros(buffer_time + sigma_q*chop_q + buffer_time),
-    fastest_disp(-1*alpha0, epsilon_m=epsilon_m, chop=chop, min_sigma=min_sigma),
+    fastest_disp_trapezoid(-1*alpha0, epsilon_m=epsilon_m, ring_up_time=ring_up_time),
     np.zeros(zero_time),
-    fastest_disp(alpha0, epsilon_m=epsilon_m, chop=chop, min_sigma=min_sigma)])
+    fastest_disp_trapezoid(alpha0, epsilon_m=epsilon_m, ring_up_time=ring_up_time)])
 
 
     alpha = alpha_from_epsilon(np.pad(epsilon,40))
