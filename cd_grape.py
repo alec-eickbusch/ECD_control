@@ -11,6 +11,13 @@ from scipy.optimize import minimize
 import scipy.optimize
 from datetime import datetime
 
+
+class OptFinishedException(Exception):
+    def __init__(self, msg, CD_grape_obj):
+        super(OptFinishedException, self).__init__(msg)
+        #CD_grape_obj.save()
+        #can save data here...
+
 class CD_grape:
 
     #a block is defined as the unitary: CD(beta)D(alpha)R_phi(theta)
@@ -18,7 +25,8 @@ class CD_grape:
                  betas = None, alphas = None,
                  phis = None, thetas = None, 
                  max_alpha = 5, max_beta = 5,
-                 saving_directory = None, name = 'CD_grape'):
+                 saving_directory = None, name = 'CD_grape',
+                 term_fid = None):
 
         self.initial_state = initial_state
         self.target_state = target_state
@@ -36,6 +44,7 @@ class CD_grape:
         self.max_beta = max_beta
         self.saving_directory = saving_directory
         self.name = name 
+        self.term_fid = term_fid
 
         if self.initial_state is not None:
             self.N = self.initial_state.dims[0][0]
@@ -210,13 +219,16 @@ class CD_grape:
         thetas = parameters[(5*self.N_blocks + 3):]
         alphas = alphas_r + 1j*alphas_i
         betas = betas_r + 1j*betas_i
-        #temp
+        #temp.
+        #TODO: later, implement more sophisticated saving and real time information.
         self.alphas = alphas
         self.betas = betas
         self.phis = phis
         self.thetas = thetas
         f = self.fidelity(alphas,betas,phis,thetas)
         print('fid: %.3f' % f, end='\r')
+        if self.term_fid is not None and f >= self.term_fid:
+            raise OptFinishedException('Requested fidelity obtained', self)
         return -f
 
     #TODO: include final rotation and displacement
@@ -238,6 +250,14 @@ class CD_grape:
         print('fid: %.3f' % f, end='\r')
         return (-f, -gradf)
     
+    #TODO: if I only care about the cavity state, I can optimize on the partial trace of the
+    #cavity. Then, in the experiment, I can measure and reset the qubit.
+    # For example, if I'm interested in creating a cat I can get to
+    # (|alpha> + |-alpha>)|g> + (|alpha> - |-alpha>)|e>
+    #then somhow I can optimize that the cavity state conditioned on g or e is only 
+    #a unitary operaton away from each other, which would allow me to implement feedback for
+    #preperation in the experiment.
+    #TODO: implement and understand gtol and ftol
     def optimize(self, maxiter = 1e4):
         init_params = \
         np.array(np.concatenate([np.real(self.betas),np.imag(self.betas),
@@ -248,11 +268,20 @@ class CD_grape:
             [(-self.max_alpha,self.max_alpha) for _ in range(2*self.N_blocks + 2)],\
             [(-np.inf,np.inf) for _ in range(self.N_blocks + 1)],\
             [(-np.inf,np.inf) for _ in range(self.N_blocks + 1)]])
-        result = minimize(self.cost_function,x0=init_params,method='L-BFGS-B',
-                          bounds = bounds, jac=False, options={'maxiter':maxiter})
-        return result
+        try:
+            print("\n\nStarting optimization.\n\n")
+            result = minimize(self.cost_function, x0=init_params, method='L-BFGS-B',
+                              bounds=bounds, jac=False, options={'maxiter': maxiter})
+        except OptFinishedException as e:
+            print("\n\ndesired fidelity reached.\n\n")
+            print('fidelity: ' + str(self.fidelity()))
+        else:
+            print("\n\noptimization failed to reach desired fidelity.\n\n")
+            print('fidelity: ' + str(self.fidelity()))
 
-    def optimize_analytic(self, check=False, maxiter = 1e4, gtol=1e-10, ftol=1e-10):
+
+    #TODO: understand gtol and ftol
+    def optimize_analytic(self, check=False, maxiter = 1e4, gtol=1e-4, ftol=1e-4):
         init_params = \
         np.array(np.concatenate([np.real(self.alphas),np.imag(self.alphas),
                   np.real(self.betas), np.imag(self.betas),
@@ -301,14 +330,16 @@ class CD_grape:
 if __name__ == '__main__':
     N = 40
     N2 = 2
-    N_blocks = 4
+    N_blocks = 1
     init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
     target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
     #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
     #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
     name = "test_CD"
     saving_directory = "C:\\Users\\Alec Eickbusch\\Desktop\\cd_grape_results\\"
-    a = CD_grape(init_state, target_state, N_blocks, max_alpha=4,max_beta = 4, name=name, saving_directory=saving_directory)
+    term_fid = 0.6
+    a = CD_grape(init_state, target_state, N_blocks, max_alpha=4,max_beta = 4, name=name,\
+                 saving_directory=saving_directory, term_fid=term_fid)
     a.randomize(alpha_scale=0.5, beta_scale = 1)
     fs = a.save()
     b = CD_grape()
@@ -341,7 +372,8 @@ if __name__ == '__main__':
     print(f2)
     '''
     #%%
-    #a.optimize()
+    a.optimize()
+    a.save()
     # %%
     #a.optimize_analytic()
     # %%
