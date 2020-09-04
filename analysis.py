@@ -94,7 +94,7 @@ class System:
                         - 1j*(kappa/2.0)*alpha*(a.dag() - a) + \
                         -kerr * (a.dag() + np.conj(alpha))**2 * (a + alpha)**2 + \
                     -chip*(a.dag()+np.conj(alpha))**2 * (a + alpha)**2 * q.dag() * q + \
-                - (Ec/2.0)*q.dag()**2 * q**2 + np.real(O)*(q+q.dag()) +  np.imag(O)*1j*(q.dag() - q))
+                - (self.Ec/2.0)*q.dag()**2 * q**2 + np.real(O)*(q+q.dag()) +  np.imag(O)*1j*(q.dag() - q))
 
         psi = psi0
         for H in tqdm(H_array, desc='trotterized simulation'):
@@ -162,7 +162,7 @@ if __name__ == '__main__':
     Ec = (2*np.pi) * Ec_GHz
     sys = System(chi=2*np.pi*1e-3*0.03, Ec = Ec, alpha0=alpha0,\
          sigma=3, chop=4, epsilon_m = epsilon_m, buffer_time = 4,
-         ring_up_time=0)
+         ring_up_time=16)
     a = qt.tensor(qt.destroy(N), qt.identity(N2))
     q = qt.tensor(qt.identity(N), qt.destroy(N2))
     sz = 1-2*q.dag()*q
@@ -172,28 +172,28 @@ if __name__ == '__main__':
     N_blocks = 4
     init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
     
-    betas = np.array([-1.36234495+0.06757008j,  0.22142574-0.67359083j,
-       -0.6176627 -0.45383865j,  0.47641324-0.16478542j])
-    alphas = np.array([ 0.09225012-0.05002766j,  0.18467285+0.19299275j,
-       -0.07992844+0.01357778j, -0.13970461-0.01943885j,
-       -0.08920646-0.18281873j])
-    phis = np.array([ 0.33571763, -2.0362122 , -1.85860465, -1.02817261, -0.58735507])
-    thetas = np.array([1.60209962, 1.09499735, 2.25532292, 1.59027321, 1.44970562])
+    #betas = np.array([-1.36234495+0.06757008j,  0.22142574-0.67359083j,
+    #   -0.6176627 -0.45383865j,  0.47641324-0.16478542j])
+    #alphas = np.array([ 0.09225012-0.05002766j,  0.18467285+0.19299275j,
+    #   -0.07992844+0.01357778j, -0.13970461-0.01943885j,
+    #   -0.08920646-0.18281873j])
+    #phis = np.array([ 0.33571763, -2.0362122 , -1.85860465, -1.02817261, -0.58735507])
+    #thetas = np.array([1.60209962, 1.09499735, 2.25532292, 1.59027321, 1.44970562])
     #betas = np.array([1e-5])
     #alphas = np.array([0,0])
     #phis = np.array([np.pi/2.0,0])
     #thetas = np.array([np.pi/3.0,0])
     #betas, alphas, phis, thetas = None, None, None, None
 
-    target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
+    #target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
     #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
-    #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
+    target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
     #target_state = qt.tensor(qt.coherent(N,1j), qt.basis(N2, 1))
-    a = CD_grape(init_state, target_state, N_blocks, betas = betas, alphas=alphas,\
-        phis = phis, thetas = thetas, max_alpha=4, max_beta = 4)
-    #a.randomize(alpha_scale=0.1, beta_scale = 1)
-    #a.optimize()
-    if 0:
+    a = CD_grape(init_state, target_state, N_blocks, max_alpha=4, max_beta = 4, term_fid= 0.99)
+    a.randomize(alpha_scale=1, beta_scale = 1.5)
+    a.optimize()
+    a.save()
+    if 1:
         #a.plot_initial_state()
         a.plot_final_state()
         #a.plot_final_state()
@@ -238,11 +238,12 @@ if __name__ == '__main__':
     plt.figure()
     plt.plot(np.real(alphas),label='re(alpha)')
     plt.plot(np.imag(alphas),label='im(alpha)')
+    plt.ylim([-2,2])
     plt.legend()
 
 
 # %%
-print('betas = np.' + repr(a.betas))
-print('alphas = np.' + repr(a.alphas))
-print('phis = np.' + repr(a.phis))
-print('thetas = np.' + repr(a.thetas))
+    print('betas = np.' + repr(a.betas))
+    print('alphas = np.' + repr(a.alphas))
+    print('phis = np.' + repr(a.phis))
+    print('thetas = np.' + repr(a.thetas))
