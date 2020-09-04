@@ -50,9 +50,9 @@ def trapezoid_pulse(ring_up_time, flat_time):
 def rotate(theta, phi=0, sigma=8, chop=6, dt=1):
     wave = gaussian_wave(sigma=sigma, chop=chop)
     energy = np.trapz(wave, dx = dt)
-    amp_pi = np.pi / (2*energy)
+    amp = 1/energy
     wave = (1 + 0j)*wave
-    return (-theta/np.pi) * amp_pi * np.exp(1j*phi) * wave
+    return (-theta/(2.0)) * amp * np.exp(1j*phi) * wave
 
 #displace cavity by an amount alpha
 def disp_gaussian(alpha, sigma=8, chop=6, dt=1):

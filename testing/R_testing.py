@@ -20,19 +20,21 @@ Ec_GHz = 0.19267571  # measured anharmonicity
 Ec = (2*np.pi) * Ec_GHz
 sys = System(chi=chi, Ec=Ec, alpha0=alpha0, epsilon_m=epsilon_m,
              sigma=sigma, chop=chop, buffer_time=buffer_time, ring_up_time=ring_up_time)
-psi0 = qt.tensor(qt.basis(N, 0), qt.basis(N2,0))
+psi0 = qt.tensor(qt.coherent(N,5), qt.basis(N2,0))
 a = CD_grape(initial_state=psi0)
 #%%
 thetas = [np.random.uniform(low=0,high=np.pi) for _ in range(6)]
 phis = [np.random.uniform(low=-np.pi, high=np.pi) for _ in range(6)]
+#thetas = [np.pi]
+#phis = [0]
 for theta,phi in zip(thetas,phis):
     print("\n\n theta: %.3f phi: %.3f\n\n" %(theta,phi))
     O = rotate(theta,phi,sigma=sigma,chop=chop)
     e= np.zeros_like(O)
     psif = sys.simulate_pulse_trotter(e, O, psi0)
-    desired_state = a.R(theta,phi)*psi0
+    desired_state = a.R(phi, theta)*psi0
     fid = qt.fidelity(psif, desired_state)
-    print("\nfid = %f\n" % fid)
+    print("\n\nfid = %f\n\n" % fid)
     #plt.figure()
     #plot_wigner(psif)
     print(psif.ptrace(1))

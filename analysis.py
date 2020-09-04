@@ -154,6 +154,8 @@ class CD_grape_analysis:
 
 #%% Testing
 if __name__ == '__main__':
+    saving_directory = "C:\\Users\\Alec Eickbusch\\CD_grape_data\\"
+    savefile = "C:\\Users\\Alec Eickbusch\\CD_grape_data\\cat_2_20200904_11_38_18"
     N = 60
     N2 = 2
     alpha0 = 60
@@ -169,8 +171,8 @@ if __name__ == '__main__':
     sx = (q+q.dag())
     sy = 1j*(q.dag() - q)
     
-    N_blocks = 4
-    init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
+    #N_blocks = 4
+    #init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
     
     #betas = np.array([-1.36234495+0.06757008j,  0.22142574-0.67359083j,
     #   -0.6176627 -0.45383865j,  0.47641324-0.16478542j])
@@ -187,18 +189,20 @@ if __name__ == '__main__':
 
     #target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
     #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
-    target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
+    #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
     #target_state = qt.tensor(qt.coherent(N,1j), qt.basis(N2, 1))
-    a = CD_grape(init_state, target_state, N_blocks, max_alpha=4, max_beta = 4, term_fid= 0.99)
-    a.randomize(alpha_scale=1, beta_scale = 1.5)
-    a.optimize()
-    a.save()
+    #a = CD_grape(init_state, target_state, N_blocks, max_alpha=4, max_beta = 4, term_fid= 0.99)
+    #a.randomize(alpha_scale=1, beta_scale = 1.5)
+    #a.optimize()
+    #a.save()
+    a = CD_grape()
+    a.load(savefile)
     if 1:
         #a.plot_initial_state()
         a.plot_final_state()
         #a.plot_final_state()
         #a.plot_target_state()
-    #print(a.fidelity())
+    print(a.fidelity())
     
     analysis = CD_grape_analysis(a,sys)
     e,O = analysis.composite_pulse()
@@ -238,7 +242,6 @@ if __name__ == '__main__':
     plt.figure()
     plt.plot(np.real(alphas),label='re(alpha)')
     plt.plot(np.imag(alphas),label='im(alpha)')
-    plt.ylim([-2,2])
     plt.legend()
 
 
