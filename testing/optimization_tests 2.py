@@ -4,7 +4,7 @@ import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 #%%
-N = 100
+N = 50
 N2 = 2
 #%%
 target_states = {
@@ -13,21 +13,12 @@ target_states = {
     'fock 3': qt.tensor(qt.basis(N,3),qt.basis(N2,0)),
     'fock 4': qt.tensor(qt.basis(N,4),qt.basis(N2,0)),
     'fock 5': qt.tensor(qt.basis(N,5),qt.basis(N2,0)),
-    'fock 6': qt.tensor(qt.basis(N,6),qt.basis(N2,0)),
-    'fock 7': qt.tensor(qt.basis(N,7),qt.basis(N2,0)),
-    'fock 8': qt.tensor(qt.basis(N,8),qt.basis(N2,0)),
-    'fock 9': qt.tensor(qt.basis(N,9),qt.basis(N2,0)),
-    'fock 10': qt.tensor(qt.basis(N,10),qt.basis(N2,0)),
     'cat n=1': qt.tensor((qt.coherent(N,np.sqrt(1)) + qt.coherent(N,-np.sqrt(1))).unit(),qt.basis(N2,0)),
-    'cat n=2': qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0)),
+    'cat n=2': qt.tensor((qt.coherent(N,np.sqrt(1)) + qt.coherent(N,-np.sqrt(1))).unit(),qt.basis(N2,0)),
     'cat n=3': qt.tensor((qt.coherent(N,np.sqrt(3)) + qt.coherent(N,-np.sqrt(3))).unit(),qt.basis(N2,0)),
     'cat n=4': qt.tensor((qt.coherent(N,np.sqrt(4)) + qt.coherent(N,-np.sqrt(4))).unit(),qt.basis(N2,0)),
     'cat n=5': qt.tensor((qt.coherent(N,np.sqrt(5)) + qt.coherent(N,-np.sqrt(5))).unit(),qt.basis(N2,0)),
-    'cat n=6': qt.tensor((qt.coherent(N,np.sqrt(6)) + qt.coherent(N,-np.sqrt(6))).unit(),qt.basis(N2,0)),
-    'cat n=7': qt.tensor((qt.coherent(N,np.sqrt(7)) + qt.coherent(N,-np.sqrt(7))).unit(),qt.basis(N2,0)),
-    'cat n=8': qt.tensor((qt.coherent(N,np.sqrt(8)) + qt.coherent(N,-np.sqrt(8))).unit(),qt.basis(N2,0)),
-    'cat n=9': qt.tensor((qt.coherent(N,np.sqrt(9)) + qt.coherent(N,-np.sqrt(9))).unit(),qt.basis(N2,0)),
-    'cat n=10': qt.tensor((qt.coherent(N,np.sqrt(10)) + qt.coherent(N,-np.sqrt(10))).unit(),qt.basis(N2,0))
+    '0 + 4': qt.tensor((qt.basis(N,0) + qt.basis(N,4))/np.sqrt(2.0),qt.basis(N2,0))
 }
 initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
 #%%
@@ -35,15 +26,15 @@ saving_directory = "Z:\\Data\\Tennessee2020\\20200318_cooldown\\CD_grape\\optimi
 #%%
 savefiles = []
 fidelities = []
-N_blocks_attempt = [3,4,5,6,7,8,9,10]
+N_blocks_attempt = [3,4,5,6]
 term_fid = 0.99
 for name, target_state in target_states.items():
     for N_blocks in N_blocks_attempt:
         name2 = name + '_N_blocks_' + str(N_blocks)
         print("\n\n" + name2 + "\n\n")
-        a = CD_grape(initial_state, target_state, N_blocks, max_alpha=7,max_beta = 7, name=name2,\
+        a = CD_grape(initial_state, target_state, N_blocks, max_alpha=4,max_beta = 4, name=name2,\
                      saving_directory=saving_directory, term_fid = term_fid)
-        a.randomize(alpha_scale=0.5, beta_scale = 2)
+        a.randomize(alpha_scale=0.5, beta_scale = 1)
         fid = a.optimize()
         fidelities.append(fid)
         f = a.save()
