@@ -31,7 +31,7 @@ class CD_grape:
         self.initial_state = initial_state
         self.target_state = target_state
         self.N_blocks = N_blocks
-        self.betas = np.array(alphas, dtype=np.complex128) if alphas is not None \
+        self.betas = np.array(betas, dtype=np.complex128) if alphas is not None \
             else np.zeros(N_blocks, dtype=np.complex128)
         self.alphas = np.array(alphas, dtype=np.complex128) if alphas is not None \
             else np.zeros(N_blocks+1, dtype=np.complex128)  
