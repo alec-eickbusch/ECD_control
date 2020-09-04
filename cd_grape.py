@@ -107,7 +107,11 @@ class CD_grape:
         U = self.CD(beta)*self.D(alpha)*self.R(phi, theta)
         return U
 
-    def U_i_block(self, i, alphas,betas,phis,thetas):
+    def U_i_block(self, i, alphas=None,betas=None,phis=None,thetas=None):
+        alphas = self.alphas if alphas is None else alphas
+        betas = self.betas if betas is None else betas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
         if i == self.N_blocks:
             beta = 0
         else:
