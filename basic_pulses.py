@@ -97,7 +97,7 @@ def fastest_disp_trapezoid(alpha, epsilon_m=2*np.pi*1e-3*400, ring_up_time=8, in
     return disp_trapezoid(alpha, ring_up_time, flat_time)
 
 def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3*0.03, buffer_time=0,\
-              sigma_q=6, chop_q=4, ring_up_time = 8):
+              sigma_q=6, chop_q=4, ring_up_time = 8, qubit_pi_pulse = None):
     def beta_bare(alpha0): #calculate the beta from just the displacement part of the CD
         epsilon_bare = np.concatenate([
         fastest_disp_trapezoid(alpha0, epsilon_m=epsilon_m, ring_up_time=ring_up_time),
@@ -136,9 +136,11 @@ def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3
 
     total_len = int(len(epsilon))
     qubit_delay = int(total_len/2 - sigma_q*chop_q/2)
+    pi_pulse = qubit_pi_pulse if qubit_pi_pulse is not None\
+         else rotate(np.pi, sigma=sigma_q, chop=chop_q)
     Omega = np.concatenate([
         np.zeros(qubit_delay),
-        rotate(np.pi,sigma=sigma_q,chop=chop_q),
+        pi_pulse,
         np.zeros(total_len - qubit_delay - sigma_q*chop_q)
     ])
 

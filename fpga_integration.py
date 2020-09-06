@@ -1,18 +1,9 @@
 #%%
 import numpy as np
-import qutip as qt
 from init_script import *
-from CD_GRAPE.cd_grape import *
-from CD_GRAPE.basic_pulses import fastest_CD, rotate, disp_gaussian
-from CD_GRAPE.helper_functions import plot_pulse, alpha_from_epsilon
 import matplotlib.pyplot as plt
-plt.rcParams.update({'font.size': 16, 'pdf.fonttype': 42, 'ps.fonttype': 42})
-from tqdm import tqdm
-from fpga_lib.fpga
-
 #%% It's not so easy to get the waves from the FPGA code so I'll just hard code here
 # Maybe make a better solution later
-
 def calibrated_gaussian_pulse(sigma, chop, drag=0):
     i_wave = gaussian_wave(self.sigma, chop=chop)
     q_wave = drag * gaussian_deriv_wave(self.sigma, chop=chop)
@@ -34,6 +25,7 @@ def calibrated_displace(unit_amp, alpha, sigma, chop, drag=0, detune=0):
     ts = np.arange(len(wave)) * 1e-9
     return wave * np.exp(-2j * np.pi * ts * detune)*np.exp(1j*phase)
 #%%
+#To be used with the analysis class!
 class FPGA_System:
 
     #for now will use the same sigma and chop for the displacement and qubit pulses
@@ -41,8 +33,10 @@ class FPGA_System:
     #note that we want to calibrate small displacements and large displacements for conditional displacements
     #differently. So epsilon_m will be used for the conditional displacements, while the displacements
     #will be taken from the calibrated displacement pulses. I'm curious to see how well this works.
-    def __init__(self, qubit, cavity, chi, alpha0, epsilon_m, buffer_time =0,
+    def __init__(self, savefile, qubit, cavity, chi, alpha0, epsilon_m, buffer_time =0,
                  ring_up_time = 8):
+        self.load_parameters(savefile)
+        self.N_blocks = len(self.betas)
         self.qubit = qubit
         self.cavity = cavity
         self.chi = chi
@@ -69,122 +63,54 @@ class FPGA_System:
         self.c_detune = self.cavity.displace.detune
         self.c_drag = self.cavity.displace.drag
 
+    def load_parameters(savefile):
+        f = np.load(savefile)
+        self.betas, self.alphas, self.phis, self.thetas =\
+        f['betas'], f['alphas'], f['phis'],f['thetas']
+        print 'loaded parameters from:' + savefile
+        f.close()
+
     def CD_pulse(self, beta):
+        pi_pulse = calibrated_rotate(self.q_unit_amp, np.pi, 0, self.q_sigma,\
+                                 self.q_chop, self.q_drag, self.q_detune)
         return fastest_CD(beta, alpha0 = self.alpha0, epsilon_m = self.epsilon_m,\
                          chi=self.chi, buffer_time=self.buffer_time, sigma_q=self.q_sigma,\
-                              chop_q=self.q_chop,ring_up_time=self.ring_up_time)
+                              chop_q=self.q_chop,ring_up_time=self.ring_up_time,
+                              qubit_pi_pulse = pi_pulse)
     
     def rotate_displace_pulse(self, alpha, phi, theta):
         #TODO: Can I use the pi/2 pulse if it's closer to that?
         Omega = calibrated_rotate(self.q_unit_amp, theta, phi, self.q_sigma,\
                                  self.q_chop, self.q_drag, self.q_detune)
         epsilon = calibrated_displace(self.c_unit_amp, alpha, self.c_sigma,
-                                      self.c_chop, self.c_drag, self.c_detune=0)
+                                      self.c_chop, self.c_drag, self.c_detune)
         if len(Omega)>len(epsilon):
             diff = int(len(Omega) - len(epsilon))
             epsilon = np.pad(epsilon, (diff/2, diff-diff/2))
-        elif len(epsilon)>len(Omega)
+        elif len(epsilon)>len(Omega):
             diff = int(len(epsilon) - len(Omega))
             Omega = np.pad(Omega, (diff/2, diff-diff/2))
-        return epsilon, Omega
+        return epsilon, Omeg
 
-    #TODO: include case where alpha does not start at 0
-    def stark_shift_correction(self, epsilon, Omega):
-        alphas = alpha_from_epsilon(epsilon)
-        stark_shift = -self.chi*np.abs(alphas**2)
-        ts = np.arange(len(Omega))
-        Omega_corrected = Omega*np.exp(1j*stark_shift*ts)
-        return epsilon, Omega_corrected
-
-
-    def simulate_pulse_trotter(self, epsilon, Omega, psi0, use_kerr = False,\
-                               use_chi_prime = False, use_kappa = False, dt=1, pad=20,
-                               stark_shift = True):
-        epsilon = np.pad(epsilon, 20)
-        Omega = np.pad(Omega, 20)
-        alphas = alpha_from_epsilon(epsilon)
-        N = psi0.dims[0][0]
-        N2 = psi0.dims[0][1]
-
-        a = qt.tensor(qt.destroy(N), qt.identity(N2))
-        q = qt.tensor(qt.identity(N), qt.destroy(N2))
-        sz = 1-2*q.dag()*q
-        sx = (q+q.dag())
-        sy = 1j*(q.dag() - q)
-        n = a.dag()*a
-
-        chi_qs = self.chi
-        #todo: make kerr and chi prime elements of the class
-        #if use_kerr:
-           # kerr = self.K
-        #else:
-        kerr = 0
-        #if use_chi_prime:
-            #chip = self.chi_prime
-        #else:
-        chip = 0
-        #if use_kappa:
-            #kappa = self.kappa_cavity
-        #else:   
-        kappa = 0
-        if stark_shift:
-            ss = 1.0
-        else:
-            ss = 0.0
-
-        ts = np.arange(len(Omega))*dt
-        H_array = []
-        #TODO: make H construction parallel
-        for i in tqdm(range(len(Omega)), desc="constructing H"):
-            alpha = alphas[i]
-            O = Omega[i]
-            H_array.append(-chi_qs*a.dag()*a*q.dag()*q -chi_qs*(alpha*a.dag() + np.conj(alpha)*a)*q.dag()*q+ - ss*chi_qs * np.abs(alpha)**2*q.dag()*q\
-                        - 1j*(kappa/2.0)*alpha*(a.dag() - a) + \
-                        -kerr * (a.dag() + np.conj(alpha))**2 * (a + alpha)**2 + \
-                    -chip*(a.dag()+np.conj(alpha))**2 * (a + alpha)**2 * q.dag() * q + \
-                - (self.Ec/2.0)*q.dag()**2 * q**2 + np.real(O)*(q+q.dag()) +  np.imag(O)*1j*(q.dag() - q))
-
-        psi = psi0
-        for H in tqdm(H_array, desc='trotterized simulation'):
-            U = (-1j*H*dt).expm()
-            psi = U*psi
-        #finally, move psi to displaced frame
-        D = qt.tensor(qt.displace(N,alphas[-1]),qt.identity(N2))
-        return  D*psi
-
-
-class CD_grape_analysis:
-
-    def __init__(self, cd_grape_object, system):
-        self.cd_grape_object = cd_grape_object
-        self.system = system
-
-    #a block is defined by a rotation and displacement pulse, followed by a CD pulse.
-    #for now pulse block will end with buffer time zeros.
     def pulse_block(self, i):
-        if i == self.cd_grape_object.N_blocks:
+        if i == self.N_blocks:
             beta = 0
         else:
-            beta = self.cd_grape_object.betas[i]
-        alpha = self.cd_grape_object.alphas[i]    
-        phi = self.cd_grape_object.phis[i]
-        theta = self.cd_grape_object.thetas[i]
+            beta = self.betas[i]
+        alpha = self.alphas[i]    
+        phi = self.phis[i]
+        theta = self.thetas[i]
 
-        #each CD pulse contains a pi pulse, so we need to flip the dfn of the bloch sphere
-        #evey other round.
-        #if i % 2 == 1:
-            #theta = -theta
-            #beta = -beta
-        epsilon_D, Omega_R = self.system.rotate_displace_pulse(alpha, phi, theta)
+        epsilon_D, Omega_R = self.rotate_displace_pulse(alpha, phi, theta)
         if beta!= 0:
-            epsilon_CD, Omega_CD = self.system.CD_pulse(beta)
-            epsilon = np.concatenate([epsilon_D, np.zeros(self.system.buffer_time),
-                                    epsilon_CD, np.zeros(self.system.buffer_time)])
-            Omega = np.concatenate([Omega_R, np.zeros(self.system.buffer_time),
-                                    Omega_CD, np.zeros(self.system.buffer_time)])
-        else:
-            epsilon = np.concatenate([epsilon_D, np.zeros(self.system.buffer_time)])
-            Omega = np.concatenate([Omega_R, np.zeros(self.system.buffer_time)])
+            epsilon_CD, Omega_CD = self.CD_pulse(beta)
+            epsilon = np.concatenate([epsilon_D, np.zeros(self.buffer_time),
+                                    epsilon_CD, np.zeros(self.buffer_time)])
+            Omega = np.concatenate([Omega_R, np.zeros(self.buffer_time),
+                                    Omega_CD, np.zeros(self.buffer_time)])
+        else: #don't need trailing zeros at the end
+            epsilon = np.concatenate([epsilon_D])
+            Omega = np.concatenate([Omega_R])
         return epsilon, Omega
 
     def composite_pulse(self):
@@ -197,7 +123,6 @@ class CD_grape_analysis:
         epsilon = np.concatenate(e)
         Omega = np.concatenate(O)
         return epsilon, Omega
-        
 
 
 #%% Testing
