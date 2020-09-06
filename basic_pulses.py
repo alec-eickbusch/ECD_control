@@ -7,8 +7,7 @@ Created on Tue Nov  5 14:18:08 2019
 """
 
 import numpy as np
-import qutip as qt
-from CD_GRAPE.helper_functions import alpha_from_epsilon, plot_pulse
+from helper_functions import alpha_from_epsilon, plot_pulse
 #%%
 def gaussian_wave(sigma, chop=4):
     ts = np.linspace(-chop/2*sigma, chop/2*sigma, chop*sigma)
@@ -124,7 +123,7 @@ def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3
     fastest_disp_trapezoid(alpha0, epsilon_m=epsilon_m, ring_up_time=ring_up_time)])
 
 
-    alpha = alpha_from_epsilon(np.pad(epsilon,40))
+    alpha = alpha_from_epsilon(np.pad(epsilon,40,mode='constant'))
     beta2 = chi*np.sum(np.abs(alpha))
 
     epsilon = epsilon*np.abs(beta)/np.abs(beta2)
