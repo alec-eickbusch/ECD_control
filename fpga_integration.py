@@ -1,6 +1,6 @@
 #%%
 import numpy as np
-import qutip as qt
+#import qutip as qt
 from init_script import *
 from CD_GRAPE.cd_grape import *
 from CD_GRAPE.basic_pulses import fastest_CD, rotate, disp_gaussian
