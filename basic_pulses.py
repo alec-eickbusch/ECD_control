@@ -21,12 +21,12 @@ def gaussian_deriv_wave(sigma, chop=4):
     return (.25 / sigma**2) * ts * np.exp(-ts**2 / (2.0 * sigma**2)) / (1 - ofs)
 
 def ring_up_smootherstep(length):
-    dt = 1/length
+    dt = 1.0/length
     ts = np.arange(length)*dt
     return 6*ts**5 - 15*ts**4 + 10*ts**3
 
 def ring_up_smoothstep(length):
-    dt = 1/length
+    dt = 1.0/length
     ts = np.arange(length)*dt
     return 3*ts**2 - 2*ts**3
 
