@@ -230,7 +230,7 @@ class CD_grape:
         self.phis = phis
         self.thetas = thetas
         f = self.fidelity(alphas,betas,phis,thetas)
-        print('fid: %.3f' % f, end='\r')
+        #print('fid: %.3f' % f, end='\r')
         if self.term_fid is not None and f >= self.term_fid:
             raise OptFinishedException('Requested fidelity obtained', self)
         return -f
@@ -251,7 +251,7 @@ class CD_grape:
         self.thetas = thetas
         f, dalphar, dalphai, dbetar, dbetai, dphi, dtheta = self.fid_and_grad_fid(alphas,betas,phis,thetas)
         gradf = np.concatenate([dalphar,dalphai, dbetar, dbetai, dphi, dtheta])
-        print('fid: %.3f' % f, end='\r')
+        #print('fid: %.3f' % f, end='\r')
         return (-f, -gradf)
     
     #TODO: if I only care about the cavity state, I can optimize on the partial trace of the

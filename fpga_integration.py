@@ -3,7 +3,7 @@
 #%%
 import numpy as np
 from init_script import *
-from basic_pulses import fastest_CD
+from cd_grape.basic_pulses import fastest_CD
 import matplotlib.pyplot as plt
 from fpga_lib.entities.pulses import gaussian_wave, gaussian_deriv_wave
 #%% It's not so easy to get the waves from the FPGA code so I'll just hard code here
@@ -25,21 +25,22 @@ def calibrated_rotate(unit_amp, theta, phi, sigma, chop, drag=0, detune=0):
 def calibrated_displace(unit_amp, alpha, sigma, chop, drag=0, detune=0):
     amp = np.abs(alpha)*unit_amp
     phase = np.angle(alpha)
-    wave = amp*unit_amp*calibrated_gaussian_pulse(sigma, chop, drag)
+    wave = amp*calibrated_gaussian_pulse(sigma, chop, drag)
     ts = np.arange(len(wave)) * 1e-9
     return wave * np.exp(-2j * np.pi * ts * detune)*np.exp(1j*phase)
 #%%
 #To be used with the analysis class!
-class FPGA_System:
+class CD_FPGA_System:
 
     #for now will use the same sigma and chop for the displacement and qubit pulses
     #the sigma_cd and chop_cd will be for the gaussian displacement pulses during the conditional displacement
     #note that we want to calibrate small displacements and large displacements for conditional displacements
     #differently. So epsilon_m will be used for the conditional displacements, while the displacements
     #will be taken from the calibrated displacement pulses. I'm curious to see how well this works.
-    def __init__(self, savefile, qubit, cavity, chi, alpha0, epsilon_m, buffer_time =0,
-                 ring_up_time = 8):
-        self.load_parameters(savefile)
+    def __init__(self, qubit, cavity, chi, alpha0, epsilon_m, epsilon_cal, buffer_time =0,
+                 ring_up_time = 8, parameters = None, savefile=None):
+    
+        self.load_parameters(parameters, savefile)
         self.N_blocks = len(self.betas)
         self.qubit = qubit
         self.cavity = cavity
@@ -49,6 +50,9 @@ class FPGA_System:
 
         #epsilon_m used for conditional displacements
         self.epsilon_m = epsilon_m
+
+        #calibrated epsilon when dac = 1
+        self.epsilon_cal = epsilon_cal
 
         #buffer time inserted between qubit and cavity pulses. Use small number for fastest pulses.
         self.buffer_time = int(buffer_time)
@@ -67,20 +71,26 @@ class FPGA_System:
         self.c_detune = self.cavity.displace.detune
         self.c_drag = self.cavity.displace.drag
 
-    def load_parameters(self, savefile):
-        f = np.load(savefile)
-        self.betas, self.alphas, self.phis, self.thetas =\
-        f['betas'], f['alphas'], f['phis'],f['thetas']
-        print 'loaded parameters from:' + savefile
-        f.close()
+    def load_parameters(self, parameters, savefile):
+        #if there is both parameters and savefile, parameters take priority.
+        if parameters is None or parameters == {}:
+            f = np.load(savefile)
+            self.betas, self.alphas, self.phis, self.thetas =\
+            f['betas'], f['alphas'], f['phis'],f['thetas']
+            print 'loaded parameters from:' + savefile
+            f.close()
+        else:
+            self.betas, self.alphas, self.phis, self.thetas =\
+                parameters['betas'], parameters['alphas'], parameters['phis'], parameters['thetas']
 
     def CD_pulse(self, beta):
         pi_pulse = calibrated_rotate(self.q_unit_amp, np.pi, 0, self.q_sigma,\
                                  self.q_chop, self.q_drag, self.q_detune)
-        return fastest_CD(beta, alpha0 = self.alpha0, epsilon_m = self.epsilon_m,\
+        epsilon, Omega = fastest_CD(beta, alpha0 = self.alpha0, epsilon_m = self.epsilon_m,\
                          chi=self.chi, buffer_time=self.buffer_time, sigma_q=self.q_sigma,\
                               chop_q=self.q_chop,ring_up_time=self.ring_up_time,
                               qubit_pi_pulse = pi_pulse)
+        return epsilon/(self.epsilon_cal), Omega
     
     def rotate_displace_pulse(self, alpha, phi, theta):
         #TODO: Can I use the pi/2 pulse if it's closer to that?
@@ -104,9 +114,10 @@ class FPGA_System:
         alpha = self.alphas[i]    
         phi = self.phis[i]
         theta = self.thetas[i]
-
+        if np.abs(alpha)==0 and np.abs(beta)==0 and theta == 0:
+            return [],[]
         epsilon_D, Omega_R = self.rotate_displace_pulse(alpha, phi, theta)
-        if beta!= 0:
+        if np.abs(beta)> 0:
             epsilon_CD, Omega_CD = self.CD_pulse(beta)
             epsilon = np.concatenate([epsilon_D, np.zeros(self.buffer_time),
                                     epsilon_CD, np.zeros(self.buffer_time)])
@@ -129,7 +140,7 @@ class FPGA_System:
         return epsilon, Omega
 
 
-#%% Testing
+#%% Testingiii
 if __name__ == '__main__':
     def plot_pulse(epsilon, Omega):
         ts = np.arange(len(epsilon))
@@ -143,10 +154,10 @@ if __name__ == '__main__':
     savefile = "Z:\\Data\\Tennessee2020\\20200318_cooldown\\CD_grape\\optimization_tests_20200903\\fock 1_N_blocks_4_20200903_22_01_52.npz"
     chi = 2*np.pi*1e-3*0.03
     alpha0=60
-    epsilon_m = 2*np.pi*1e-3*400
+    epsilon_m = 2*np.pi*1e-3*250
     buffer_time = 4
-    ring_up_time = 200
-    sys = FPGA_System(savefile, qubit_alice, storage_alice, chi, alpha0, epsilon_m, buffer_time, ring_up_time)
+    ring_up_time = 16
+    sys = CD_FPGA_System(savefile, qubit_alice, storage_alice, chi, alpha0, epsilon_m, buffer_time, ring_up_time)
     sys.N_blocks = 1
     e, O = sys.composite_pulse()
     plt.figure()
