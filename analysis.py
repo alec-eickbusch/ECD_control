@@ -17,6 +17,7 @@ class System:
         self.chi = chi
         self.Ec = Ec
         self.alpha0 = alpha0
+        self.kerr = chi**2/(4*Ec)
         #sigma and chop for qubit pulse and displacements
     
         self.sigma = int(sigma)
@@ -67,10 +68,10 @@ class System:
 
         chi_qs = self.chi
         #todo: make kerr and chi prime elements of the class
-        #if use_kerr:
-           # kerr = self.K
-        #else:
-        kerr = 0
+        if use_kerr:
+            kerr = self.kerr
+        else:
+            kerr = 0
         #if use_chi_prime:
             #chip = self.chi_prime
         #else:
