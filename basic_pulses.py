@@ -16,6 +16,11 @@ def gaussian_wave(sigma, chop=4):
     ofs = P[0]
     return (P - ofs) / (1 - ofs)
 
+def gaussian_deriv_wave(sigma, chop=4):
+    ts = np.linspace(-chop/2*sigma, chop/2*sigma, chop*sigma)
+    ofs = np.exp(-ts[0]**2 / (2 * sigma**2))
+    return (.25 / sigma**2) * ts * np.exp(-ts**2 / (2.0 * sigma**2)) / (1 - ofs)
+
 def ring_up_smootherstep(length):
     dt = 1/length
     ts = np.arange(length)*dt
