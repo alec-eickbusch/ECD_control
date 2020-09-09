@@ -38,7 +38,8 @@ class CD_FPGA_System:
     #differently. So epsilon_m will be used for the conditional displacements, while the displacements
     #will be taken from the calibrated displacement pulses. I'm curious to see how well this works.
     def __init__(self, qubit, cavity, chi, alpha0, epsilon_m, epsilon_cal, buffer_time =0,
-                 ring_up_time = 8, parameters = None, savefile=None):
+                 ring_up_time = 8, parameters = None, savefile=None, rel_CD_amp = 1.0,
+                 rel_D_amp = 1.0):
     
         self.load_parameters(parameters, savefile)
         self.N_blocks = len(self.betas)
@@ -47,6 +48,8 @@ class CD_FPGA_System:
         self.chi = chi
         self.alpha0 = alpha0
         self.ring_up_time = int(ring_up_time)
+        self.rel_CD_amp = rel_CD_amp
+        self.rel_D_amp = rel_D_amp
 
         #epsilon_m used for conditional displacements
         self.epsilon_m = epsilon_m
@@ -63,6 +66,11 @@ class CD_FPGA_System:
         self.q_chop = self.qubit.pulse.chop
         self.q_detune = self.qubit.pulse.detune
         self.q_drag = self.qubit.pulse.drag
+        self.q2_unit_amp = self.qubit.pi2_pulse.unit_amp
+        self.q2_sigma = self.qubit.pi2_pulse.sigma
+        self.q2_chop = self.qubit.pi2_pulse.chop
+        self.q2_detune = self.qubit.pi2_pulse.detune
+        self.q2_drag = self.qubit.pi2_pulse.drag
 
         #parameters for the cavity pulse
         self.c_unit_amp = self.cavity.displace.unit_amp
@@ -84,18 +92,22 @@ class CD_FPGA_System:
                 parameters['betas'], parameters['alphas'], parameters['phis'], parameters['thetas']
 
     def CD_pulse(self, beta):
-        pi_pulse = calibrated_rotate(self.q_unit_amp, np.pi, 0, self.q_sigma,\
+        pi_pulse = calibrated_rotate(self.q_unit_amp, np.pi, 0.0, self.q_sigma,\
                                  self.q_chop, self.q_drag, self.q_detune)
         epsilon, Omega = fastest_CD(beta, alpha0 = self.alpha0, epsilon_m = self.epsilon_m,\
                          chi=self.chi, buffer_time=self.buffer_time, sigma_q=self.q_sigma,\
                               chop_q=self.q_chop,ring_up_time=self.ring_up_time,
                               qubit_pi_pulse = pi_pulse)
-        return epsilon/(self.epsilon_cal), Omega
+        return self.rel_CD_amp*epsilon/(self.epsilon_cal), Omega
     
     def rotate_displace_pulse(self, alpha, phi, theta):
         #TODO: Can I use the pi/2 pulse if it's closer to that?
-        Omega = calibrated_rotate(self.q_unit_amp, theta, phi, self.q_sigma,\
-                                 self.q_chop, self.q_drag, self.q_detune)
+        sigma = self.q_sigma #if theta> 3*np.pi/4.0 else self.q2_sigma
+        chop = self.q_chop #if theta> 3*np.pi/4.0 else self.q2_chop
+        detune = self.q_detune #if theta> 3*np.pi/4.0 else self.q2_detune
+        drag = self.q_drag #if theta > 3*np.pi/4.0 else self.q2_drag
+        Omega = calibrated_rotate(self.q_unit_amp, theta, phi, sigma,\
+                                 chop, drag, detune)
         epsilon = calibrated_displace(self.c_unit_amp, alpha, self.c_sigma,
                                       self.c_chop, self.c_drag, self.c_detune)
         if len(Omega)>len(epsilon):
@@ -104,7 +116,7 @@ class CD_FPGA_System:
         elif len(epsilon)>len(Omega):
             diff = int(len(epsilon) - len(Omega))
             Omega = np.pad(Omega, (diff/2, diff-diff/2),mode='constant')
-        return epsilon, Omega
+        return 1j*self.rel_D_amp*epsilon, Omega
 
     def pulse_block(self, i):
         if i == self.N_blocks:
