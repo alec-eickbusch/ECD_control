@@ -140,11 +140,11 @@ class CD_grape_analysis:
                                 Omega_CD])
         
         #Case 2, only displacement/rotation pulse
-        elif len(epsilon_D) > 0 
+        elif len(epsilon_D) > 0: 
             epsilon = epsilon_D
             Omega = Omega_R
         #Case 3, only CD pulse:
-        elif len(epsilon_CD) > 0
+        elif len(epsilon_CD) > 0:
             epsilon = epsilon_CD
             Omega = Omega_CD
         #case 4, nothing
@@ -152,9 +152,9 @@ class CD_grape_analysis:
             return [],[]
         
         #Now, pad with trailing zeros only if there is another pulse coming
-        if i < self.N_blocks:
-            epsilon = np.pad(epsilon, mode='constant', (0,self.system.buffer_time))
-            Omega = np.pad(Omega, mode='constant', (0,self.system.buffer_time))
+        if i < self.cd_grape_object.N_blocks:
+            epsilon = np.pad(epsilon, (0, self.system.buffer_time), mode='constant')
+            Omega = np.pad(Omega, (0, self.system.buffer_time), mode='constant')
         
         return epsilon, Omega
 

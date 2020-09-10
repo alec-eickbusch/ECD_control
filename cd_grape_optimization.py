@@ -230,7 +230,7 @@ class CD_grape:
         self.phis = phis
         self.thetas = thetas
         f = self.fidelity(alphas,betas,phis,thetas)
-        #print('fid: %.3f' % f, end='\r')
+        print('fid: %.3f' % f, end='\r')
         if self.term_fid is not None and f >= self.term_fid:
             raise OptFinishedException('Requested fidelity obtained', self)
         return -f
@@ -251,7 +251,7 @@ class CD_grape:
         self.thetas = thetas
         f, dalphar, dalphai, dbetar, dbetai, dphi, dtheta = self.fid_and_grad_fid(alphas,betas,phis,thetas)
         gradf = np.concatenate([dalphar,dalphai, dbetar, dbetai, dphi, dtheta])
-        #print('fid: %.3f' % f, end='\r')
+        print('fid: %.3f' % f, end='\r')
         return (-f, -gradf)
     
     #TODO: if I only care about the cavity state, I can optimize on the partial trace of the
@@ -310,9 +310,10 @@ class CD_grape:
         filename_qt = filestring + '.qt'
         np.savez(filename_np, betas=self.betas, alphas=self.alphas, phis=self.phis, thetas=self.thetas,
                  max_alpha = self.max_alpha, max_beta = self.max_beta, name=self.name)
-        print('parameters saved as: ' + filename_np)
+        print('\n\nparameters saved as: ' + filename_np)
         qt.qsave([self.initial_state,self.target_state], filename_qt)
         print('states saved as: ' + filename_qt)
+        self.print_info()
        # print('name for loading:' + filestring)
         return filestring
 
@@ -321,7 +322,7 @@ class CD_grape:
         filename_qt = filestring + '.qt'
         f = np.load(filename_np)
         betas, alphas, phis, thetas, max_alpha, max_beta, name =\
-             f['betas'], f['alphas'], f['phis'],f['thetas'], f['max_alpha'], f['max_beta'], f['name']
+             f['betas'], f['alphas'], f['phis'],f['thetas'], f['max_alpha'], f['max_beta'], str(f['name'])
         print('loaded parameters from:' + filename_np)
         f.close()
         states = qt.qload(filename_qt)
@@ -329,9 +330,10 @@ class CD_grape:
         print('loaded states from:' + filename_qt)
         self.__init__(initial_state, target_state, len(betas),\
                  betas, alphas, phis, thetas, max_alpha, max_beta, None, name)
+        self.print_info()
     
     def print_info(self):
-        print("\n\n" + self.name)
+        print("\n\n" + str(self.name))
         print("betas: " + repr(self.betas))
         print("alphas: " + repr(self.alphas))
         print("phis: " + repr(self.phis))
