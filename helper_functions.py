@@ -1,11 +1,12 @@
 #%%
 import numpy as np
 import matplotlib.pyplot as plt
+import qutip as qt
 plt.rcParams.update({'font.size': 16,'pdf.fonttype':42,'ps.fonttype':42})
 from scipy.interpolate import interp1d
 from scipy.integrate import solve_ivp, quad
 #%%
-'''
+
 def plot_wigner(state, xvec = np.linspace(-5,5,81), tensor_state=True):
     if tensor_state:
         state = qt.ptrace(state, 0)
@@ -16,13 +17,13 @@ def plot_wigner(state, xvec = np.linspace(-5,5,81), tensor_state=True):
     plt.axvline(0,linestyle='--', color='black',alpha=0.4)
     plt.colorbar()
     plt.grid()
-'''
+
 def plot_pulse(epsilon, Omega):
     ts = np.arange(len(epsilon))
     plt.plot(ts,1e3*np.real(epsilon)/2/np.pi,label='Re(epsilon)')
     plt.plot(ts,1e3*np.imag(epsilon)/2/np.pi,label='Im(epsilon)')
-    plt.plot(ts,20*1e3*np.real(Omega)/2/np.pi,label='20*Re(Omega)')
-    plt.plot(ts,20*1e3*np.imag(Omega)/2/np.pi,label='20*Im(Omega)')
+    plt.plot(ts,10*1e3*np.real(Omega)/2/np.pi,label='10*Re(Omega)')
+    plt.plot(ts,10*1e3*np.imag(Omega)/2/np.pi,label='10*Im(Omega)')
     plt.ylabel('drive amplitude (MHz)')
     plt.xlabel('t (ns)')
     plt.legend()

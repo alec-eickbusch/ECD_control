@@ -1,7 +1,6 @@
 #%%
-from CD_GRAPE.cd_grape import CD_grape
-#from CD_GRAPE.basic_pulses import *
-#from CD_GRAPE.helper_functions import *
+from CD_GRAPE.cd_grape_optimization import CD_grape
+from CD_GRAPE.helper_functions import plot_pulse, plot_wigner
 from CD_GRAPE.analysis import System, CD_grape_analysis
 import numpy as np
 import qutip as qt
@@ -36,18 +35,35 @@ plt.figure(figsize=(5, 5), dpi=200)
 cd_grape_obj.plot_final_state()
 plt.title("final state")
 #%% Now, we can convert these parameters to a pulse we can run on the experiment
+#first, creating a system object
 epsilon_m = 2*np.pi*1e-3*300.0 #maximum displacement rate
 alpha0 = 50 #maximum displacement before things break down 
 Ec_GHz = 0.19267571  # measured anharmonicity
 Ec = (2*np.pi) * Ec_GHz
 chi_MHz = 0.03
 chi = 2*np.pi*1e-3*chi_MHz
+sigma = 6 #sigma for gaussian pulses
+chop = 4 #chop for gaussian pulses
+buffer_time = 4 #time between discrete pulses
+ring_up_time = 16 #Time to ring up for large CD pulses
 sys = System(chi=chi, Ec=Ec, alpha0=alpha0,
-             sigma=3, chop=4, epsilon_m=epsilon_m, buffer_time=4,
-             ring_up_time=16)
-
-
+             sigma=sigma, chop=chop, epsilon_m=epsilon_m, buffer_time=buffer_time,
+             ring_up_time=ring_up_time)
+#%% Now, an analysis object
+analysis_obj = CD_grape_analysis(cd_grape_obj, sys)
+#%% Given these parameters, we can plot the composite pulse (fastest CD given these parameters)
+e,O = analysis_obj.composite_pulse()
+plt.figure(figsize=(8,4),dpi=200)
+plot_pulse(e,O)
+#%% And now we can simulate this pulse on the system
+psif = sys.simulate_pulse_trotter(e,O,initial_state)
+fid = qt.fidelity(psif, target_state)
+print("\n\nSimulated fidelity to target state: %.5f\n\n" % fid)
 #%%
+plt.figure(figsize=(5, 5), dpi=200)
+cd_grape_obj.plot_final_state()
+plt.title("Simulated final state")
+#%% 
 #Now, showing we can get to the same result through optimization.
 cd_grape_obj.randomize(alpha_scale = 0.1, beta_scale=1.0)
 print("Randomized parameters:")
@@ -58,149 +74,15 @@ print("after optimization:")
 cd_grape_obj.print_info()
 #you may notice that there is now an unnecessary cavity displacement (then displace back)
 #or qubit rotation in the parameters. This is because the penalties are not yet implemented.
-#%%
-
-
-N = 50
-N2 = 2
-alpha0 = 60
-epsilon_m = 2*np.pi*1e-3*400
-chi = 2*np.pi*1e-3*0.03
-sigma = 4
-chop = 4
-ring_up_time = 4
-buffer_time = 0
-Ec_GHz = 0.19267571  # measured anharmonicity
-Ec = (2*np.pi) * Ec_GHz
-sys = System(chi=chi, Ec=Ec, alpha0=alpha0, epsilon_m=epsilon_m,
-             sigma=sigma, chop=chop, buffer_time=buffer_time, ring_up_time=ring_up_time)
-N_blocks = 4
-saving_directory = "C:\\Users\\Alec Eickbusch\\CD_grape_data\\"
-max_alpha = 5
-max_beta = 5
-initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
-target_state = qt.tensor(qt.basis(N, 1), qt.basis(N2, 0))
-name = 'fock_1'
-term_fid = 0.999
-#a = CD_grape(initial_state=initial_state, target_state=target_state,\
-#            max_alpha = max_alpha, max_beta = max_beta, N_blocks=N_blocks,
-##            saving_directory=saving_directory, name=name,
- #           term_fid=term_fid)
-#a.randomize(alpha_scale=0.1,beta_scale = 1)
-#a.optimize()
-#a.save()
-#savefile = "C:\\Users\\Alec Eickbusch\\CD_grape_data\\cat_2_20200904_11_38_18"
-#a.load(savefile)
-a = CD_grape()
-savefile = "Z:\\Data\\Tennessee2020\\20200318_cooldown\\CD_grape\\optimization_tests_20200903\\cat n=2_N_blocks_4_20200903_16_46_56"
-a.load(savefile)
-psi0 = a.initial_state
-analysis = CD_grape_analysis(a, sys)
-e, O = analysis.composite_pulse()
-plot_pulse(e,O)
-print("final fid: " + str(a.fidelity()))
-#%% First, only looking at the first sequence
-blocks = 1
-a.N_blocks = blocks
-e, O = analysis.composite_pulse()
-plot_pulse(e,O)
-print("betass: " + str(a.betas[:blocks]))
-print("alphas: " + str(a.alphas[:blocks]))
-print("thetas: " + str(a.thetas[:blocks]))
-print("phis: " + str(a.phis[:blocks]))
-#%%
-psif = sys.simulate_pulse_trotter(e,O,psi0)
-#psif_discrete = a.U_i_block(0)*psi0
-psif_discrete = a.final_state()
-fid = qt.fidelity(psif,psif_discrete)
-print("fid: %.4f" % fid)
-# %%
-plt.figure()
-plot_wigner(psif)
-plt.figure()
-plot_wigner(psif_discrete)
-print(psif.ptrace(1))
-print(psif_discrete.ptrace(1))
-#%%
-#%%
-blocks = 2
-a.N_blocks = blocks
-e, O = analysis.composite_pulse()
+# %%  And finally we can simulate the pulse on the system. 
+#Since the parameters are connected to the cd_grape_obj, we don't have to
+#re-initialize or anything. 
+e, O = analysis_obj.composite_pulse()
+plt.figure(figsize=(8, 4), dpi=200)
 plot_pulse(e, O)
-print("betass: " + str(a.betas[:blocks]))
-print("alphas: " + str(a.alphas[:blocks]))
-print("thetas: " + str(a.thetas[:blocks]))
-print("phis: " + str(a.phis[:blocks]))
-#%%
-psif = sys.simulate_pulse_trotter(e, O, psi0)
-#psif_discrete = a.U_i_block(0)*psi0
-psif_discrete = a.final_state()
-fid = qt.fidelity(psif, psif_discrete)
-print("fid: %.4f" % fid)
-# %%
-plt.figure()
-plot_wigner(psif)
-plt.figure()
-plot_wigner(psif_discrete)
-print(psif.ptrace(1))
-print(psif_discrete.ptrace(1))
-#%%
-blocks = 3
-a.N_blocks = blocks
-e, O = analysis.composite_pulse()
-plot_pulse(e, O)
-print("betass: " + str(a.betas[:blocks]))
-print("alphas: " + str(a.alphas[:blocks]))
-print("thetas: " + str(a.thetas[:blocks]))
-print("phis: " + str(a.phis[:blocks]))
-#%%
-psif = sys.simulate_pulse_trotter(e, O, psi0)
-#psif_discrete = a.U_i_block(0)*psi0
-psif_discrete = a.final_state()
-fid = qt.fidelity(psif, psif_discrete)
-print("fid: %.4f" % fid)
-# %%
-plt.figure()
-plot_wigner(psif)
-plt.figure()
-plot_wigner(psif_discrete)
-print(psif.ptrace(1))
-print(psif_discrete.ptrace(1))
-#%%
-blocks = 4
-a.N_blocks = blocks
-e, O = analysis.composite_pulse()
-plot_pulse(e, O)
-print("betass: " + str(a.betas[:blocks]))
-print("alphas: " + str(a.alphas[:blocks]))
-print("thetas: " + str(a.thetas[:blocks]))
-print("phis: " + str(a.phis[:blocks]))
-#%%
-psif = sys.simulate_pulse_trotter(e, O, psi0, use_kerr=True)
-#psif_discrete = a.U_i_block(0)*psi0
-psif_discrete = a.final_state()
-fid = qt.fidelity(psif, psif_discrete)
-print("fid: %.4f" % fid)
-# %%
-plt.figure()
-plot_wigner(psif)
-plt.figure()
-plot_wigner(psif_discrete)
-print(psif.ptrace(1))
-print(psif_discrete.ptrace(1))
-
-# %%
-fid = qt.fidelity(psif,a.target_state)
-print("fid: %.4f" % fid)
-
-#%% Saving this for the experiment
-datestr = datetime.now().strftime('%Y%m%d_%H_%M_%S')
-exp_pulse_dir = r'Y:\Data\Tennessee2020\20200318_cooldown\pulses\\' + datestr + r'\\'
-if not os.path.exists(exp_pulse_dir):
-    os.makedirs(exp_pulse_dir)
-time_str = datetime.now().strftime('%Y%m%d_%Hh_%Mm_%Ss')
-exp_pulse_filename = exp_pulse_dir + name + '_' + time_str + '.npz'
-np.savez(exp_pulse_filename, Omega=O, epsilon = e, dt=1)
-print("Pulse saved as: " + str(exp_pulse_filename))
-
-# %%
+psif = sys.simulate_pulse_trotter(e, O, initial_state)
+fid = qt.fidelity(psif, target_state)
+print("\n\nSimulated fidelity to target state: %.5f\n\n" % fid)
+plt.figure(figsize=(5, 5), dpi=200)
+cd_grape_obj.plot_final_state()
+plt.title("Simulated final state")
