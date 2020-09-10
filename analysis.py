@@ -1,7 +1,7 @@
 #%%
 import numpy as np
 import qutip as qt
-from CD_GRAPE.cd_grape import *
+from CD_GRAPE.cd_grape_optimization import *
 from CD_GRAPE.basic_pulses import fastest_CD, rotate, disp_gaussian
 from CD_GRAPE.helper_functions import plot_pulse, alpha_from_epsilon
 import matplotlib.pyplot as plt
@@ -122,22 +122,40 @@ class CD_grape_analysis:
         alpha = self.cd_grape_object.alphas[i]    
         phi = self.cd_grape_object.phis[i]
         theta = self.cd_grape_object.thetas[i]
-
-        #each CD pulse contains a pi pulse, so we need to flip the dfn of the bloch sphere
-        #evey other round.
-        #if i % 2 == 1:
-            #theta = -theta
-            #beta = -beta
-        epsilon_D, Omega_R = self.system.rotate_displace_pulse(alpha, phi, theta)
-        if beta!= 0:
-            epsilon_CD, Omega_CD = self.system.CD_pulse(beta)
-            epsilon = np.concatenate([epsilon_D, np.zeros(self.system.buffer_time),
-                                    epsilon_CD, np.zeros(self.system.buffer_time)])
-            Omega = np.concatenate([Omega_R, np.zeros(self.system.buffer_time),
-                                    Omega_CD, np.zeros(self.system.buffer_time)])
+       
+        if theta>0 or np.abs(alpha) > 0:
+            epsilon_D, Omega_R = self.system.rotate_displace_pulse(alpha, phi, theta)
         else:
-            epsilon = np.concatenate([epsilon_D, np.zeros(self.system.buffer_time)])
-            Omega = np.concatenate([Omega_R, np.zeros(self.system.buffer_time)])
+            epsilon_D, Omega_R = [],[]
+        if np.abs(beta) > 0:
+            epsilon_CD, Omega_CD = self.system.CD_pulse(beta)
+        else:
+            epsilon_CD, Omega_CD = [],[]
+        
+        #Case 1, both CD and rotate
+        if len(epsilon_D) >0 and len(epsilon_CD)>0:
+            epsilon = np.concatenate([epsilon_D, np.zeros(self.system.buffer_time),
+                                epsilon_CD])
+            Omega = np.concatenate([Omega_R, np.zeros(self.system.buffer_time),
+                                Omega_CD])
+        
+        #Case 2, only displacement/rotation pulse
+        elif len(epsilon_D) > 0 
+            epsilon = epsilon_D
+            Omega = Omega_R
+        #Case 3, only CD pulse:
+        elif len(epsilon_CD) > 0
+            epsilon = epsilon_CD
+            Omega = Omega_CD
+        #case 4, nothing
+        else:
+            return [],[]
+        
+        #Now, pad with trailing zeros only if there is another pulse coming
+        if i < self.N_blocks:
+            epsilon = np.pad(epsilon, mode='constant', (0,self.system.buffer_time))
+            Omega = np.pad(Omega, mode='constant', (0,self.system.buffer_time))
+        
         return epsilon, Omega
 
     def composite_pulse(self):
