@@ -7,8 +7,7 @@ Created on Tue Nov  5 14:18:08 2019
 """
 
 import numpy as np
-import qutip as qt
-from CD_GRAPE.helper_functions import alpha_from_epsilon, plot_pulse
+from cd_grape.helper_functions import alpha_from_epsilon, plot_pulse
 #%%
 def gaussian_wave(sigma, chop=4):
     ts = np.linspace(-chop/2*sigma, chop/2*sigma, chop*sigma)
@@ -22,12 +21,12 @@ def gaussian_deriv_wave(sigma, chop=4):
     return (.25 / sigma**2) * ts * np.exp(-ts**2 / (2.0 * sigma**2)) / (1 - ofs)
 
 def ring_up_smootherstep(length):
-    dt = 1/length
+    dt = 1.0/length
     ts = np.arange(length)*dt
     return 6*ts**5 - 15*ts**4 + 10*ts**3
 
 def ring_up_smoothstep(length):
-    dt = 1/length
+    dt = 1.0/length
     ts = np.arange(length)*dt
     return 3*ts**2 - 2*ts**3
 
@@ -97,7 +96,7 @@ def fastest_disp_trapezoid(alpha, epsilon_m=2*np.pi*1e-3*400, ring_up_time=8, in
     return disp_trapezoid(alpha, ring_up_time, flat_time)
 
 def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3*0.03, buffer_time=0,\
-              sigma_q=6, chop_q=4, ring_up_time = 8):
+              sigma_q=6, chop_q=4, ring_up_time = 8, qubit_pi_pulse = None):
     def beta_bare(alpha0): #calculate the beta from just the displacement part of the CD
         epsilon_bare = np.concatenate([
         fastest_disp_trapezoid(alpha0, epsilon_m=epsilon_m, ring_up_time=ring_up_time),
@@ -124,7 +123,7 @@ def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3
     fastest_disp_trapezoid(alpha0, epsilon_m=epsilon_m, ring_up_time=ring_up_time)])
 
 
-    alpha = alpha_from_epsilon(np.pad(epsilon,40))
+    alpha = alpha_from_epsilon(np.pad(epsilon,40,mode='constant'))
     beta2 = chi*np.sum(np.abs(alpha))
 
     epsilon = epsilon*np.abs(beta)/np.abs(beta2)
@@ -136,9 +135,11 @@ def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3
 
     total_len = int(len(epsilon))
     qubit_delay = int(total_len/2 - sigma_q*chop_q/2)
+    pi_pulse = qubit_pi_pulse if qubit_pi_pulse is not None\
+         else rotate(np.pi, sigma=sigma_q, chop=chop_q)
     Omega = np.concatenate([
         np.zeros(qubit_delay),
-        rotate(np.pi,sigma=sigma_q,chop=chop_q),
+        pi_pulse,
         np.zeros(total_len - qubit_delay - sigma_q*chop_q)
     ])
 
