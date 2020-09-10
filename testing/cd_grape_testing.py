@@ -38,10 +38,14 @@ term_fid = 0.999
 #a.save()
 #savefile = "C:\\Users\\Alec Eickbusch\\CD_grape_data\\cat_2_20200904_11_38_18"
 #a.load(savefile)
+a = CD_grape()
+savefile = "Z:\\Data\\Tennessee2020\\20200318_cooldown\\CD_grape\\optimization_tests_20200903\\cat n=2_N_blocks_4_20200903_16_46_56"
+a.load(savefile)
 psi0 = a.initial_state
 analysis = CD_grape_analysis(a, sys)
 e, O = analysis.composite_pulse()
 plot_pulse(e,O)
+print("final fid: " + str(a.fidelity()))
 #%% First, only looking at the first sequence
 blocks = 1
 a.N_blocks = blocks
@@ -119,7 +123,7 @@ print("alphas: " + str(a.alphas[:blocks]))
 print("thetas: " + str(a.thetas[:blocks]))
 print("phis: " + str(a.phis[:blocks]))
 #%%
-psif = sys.simulate_pulse_trotter(e, O, psi0)
+psif = sys.simulate_pulse_trotter(e, O, psi0, use_kerr=True)
 #psif_discrete = a.U_i_block(0)*psi0
 psif_discrete = a.final_state()
 fid = qt.fidelity(psif, psif_discrete)

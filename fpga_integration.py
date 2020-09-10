@@ -1,44 +1,90 @@
 #%%
 import numpy as np
-import qutip as qt
+#import qutip as qt
+from init_script import *
 from CD_GRAPE.cd_grape import *
 from CD_GRAPE.basic_pulses import fastest_CD, rotate, disp_gaussian
 from CD_GRAPE.helper_functions import plot_pulse, alpha_from_epsilon
 import matplotlib.pyplot as plt
 plt.rcParams.update({'font.size': 16, 'pdf.fonttype': 42, 'ps.fonttype': 42})
 from tqdm import tqdm
+
+#%% It's not so easy to get the waves from the FPGA code so I'll just hard code here
+# Maybe make a better solution later
+
+def calibrated_gaussian_pulse(sigma, chop, drag=0):
+    i_wave = gaussian_wave(self.sigma, chop=chop)
+    q_wave = drag * gaussian_deriv_wave(self.sigma, chop=chop)
+    return i_wave + 1j*q_wave
+
+#in the experiment it's calibrated to a unit amp of pi. 
+#TODO: use the calibrated pi/2 pulse if it's closer to pi/2!
+#I might want to just always use the pi/2 pulse, since it's closer to average rotation
+def calibrated_rotate(unit_amp, theta, phi, sigma, chop, drag=0, detune=0):
+    amp = (angle / np.pi) * unit_amp
+    wave = amp*calibrated_gaussian_pulse(sigma, chop, drag)
+    ts = np.arange(len(wave)) * 1e-9
+    return wave * np.exp(-2j * np.pi * ts * detune)*np.exp(1j*phase)
+
+def calibrated_displace(unit_amp, alpha, sigma, chop, drag=0, detune=0):
+    amp = np.abs(alpha)*unit_amp
+    phase = np.anble(alpha)
+    wave = amp*unit_amp*calibrated_gaussian_pulse(sigma, chop, drag)
+    ts = np.arange(len(wave)) * 1e-9
+    return wave * np.exp(-2j * np.pi * ts * detune)*np.exp(1j*phase)
 #%%
-class System:
+class FPGA_System:
 
     #for now will use the same sigma and chop for the displacement and qubit pulses
     #the sigma_cd and chop_cd will be for the gaussian displacement pulses during the conditional displacement
-    def __init__(self, chi, Ec, alpha0, epsilon_m, sigma, chop, buffer_time =0,\
+    #note that we want to calibrate small displacements and large displacements for conditional displacements
+    #differently. So epsilon_m will be used for the conditional displacements, while the displacements
+    #will be taken from the calibrated displacement pulses. I'm curious to see how well this works.
+    def __init__(self, qubit, cavity, chi, alpha0, epsilon_m, buffer_time =0,
                  ring_up_time = 8):
+        self.qubit = qubit
+        self.cavity = cavity
         self.chi = chi
-        self.Ec = Ec
         self.alpha0 = alpha0
-        self.kerr = chi**2/(4*Ec)
-        #sigma and chop for qubit pulse and displacements
-    
-        self.sigma = int(sigma)
-        self.chop = int(chop)
-        self.ring_up_time = ring_up_time
+        self.ring_up_time = int(ring_up_time)
 
-        #sigma and chop for displacement during the conditional displacement 
-        #calculated from provided value of epsilon_m
+        #epsilon_m used for conditional displacements
         self.epsilon_m = epsilon_m
 
-        #buffer time inserted between qubit and cavity pulses. Use small number for best performance.
+        #buffer time inserted between qubit and cavity pulses. Use small number for fastest pulses.
         self.buffer_time = int(buffer_time)
+
+        #parameters for the qubit pulse
+        self.q_unit_amp = self.qubit.pulse.unit_amp
+        self.q_sigma = self.qubit.pulse.sigma
+        self.q_chop = self.qubit.pulse.chop
+        self.q_detune = self.qubit.pulse.detune
+        self.q_drag = self.qubit.pulse.drag
+
+        #parameters for the cavity pulse
+        self.c_unit_amp = self.cavity.displace.unit_amp
+        self.c_sigma = self.cavity.displace.sigma
+        self.c_chop = self.cavity.displace.chop
+        self.c_detune = self.cavity.displace.detune
+        self.c_drag = self.cavity.displace.drag
 
     def CD_pulse(self, beta):
         return fastest_CD(beta, alpha0 = self.alpha0, epsilon_m = self.epsilon_m,\
-                         chi=self.chi, buffer_time=self.buffer_time,sigma_q=self.sigma,\
-                              chop_q=self.chop,ring_up_time=self.ring_up_time)
+                         chi=self.chi, buffer_time=self.buffer_time, sigma_q=self.q_sigma,\
+                              chop_q=self.q_chop,ring_up_time=self.ring_up_time)
     
     def rotate_displace_pulse(self, alpha, phi, theta):
-        Omega = rotate(theta=theta, phi=phi, sigma=self.sigma, chop=self.chop)
-        epsilon = disp_gaussian(alpha=alpha, sigma=self.sigma, chop=self.chop)
+        #TODO: Can I use the pi/2 pulse if it's closer to that?
+        Omega = calibrated_rotate(self.q_unit_amp, theta, phi, self.q_sigma,\
+                                 self.q_chop, self.q_drag, self.q_detune)
+        epsilon = calibrated_displace(self.c_unit_amp, alpha, self.c_sigma,
+                                      self.c_chop, self.c_drag, self.c_detune=0)
+        if len(Omega)>len(epsilon):
+            diff = int(len(Omega) - len(epsilon))
+            epsilon = np.pad(epsilon, (diff/2, diff-diff/2))
+        elif len(epsilon)>len(Omega)
+            diff = int(len(epsilon) - len(Omega))
+            Omega = np.pad(Omega, (diff/2, diff-diff/2))
         return epsilon, Omega
 
     #TODO: include case where alpha does not start at 0
@@ -68,10 +114,10 @@ class System:
 
         chi_qs = self.chi
         #todo: make kerr and chi prime elements of the class
-        if use_kerr:
-            kerr = self.kerr
-        else:
-            kerr = 0
+        #if use_kerr:
+           # kerr = self.K
+        #else:
+        kerr = 0
         #if use_chi_prime:
             #chip = self.chi_prime
         #else:
