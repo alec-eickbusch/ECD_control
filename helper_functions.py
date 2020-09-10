@@ -11,7 +11,7 @@ def plot_wigner(state, xvec = np.linspace(-5,5,81), tensor_state=True):
         state = qt.ptrace(state, 0)
     W = qt.wigner(state,xvec,xvec, g=2)
     plt.figure(figsize=(6,5))
-    plt.pcolormesh(xvec,xvec,W, cmap='seismic', vmin=-1, vmax=+1)
+    plt.pcolormesh(xvec,xvec,W, cmap='seismic', vmin=-2/np.pi, vmax=+2/np.pi)
     plt.axhline(0,linestyle='--', color='black',alpha=0.4)
     plt.axvline(0,linestyle='--', color='black',alpha=0.4)
     plt.colorbar()

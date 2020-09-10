@@ -26,7 +26,7 @@ class CD_grape:
                  phis = None, thetas = None, 
                  max_alpha = 5, max_beta = 5,
                  saving_directory = None, name = 'CD_grape',
-                 term_fid = None):
+                 term_fid = 0.999):
 
         self.initial_state = initial_state
         self.target_state = target_state
@@ -329,6 +329,15 @@ class CD_grape:
         print('loaded states from:' + filename_qt)
         self.__init__(initial_state, target_state, len(betas),\
                  betas, alphas, phis, thetas, max_alpha, max_beta, None, name)
+    
+    def print_info(self):
+        print("\n\n" + self.name)
+        print("betas: " + repr(self.betas))
+        print("alphas: " + repr(self.alphas))
+        print("phis: " + repr(self.phis))
+        print("thetas: " + repr(self.thetas))
+        print("Fidelity: " + repr(self.fidelity()))
+        print("\n")
         
 
     
