@@ -76,7 +76,9 @@ class CD_grape:
     def CD(self, beta):
         if beta == 0:
             return qt.tensor(qt.identity(self.N),qt.identity(self.N2))
-        return self.R(0,np.pi)*((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
+        #return self.R(0,np.pi)*((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
+        #temp removing pi pulse from CD for analytic opt testing
+        return ((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
 
     def R(self, phi, theta):
         return (-1j*(theta/2.0)*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)).expm()
