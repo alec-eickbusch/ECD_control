@@ -153,8 +153,9 @@ class CD_grape_analysis:
         
         #Now, pad with trailing zeros only if there is another pulse coming
         if i < self.cd_grape_object.N_blocks:
-            epsilon = np.pad(epsilon, (0, self.system.buffer_time), mode='constant')
-            Omega = np.pad(Omega, (0, self.system.buffer_time), mode='constant')
+            if not (i == self.cd_grape_object.N_blocks -1 and self.cd_grape_object.thetas[-1] == 0):
+                epsilon = np.pad(epsilon, (0, self.system.buffer_time), mode='constant')
+                Omega = np.pad(Omega, (0, self.system.buffer_time), mode='constant')
         
         return epsilon, Omega
 
