@@ -79,7 +79,7 @@ class CD_grape:
         return self.R(0,np.pi)*((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
 
     def R(self, phi, theta):
-        return (1j*(theta/2.0)*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)).expm()
+        return (-1j*(theta/2.0)*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)).expm()
 
     #derivative multipliers
     #todo: optimization with derivatives
