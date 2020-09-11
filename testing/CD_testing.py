@@ -1,5 +1,5 @@
 #%%
-from CD_GRAPE.cd_grape import *
+from CD_GRAPE.cd_grape_optimization import *
 from CD_GRAPE.basic_pulses import *
 from CD_GRAPE.helper_functions import *
 from CD_GRAPE.analysis import *
@@ -7,30 +7,41 @@ import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 #%%
-N = 50
-N2 = 2
-alpha0 = 60
-epsilon_m = 2*np.pi*1e-3*400
-chi = 2*np.pi*1e-3*0.03
-sigma = 6
-chop = 4
-ring_up_time = 8
-buffer_time = 0
+N = 30
+N2 = 3
+epsilon_m = 2*np.pi*1e-3*300.0  # maximum displacement rate
+alpha0 = 50  # maximum displacement before things break down
 Ec_GHz = 0.19267571  # measured anharmonicity
 Ec = (2*np.pi) * Ec_GHz
-sys = System(chi=chi, Ec=Ec, alpha0=alpha0, epsilon_m=epsilon_m,
-             sigma=sigma, chop=chop, buffer_time=buffer_time, ring_up_time=ring_up_time)
-psi0 = qt.tensor(qt.basis(N,0), (qt.basis(N2,0) + np.exp(1j*np.pi/3.0)*qt.basis(N2,1)).unit())
-a = CD_grape(initial_state=psi0)
+chi_MHz = 0.03
+chi = 2*np.pi*1e-3*chi_MHz
+sigma = 6  # sigma for gaussian pulses
+chop = 4  # chop for gaussian pulses
+buffer_time = 4  # time between discrete pulses
+ring_up_time = 16  # Time to ring up for large CD pulses
+N_blocks = 1
+initial_state = qt.tensor(qt.basis(N, 0), (qt.basis(N2, 0) + qt.basis(N2,1))/np.sqrt(2))
+cd_grape_obj = CD_grape(initial_state, N_blocks=N_blocks)
+sys = System(chi=chi, Ec=Ec, alpha0=alpha0,
+             sigma=sigma, chop=chop, epsilon_m=epsilon_m, buffer_time=buffer_time,
+             ring_up_time=ring_up_time)
+analysis_obj = CD_grape_analysis(cd_grape_obj, sys)
 #%%
-betas = [1+1j,2+1j,5+2j]
-for beta in betas:
-    e,O = fastest_CD(beta,alpha0=alpha0, epsilon_m=epsilon_m,\
-        chi=chi, buffer_time=buffer_time, sigma_q = sigma,\
-        chop_q = chop, ring_up_time=ring_up_time)
-    psif = sys.simulate_pulse_trotter(e,O,psi0)
-    desired_state = a.CD(beta)*psi0
-    fid = qt.fidelity(psif,desired_state)
+num_test = 4
+betas = [np.random.uniform(low=-3, high=3) + 1j*np.random.uniform(low=-2, high=2)
+          for _ in range(num_test)]
+thetas = [np.random.uniform(low = 0, high=np.pi) for _ in range(num_test)]
+phis = [np.random.uniform(low=-np.pi, high=np.pi) for _ in range(num_test)]
+for beta, phi, theta in zip(betas, phis, thetas):
+    desired_state = cd_grape_obj.CD(beta)*cd_grape_obj.R(phi, theta)*initial_state
+    #desired_state = (qt.tensor(qt.coherent(N, -beta/2.0), qt.basis(N2, 0)) +\
+                    #qt.tensor(qt.coherent(N, beta/2.0), qt.basis(N2, 1))).unit()
+    cd_grape_obj.betas = [beta]
+    cd_grape_obj.phis = [phi,0]
+    cd_grape_obj.thetas = [theta,0]
+    e, O = analysis_obj.composite_pulse()
+    psif = sys.simulate_pulse_trotter(e, O, initial_state)
+    fid = qt.fidelity(psif, desired_state)
     print('fid = %f' % fid)
     plt.figure()
     plot_wigner(psif)
@@ -38,6 +49,6 @@ for beta in betas:
     plt.figure()
     plot_wigner(desired_state)
     print(desired_state.ptrace(1))
-    #plot_pulse(e,O)
+    plt.figure()
+    plot_pulse(e, O)
 # %%
-
