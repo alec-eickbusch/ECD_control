@@ -6,17 +6,17 @@ import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 #%%
-N = 20 #cavity hilbert space 
+N = 60 #cavity hilbert space 
 N2 = 2 #qubit hilbert space
-alpha = 1 + 1j #cat alpha
+alpha = 1 + 2j #cat alpha
 N_blocks = 4
 initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
 target_state = qt.tensor((qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit(),\
                           qt.basis(N2,0))
 term_fid = 0.99
 #max alpha and beta are the maximum values of alpha and beta for optimization
-max_alpha = 5
-max_beta = 5
+max_alpha = 7
+max_beta = 7
 name = "Cat creation"
 saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_grape_parameters\\"
 cd_grape_obj = CD_grape(initial_state, target_state, N_blocks,\
@@ -32,7 +32,7 @@ cd_grape_obj.plot_target_state()
 plt.title("target state")
 #%% Doing the optimization
 #The alpha and beta scale are scales for the random initialization.
-cd_grape_obj.randomize(alpha_scale=0.2, beta_scale=2)
+cd_grape_obj.randomize(alpha_scale=0.5, beta_scale=3)
 print("Randomized parameters:")
 cd_grape_obj.print_info()
 cd_grape_obj.optimize()
@@ -68,12 +68,47 @@ fid = qt.fidelity(psif, target_state)
 print("\n\nSimulated fidelity to target state: %.5f\n\n" % fid)
 plt.figure(figsize=(5, 5), dpi=200)
 cd_grape_obj.plot_final_state()
-plt.title("Simulated final state")
+plt.title("cd grape final state")
+plt.figure(figsize=(5, 5), dpi=200)
+plot_wigner(psif)
+plt.title("constructed pulse final state")
 
-#%% 
-fid = qt.fidelity(psif, target_state)
-print("\n\nSimulated fidelity to target state: %.5f\n\n" % fid)
-
+#%% Going step by step
+cd_grape_obj.N_blocks = 0
+e, O = analysis_obj.composite_pulse()
+plt.figure(figsize=(8, 4), dpi=200)
+plot_pulse(e, O)
+psif = sys.simulate_pulse_trotter(e, O, initial_state)
+fid = qt.fidelity(psif, cd_grape_obj.final_state())
+print("\n\nSimulated fidelity to final state: %.5f\n\n" % fid)
+plt.figure(figsize=(5, 5), dpi=200)
+cd_grape_obj.plot_final_state()
+plt.title("cd grape final state")
+plt.figure(figsize=(5, 5), dpi=200)
+plot_wigner(psif)
+plt.title("constructed pulse final state")
+b = qt.Bloch()
+b.add_states(cd_grape_obj.final_state().ptrace(1))
+b.add_states(psif.ptrace(1))
+b.show()
+#%%
+cd_grape_obj.N_blocks = 1
+e, O = analysis_obj.composite_pulse()
+plt.figure(figsize=(8, 4), dpi=200)
+plot_pulse(e, O)
+psif = sys.simulate_pulse_trotter(e, O, initial_state)
+fid = qt.fidelity(psif, cd_grape_obj.final_state())
+print("\n\nSimulated fidelity to final state: %.5f\n\n" % fid)
+plt.figure(figsize=(5, 5), dpi=200)
+cd_grape_obj.plot_final_state()
+plt.title("cd grape final state")
+plt.figure(figsize=(5, 5), dpi=200)
+plot_wigner(psif)
+plt.title("constructed pulse final state")
+b = qt.Bloch()
+b.add_states(cd_grape_obj.final_state().ptrace(1))
+b.add_states(psif.ptrace(1))
+b.show()  
 #%% Finally, we can save our parameters
 savefile = cd_grape_obj.save()
 #%% You can also load up parameters

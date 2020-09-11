@@ -8,7 +8,7 @@ import qutip as qt
 import matplotlib.pyplot as plt
 #%%
 N = 30
-N2 = 3
+N2 = 2
 epsilon_m = 2*np.pi*1e-3*300.0  # maximum displacement rate
 alpha0 = 50  # maximum displacement before things break down
 Ec_GHz = 0.19267571  # measured anharmonicity
@@ -49,6 +49,10 @@ for beta, phi, theta in zip(betas, phis, thetas):
     plt.figure()
     plot_wigner(desired_state)
     print(desired_state.ptrace(1))
+    b = qt.Bloch()
+    b.add_states(desired_state.ptrace(1))
+    b.add_states(psif.ptrace(1))
+    b.show()
     plt.figure()
     plot_pulse(e, O)
 # %%

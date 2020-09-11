@@ -67,7 +67,7 @@ psif = sys.simulate_pulse_trotter(e, O, initial_state)
 fid = qt.fidelity(psif, target_state)
 print("\n\nSimulated fidelity to target state: %.5f\n\n" % fid)
 plt.figure(figsize=(5, 5), dpi=200)
-cd_grape_obj.plot_final_state()
+plot_wigner(psif)
 plt.title("Simulated final state")
 
 #%% 
