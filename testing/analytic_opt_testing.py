@@ -9,7 +9,7 @@ import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 #%%
-N = 150  # cavity hilbert space
+N = 1  # cavity hilbert space
 N2 = 2  # qubit hilbert space
 N_blocks = 1
 alpha = 1
@@ -74,6 +74,17 @@ diff = diff[:10, :10]  # they differ near the edges of the hilbert space
 #print(repr(diff))
 print(np.max(np.abs(diff)))
 #%%
+theta = 2
+phi = -.5
+dphi = 1e-3
+der_num = ((cd_grape_obj.R(phi + dphi, theta) -
+            cd_grape_obj.R(phi, theta))/np.abs(dphi))
+der_ana = cd_grape_obj.dphi_dR_mul(phi, theta)
+diff = der_num - der_ana
+diff = diff[:10, :10]  # they differ near the edges of the hilbert space
+#print(repr(diff))
+print(np.max(np.abs(diff)))
+#%%
 init_params = \
     np.array(np.concatenate([np.real(cd_grape_obj.alphas), np.imag(cd_grape_obj.alphas),
                              np.real(cd_grape_obj.betas), np.imag(
@@ -92,4 +103,11 @@ print(test_grad)
 print(f)
 print(f2)
 
+# %%
+sx = qt.sigmax()
+sy = qt.sigmay()
+sz = qt.sigmaz()
+# %%
+def R(phi, theta):
+    return (-1j*(theta/2.0)*(np.cos(phi)*sx + np.sin(phi)*sy)).expm()
 # %%
