@@ -90,22 +90,28 @@ class CD_grape:
 
     #derivative multipliers
     #todo: optimization with derivatives
-    def dalphar_dD_mul(self, alpha):
-        return (self.a.dag() - self.a - (np.conj(alpha) - alpha)/2.0)
+    def dalphar_dD(self, alpha):
+        return (self.a.dag() - self.a - (np.conj(alpha) - alpha)/2.0)*\
+            self.D(alpha)
 
-    def dalphai_dD_mul(self, alpha):
-        return 1j*(self.a.dag() + self.a - (np.conj(alpha) + alpha)/2.0)
+    def dalphai_dD(self, alpha):
+        return 1j*(self.a.dag() + self.a - (np.conj(alpha) + alpha)/2.0)*\
+            self.D(alpha)
 
-    def dbetar_dCD_mul(self, beta):
-        return 0.5*(self.sz*(self.a.dag() - self.a) - ((np.conj(beta) - beta)/4.0))
+    def dbetar_dCD(self, beta):
+        return 0.5*(self.sz*(self.a.dag() - self.a) - ((np.conj(beta) - beta)/4.0))*\
+            self.CD(beta)
 
-    def dbetai_dCD_mul(self, beta):
-        return 1j*0.5*(self.sz*(self.a.dag() + self.a) - ((np.conj(beta) + beta)/4.0))
+    def dbetai_dCD(self, beta):
+        return 1j*0.5*(self.sz*(self.a.dag() + self.a) - ((np.conj(beta) + beta)/4.0))*\
+            self.CD(beta)
 
-    def dtheta_dR_mul(self, phi, theta):
-        return (-1j/2.0)*(self.sx*np.cos(phi) + self.sy*np.sin(phi))
+    def dtheta_dR(self, phi, theta):
+        #return (-1j/2.0)*(self.sx*np.cos(phi) + self.sy*np.sin(phi))*self.R(phi, theta)
+        return -0.5*(np.sin(theta/2.0) + \
+            1j*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)*np.cos(theta/2.0))
     
-    def dphi_dR_mul(self, phi, theta):
+    def dphi_dR(self, phi, theta):
         return 1j*(np.sin(phi)*self.sx - np.cos(phi)*self.sy)*np.sin(theta/2.0)
 
     def U_block(self, alpha, beta, phi, theta):
