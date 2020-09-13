@@ -84,6 +84,7 @@ class CD_grape:
         #oo = qt.tensor(qt.identity(self.N), qt.ket2dm(qt.basis(self.N2, 1)))
         #return self.D(beta/2.0)*zz + self.D(-beta/2.0)*oo
 
+    #TODO: is it faster with non-exponential form?
     def R(self, phi, theta):
         return (-1j*(theta/2.0)*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)).expm()
 
@@ -105,8 +106,7 @@ class CD_grape:
         return (-1j/2.0)*(self.sx*np.cos(phi) + self.sy*np.sin(phi))
     
     def dphi_dR_mul(self, phi, theta):
-        return (-1j/2.0)*((np.sin(theta))*(self.sy*np.cos(phi)-self.sx*np.sin(phi)) +\
-            (1-np.cos(phi))*self.sz + np.cos(phi)*np.sin(phi)*(theta - np.sin(theta))*(self.sy - self.sx))
+        return 1j*(np.sin(phi)*self.sx - np.cos(phi)*self.sy)*np.sin(theta/2.0)
 
     def U_block(self, alpha, beta, phi, theta):
         U = self.CD(beta)*self.D(alpha)*self.R(phi, theta)
