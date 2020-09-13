@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 plt.rcParams.update({'font.size': 16, 'pdf.fonttype': 42, 'ps.fonttype': 42})
 from tqdm import tqdm
 #%%
+#TODO: Handle cases when phi, theta outside range.
 class System:
 
     #for now will use the same sigma and chop for the displacement and qubit pulses

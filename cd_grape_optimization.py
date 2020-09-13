@@ -11,6 +11,7 @@ from scipy.optimize import minimize
 import scipy.optimize
 from datetime import datetime
 
+#TODO: Handle cases when phi, theta outside range.
 
 class OptFinishedException(Exception):
     def __init__(self, msg, CD_grape_obj):
@@ -79,6 +80,9 @@ class CD_grape:
         #return self.R(0,np.pi)*((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
         #temp removing pi pulse from CD for analytic opt testing
         return ((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
+        #zz = qt.tensor(qt.identity(self.N),qt.ket2dm(qt.basis(self.N2,0)))
+        #oo = qt.tensor(qt.identity(self.N), qt.ket2dm(qt.basis(self.N2, 1)))
+        #return self.D(beta/2.0)*zz + self.D(-beta/2.0)*oo
 
     def R(self, phi, theta):
         return (-1j*(theta/2.0)*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)).expm()
@@ -92,17 +96,16 @@ class CD_grape:
         return 1j*(self.a.dag() + self.a - (np.conj(alpha) + alpha)/2.0)
 
     def dbetar_dCD_mul(self, beta):
-        return (self.a.dag() - self.a - (self.sz/2.0)*(np.conj(beta) - beta)/2.0)
+        return 0.5*(self.sz*(self.a.dag() - self.a) - ((np.conj(beta) - beta)/4.0))
 
     def dbetai_dCD_mul(self, beta):
-        return 1j*(self.a.dag() + self.a - (self.sz/2.0)*(np.conj(beta) + beta)/2.0)
+        return 1j*0.5*(self.sz*(self.a.dag() + self.a) - ((np.conj(beta) + beta)/4.0))
 
     def dtheta_dR_mul(self, phi, theta):
-        return (1j/2.0)*((np.sinc(theta/np.pi))*(self.sx*np.cos(phi)+self.sy*np.sin(phi))+\
-            (1 - np.sinc(theta/np.pi))*(self.sx*np.cos(phi)**2 + self.sy*np.sin(phi)**2))
+        return (-1j/2.0)*(self.sx*np.cos(phi) + self.sy*np.sin(phi))
     
     def dphi_dR_mul(self, phi, theta):
-        return (1j/2.0)*((np.sin(theta))*(self.sy*np.cos(phi)-self.sx*np.sin(phi)) +\
+        return (-1j/2.0)*((np.sin(theta))*(self.sy*np.cos(phi)-self.sx*np.sin(phi)) +\
             (1-np.cos(phi))*self.sz + np.cos(phi)*np.sin(phi)*(theta - np.sin(theta))*(self.sy - self.sx))
 
     def U_block(self, alpha, beta, phi, theta):
@@ -239,10 +242,10 @@ class CD_grape:
 
     #TODO: include final rotation and displacement
     def cost_function_analytic(self, parameters):
-        alphas_r = parameters[0:self.N_blocks]
-        alphas_i = parameters[self.N_blocks:2*self.N_blocks]
-        betas_r = parameters[2*self.N_blocks:3*self.N_blocks]
-        betas_i = parameters[3*self.N_blocks:4*self.N_blocks]
+        betas_r = parameters[0:self.N_blocks]
+        betas_i = parameters[self.N_blocks:2*self.N_blocks]
+        alphas_r = parameters[2*self.N_blocks:3*self.N_blocks]
+        alphas_i = parameters[3*self.N_blocks:4*self.N_blocks]
         phis = parameters[4*self.N_blocks:5*self.N_blocks]
         thetas = parameters[5*self.N_blocks:6*self.N_blocks]
         alphas = alphas_r + 1j*alphas_i
@@ -291,12 +294,12 @@ class CD_grape:
     #TODO: understand gtol and ftol
     def optimize_analytic(self, check=False, maxiter = 1e4, gtol=1e-4, ftol=1e-4):
         init_params = \
-        np.array(np.concatenate([np.real(self.alphas),np.imag(self.alphas),
-                  np.real(self.betas), np.imag(self.betas),
+        np.array(np.concatenate([np.real(self.betas),np.imag(self.betas),
+                  np.real(self.alphas), np.imag(self.alphas),
                   self.phis, self.thetas]),dtype=np.float64)
         bounds = np.concatenate(
-            [[(-self.max_alpha,self.max_alpha) for _ in range(2*N_blocks)],\
-            [(-self.max_beta,self.max_beta) for _ in range(2*N_blocks)],\
+            [[(-self.max_beta,self.max_beta) for _ in range(2*N_blocks)],\
+            [(-self.max_alpha,self.max_alpha) for _ in range(2*N_blocks)],\
             [(-1000,1000) for _ in range(N_blocks)],\
             [(-1000,1000) for _ in range(N_blocks)]])
             #note that for the cyclic variables the bounds are hard to define, you don't want to
