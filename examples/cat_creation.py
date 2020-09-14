@@ -34,8 +34,7 @@ cd_grape_obj.plot_target_state()
 plt.title("target state")
 #%% Doing the optimization
 #The alpha and beta scale are scales for the random initialization.
-#cd_grape_obj.randomize(alpha_scale=0, beta_scale=1)
-cd_grape_obj.thetas = np.array([np.pi/2.0 for _ in range(N_blocks + 1)])
+cd_grape_obj.randomize(alpha_scale=0.2, beta_scale=2)
 print("Randomized parameters:")
 #%%
 cd_grape_obj.print_info()
