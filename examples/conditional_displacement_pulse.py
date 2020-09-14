@@ -86,3 +86,5 @@ print("\n\nSimulated fidelity to target state: %.5f\n\n" % fid)
 plt.figure(figsize=(5, 5), dpi=200)
 cd_grape_obj.plot_final_state()
 plt.title("Simulated final state")
+
+# %%
