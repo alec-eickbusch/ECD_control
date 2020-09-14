@@ -19,6 +19,10 @@ class MyTakeStep(object):
     def __init__(self, cd_grape_obj, stepsize=1):
         self.stepsize = stepsize
         self.N_blocks = cd_grape_obj.N_blocks
+        self.beta_step_size = cd_grape_obj.beta_step_size
+        self.alpha_step_size = cd_grape_obj.alpha_step_size
+        self.phi_step_size = cd_grape_obj.phi_step_size
+        self.theta_step_size = cd_grape_obj.theta_step_size
 
     def __call__(self, x):
         s = self.stepsize
@@ -45,7 +49,10 @@ class CD_grape:
                  phis = None, thetas = None, 
                  max_alpha = 5, max_beta = 5,
                  saving_directory = None, name = 'CD_grape',
-                 term_fid = 0.999):
+                 term_fid = 0.999, beta_step_size = 1,
+                 alpha_step_size = 0.5, phi_step_size = np.pi/2.0,
+                 theta_step_size = np.pi/4.0,
+                 minimizer_options = {}, basinhopping_kwargs = {}):
 
         self.initial_state = initial_state
         self.target_state = target_state
@@ -64,6 +71,25 @@ class CD_grape:
         self.saving_directory = saving_directory
         self.name = name 
         self.term_fid = term_fid
+        self.beta_step_size = beta_step_size
+        self.alpha_step_size = alpha_step_size
+        self.phi_step_size = phi_step_size
+        self.theta_step_size = theta_step_size
+        self.minimizer_options = minimizer_options
+        self.basinhopping_kwargs = basinhopping_kwargs
+        #maximium number of iterations in L-BFGS-B.
+        if 'maxiter' not in self.minimizer_options:
+            self.minimizer_options['maxiter'] = 1e3
+        #note: ftol is basically relative percent difference in fidelity before optimization stops
+        #since "3 nines" will usually be enough, we will set it to 1e-5
+        if 'ftol' not in self.minimizer_options:
+            self.minimizer_options['ftol'] = 1e-5
+        #gtol is like the maximum gradient before optimization stops.
+        # I will set it one order of mag below ftol
+        if 'gtol' not in self.minimizer_options:
+            self.minimizer_options['gtol'] = 1e-6
+
+
 
         if self.initial_state is not None:
             self.N = self.initial_state.dims[0][0]
@@ -264,7 +290,7 @@ class CD_grape:
         self.phis = phis
         self.thetas = thetas
         f = self.fidelity(betas, alphas, phis, thetas)
-        print('fid: %.3f' % f, end='\r')
+        print('\rfid: %.3f' % f, end='')
         if self.term_fid is not None and f >= self.term_fid:
             raise OptFinishedException('Requested fidelity obtained', self)
         return -f
@@ -285,7 +311,9 @@ class CD_grape:
         self.thetas = thetas
         f, dbetar, dbetai, dalphar, dalphai, dphi, dtheta = self.fid_and_grad_fid(betas,alphas,phis,thetas)
         gradf = np.concatenate([dbetar, dbetai, dalphar,dalphai, dphi, dtheta])
-        print('fid: %.3f' % f, end='\r')
+        print('\rfid: %.3f' % f, end='')
+        if self.term_fid is not None and f >= self.term_fid:
+            raise OptFinishedException('Requested fidelity obtained', self)
         return (-f, -gradf)
     
     #TODO: if I only care about the cavity state, I can optimize on the partial trace of the
@@ -296,7 +324,7 @@ class CD_grape:
     #a unitary operaton away from each other, which would allow me to implement feedback for
     #preperation in the experiment.
     #TODO: implement and understand gtol and ftol
-    def optimize(self, maxiter = 1e4):
+    def optimize(self):
         init_params = \
         np.array(np.concatenate([np.real(self.betas),np.imag(self.betas),
                   np.real(self.alphas), np.imag(self.alphas),
@@ -309,7 +337,7 @@ class CD_grape:
         try:
             print("\n\nStarting optimization.\n\n")
             result = minimize(self.cost_function, x0=init_params, method='L-BFGS-B',
-                              bounds=bounds, jac=False, options={'maxiter': maxiter})
+                              bounds=bounds, jac=False, options=self.minimizer_options)
         except OptFinishedException as e:
             print("\n\ndesired fidelity reached.\n\n")
             fid = self.fidelity()
@@ -321,7 +349,7 @@ class CD_grape:
         return fid
 
     #TODO: understand gtol and ftol
-    def optimize_analytic(self, check=False, maxiter = 1e4, gtol=1e-9, ftol=1e-9):
+    def optimize_analytic(self, check=False):
         init_params = \
             np.array(np.concatenate([np.real(self.betas), np.imag(self.betas),
                                      np.real(self.alphas), np.imag(
@@ -337,7 +365,7 @@ class CD_grape:
         try:
             print("\n\nStarting optimization.\n\n")
             result = minimize(self.cost_function_analytic, x0=[init_params], method='L-BFGS-B',
-                              bounds=bounds, jac=True, options={'maxiter': maxiter, 'gtol': gtol, 'ftol': ftol})
+                              bounds=bounds, jac=True, options=self.minimizer_options)
         except OptFinishedException as e:
             print("\n\ndesired fidelity reached.\n\n")
             fid = self.fidelity()
@@ -348,6 +376,7 @@ class CD_grape:
             print('fidelity: ' + str(fid))
         return fid
 
+    #It would be nice to plot the different steps it's taking during the optimization.
     def optimize_analytic_basinhopping(self, check=False, maxiter=1e4, gtol=1e-9, ftol=1e-9):
         init_params = \
             np.array(np.concatenate([np.real(self.betas), np.imag(self.betas),
@@ -364,9 +393,10 @@ class CD_grape:
         try:
             mytakestep = MyTakeStep(self)
             print("\n\nStarting optimization.\n\n")
-            minimizer_kwargs = {'method':'L-BFGS-B', 'jac':True, 'bounds':bounds}
+            minimizer_kwargs = {'method':'L-BFGS-B', 'jac':True, 'bounds':bounds,\
+                 'options':self.minimizer_options}
             result = basinhopping(self.cost_function_analytic, x0=[init_params],\
-                                  minimizer_kwargs=minimizer_kwargs, niter=20,
+                                  minimizer_kwargs=minimizer_kwargs, niter=50,
                                   take_step=mytakestep)
         except OptFinishedException as e:
             print("\n\ndesired fidelity reached.\n\n")
