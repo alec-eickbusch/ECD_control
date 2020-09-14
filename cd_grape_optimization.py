@@ -7,7 +7,7 @@
 import numpy as np
 import qutip as qt 
 from CD_GRAPE.helper_functions import plot_wigner
-from scipy.optimize import minimize
+from scipy.optimize import minimize, basinhopping
 import scipy.optimize
 from datetime import datetime
 
@@ -86,7 +86,8 @@ class CD_grape:
 
     #TODO: is it faster with non-exponential form?
     def R(self, phi, theta):
-        return (-1j*(theta/2.0)*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)).expm()
+        #return (-1j*(theta/2.0)*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)).expm()
+        return np.cos(theta/2.0) - 1j*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)*np.sin(theta/2.0)
 
     #derivative multipliers
     #todo: optimization with derivatives
@@ -302,7 +303,7 @@ class CD_grape:
         return fid
 
     #TODO: understand gtol and ftol
-    def optimize_analytic(self, check=False, maxiter = 1e4, gtol=1e-4, ftol=1e-4):
+    def optimize_analytic(self, check=False, maxiter = 1e4, gtol=1e-9, ftol=1e-9):
         init_params = \
             np.array(np.concatenate([np.real(self.betas), np.imag(self.betas),
                                      np.real(self.alphas), np.imag(
@@ -319,6 +320,34 @@ class CD_grape:
             print("\n\nStarting optimization.\n\n")
             result = minimize(self.cost_function_analytic, x0=[init_params], method='L-BFGS-B',
                               bounds=bounds, jac=True, options={'maxiter': maxiter, 'gtol': gtol, 'ftol': ftol})
+        except OptFinishedException as e:
+            print("\n\ndesired fidelity reached.\n\n")
+            fid = self.fidelity()
+            print('fidelity: ' + str(fid))
+        else:
+            print("\n\noptimization failed to reach desired fidelity.\n\n")
+            fid = self.fidelity()
+            print('fidelity: ' + str(fid))
+        return fid
+
+    def optimize_analytic_basinhopping(self, check=False, maxiter=1e4, gtol=1e-9, ftol=1e-9):
+        init_params = \
+            np.array(np.concatenate([np.real(self.betas), np.imag(self.betas),
+                                     np.real(self.alphas), np.imag(
+                                         self.alphas),
+                                     self.phis, self.thetas]), dtype=np.float64)
+        bounds = np.concatenate(
+            [[(-self.max_beta, self.max_beta) for _ in range(2*self.N_blocks)],
+             [(-self.max_alpha, self.max_alpha)
+              for _ in range(2*self.N_blocks + 2)],
+             [(-np.pi, np.pi) for _ in range(self.N_blocks + 1)],
+             [(0, np.pi) for _ in range(self.N_blocks + 1)]])
+
+        try:
+            print("\n\nStarting optimization.\n\n")
+            minimizer_kwargs = {'method':'L-BFGS-B', 'jac':True, 'bounds':bounds}
+            result = basinhopping(self.cost_function_analytic, x0=[init_params],\
+                                  minimizer_kwargs=minimizer_kwargs, niter=20)
         except OptFinishedException as e:
             print("\n\ndesired fidelity reached.\n\n")
             fid = self.fidelity()
