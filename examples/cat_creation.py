@@ -8,17 +8,17 @@ import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 #%%
-N = 60 #cavity hilbert space 
+N = 50 #cavity hilbert space 
 N2 = 2 #qubit hilbert space
-alpha = 2 #cat alpha
+alpha = 2 + 1j #cat alpha
 N_blocks = 4
 initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
 target_state = qt.tensor((qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit(),\
                           qt.basis(N2,0))
 term_fid = 0.99
 #max alpha and beta are the maximum values of alpha and beta for optimization
-max_alpha = 5
-max_beta = 5
+max_alpha = 2
+max_beta = 6
 name = "Cat creation"
 saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_grape_parameters\\"
 cd_grape_obj = CD_grape(initial_state, target_state, N_blocks,\
@@ -34,10 +34,12 @@ cd_grape_obj.plot_target_state()
 plt.title("target state")
 #%% Doing the optimization
 #The alpha and beta scale are scales for the random initialization.
-cd_grape_obj.randomize(alpha_scale=0.5, beta_scale=1)
+#cd_grape_obj.randomize(alpha_scale=0, beta_scale=1)
+cd_grape_obj.thetas = np.array([np.pi/2.0 for _ in range(N_blocks + 1)])
 print("Randomized parameters:")
+#%%
 cd_grape_obj.print_info()
-cd_grape_obj.optimize_analytic()
+cd_grape_obj.optimize_analytic_basinhopping()
 print("after optimization:")
 cd_grape_obj.print_info()
 #%% plotting the final state
