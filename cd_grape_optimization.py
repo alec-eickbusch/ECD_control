@@ -26,15 +26,12 @@ class MyTakeStep(object):
 
     def __call__(self, x):
         s = self.stepsize
-        betas_step_size = 0.5*s
-        alphas_step_size = 0.2*s
-        thetas_step_size = (np.pi/4.0)*s
-        phis_step_size = (np.pi/2.0)*s
-        x[:2*self.N_blocks] += np.random.uniform(-betas_step_size, betas_step_size)
-        x[2*self.N_blocks:(4*self.N_blocks + 2)] += np.random.uniform(-alphas_step_size, alphas_step_size)
-        x[(4*self.N_blocks + 2):(5*self.N_blocks + 3)] += np.random.uniform(-phis_step_size, phis_step_size)
-        x[(5*self.N_blocks + 3):] += np.random.uniform(-thetas_step_size, thetas_step_size)
+        x[:2*self.N_blocks] += np.random.uniform(-s*self.beta_step_size, s*self.beta_step_size)
+        x[2*self.N_blocks:(4*self.N_blocks + 2)] += np.random.uniform(-s*self.alpha_step_size, s*self.alpha_step_size)
+        x[(4*self.N_blocks + 2):(5*self.N_blocks + 3)] += np.random.uniform(-s*self.phi_step_size, s*self.phi_step_size)
+        x[(5*self.N_blocks + 3):] += np.random.uniform(-s*self.theta_step_size, s*self.theta_step_size)
         return x
+
 class OptFinishedException(Exception):
     def __init__(self, msg, CD_grape_obj):
         super(OptFinishedException, self).__init__(msg)
