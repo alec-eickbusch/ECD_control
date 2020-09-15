@@ -26,7 +26,7 @@ cd_grape_obj.plot_target_state()
 plt.title("target state")
 #%% First, we trivially get to the target state with a single conditional displacement
 cd_grape_obj.alphas = [0,0]
-cd_grape_obj.betas = [beta]
+cd_grape_obj.betas = [-beta]
 cd_grape_obj.phis = [0,0]
 cd_grape_obj.thetas = [0,0]
 cd_grape_obj.print_info()
