@@ -15,7 +15,7 @@ N_blocks = 5
 initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
 target_state = qt.tensor((qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit(),\
                           qt.basis(N2,0))
-term_fid = 0.99
+term_fid = 0.999
 #max alpha and beta are the maximum values of alpha and beta for optimization
 max_alpha = 2
 max_beta = 6
