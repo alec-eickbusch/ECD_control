@@ -7,10 +7,46 @@
 import numpy as np
 import qutip as qt 
 from CD_GRAPE.helper_functions import plot_wigner
-from scipy.optimize import minimize
+from scipy.optimize import minimize, basinhopping
 import scipy.optimize
 from datetime import datetime
 
+#TODO: Handle cases when phi, theta outside range.
+
+  #custom step-taking class for basinhopping optimization.
+  #TODO: make the step sizes changeable
+class MyTakeStep(object):
+    def __init__(self, cd_grape_obj, stepsize=1):
+        self.stepsize = stepsize
+        self.N_blocks = cd_grape_obj.N_blocks
+        self.beta_step_size = cd_grape_obj.beta_step_size
+        self.alpha_step_size = cd_grape_obj.alpha_step_size
+        self.phi_step_size = cd_grape_obj.phi_step_size
+        self.theta_step_size = cd_grape_obj.theta_step_size
+
+    def __call__(self, x):
+        s = self.stepsize
+        x[:2*self.N_blocks] += np.random.uniform(-s*self.beta_step_size, s*self.beta_step_size)
+        x[2*self.N_blocks:(4*self.N_blocks + 2)] += np.random.uniform(-s*self.alpha_step_size, s*self.alpha_step_size)
+        x[(4*self.N_blocks + 2):(5*self.N_blocks + 3)] += np.random.uniform(-s*self.phi_step_size, s*self.phi_step_size)
+        x[(5*self.N_blocks + 3):] += np.random.uniform(-s*self.theta_step_size, s*self.theta_step_size)
+        return x
+
+#custom basinhopping bounds for constrained global optimization
+class MyBounds(object):
+    def __init__(self, cd_grape_obj):
+        self.max_beta = cd_grape_obj.max_beta
+        self.max_alpha = cd_grape_obj.max_alpha
+        self.N_blocks = cd_grape_obj.N_blocks
+
+    def __call__(self, **kwargs):
+        x = kwargs["x_new"]
+        beta_min_constraint = bool(np.all(x[:2*self.N_blocks] >= -self.max_beta))
+        beta_max_constraint = bool(np.all(x[:2*self.N_blocks] <= self.max_beta))
+        alpha_min_constraint = bool(np.all(x[2*self.N_blocks:(4*self.N_blocks + 2)] >= -self.max_alpha))
+        alpha_max_constraint = bool(np.all(x[2*self.N_blocks:(4*self.N_blocks + 2)] <= self.max_alpha))
+        return beta_min_constraint and beta_max_constraint and\
+             alpha_min_constraint and alpha_max_constraint
 
 class OptFinishedException(Exception):
     def __init__(self, msg, CD_grape_obj):
@@ -26,7 +62,10 @@ class CD_grape:
                  phis = None, thetas = None, 
                  max_alpha = 5, max_beta = 5,
                  saving_directory = None, name = 'CD_grape',
-                 term_fid = 0.999):
+                 term_fid = 0.999, beta_step_size = 2,
+                 alpha_step_size = 1, phi_step_size = 2*np.pi,
+                 theta_step_size = np.pi, analytic = True,
+                 minimizer_options = {}, basinhopping_kwargs = {}):
 
         self.initial_state = initial_state
         self.target_state = target_state
@@ -45,6 +84,29 @@ class CD_grape:
         self.saving_directory = saving_directory
         self.name = name 
         self.term_fid = term_fid
+        self.beta_step_size = beta_step_size
+        self.alpha_step_size = alpha_step_size
+        self.phi_step_size = phi_step_size
+        self.theta_step_size = theta_step_size
+        self.analytic = analytic
+        self.minimizer_options = minimizer_options
+        self.basinhopping_kwargs = basinhopping_kwargs
+        #maximium number of iterations in L-BFGS-B.
+        if 'maxiter' not in self.minimizer_options:
+            self.minimizer_options['maxiter'] = 1e3
+        #note: ftol is relative percent difference in fidelity before optimization stops
+        if 'ftol' not in self.minimizer_options:
+            self.minimizer_options['ftol'] = 1e-5
+        #gtol is like the maximum gradient before optimization stops.
+        if 'gtol' not in self.minimizer_options:
+            self.minimizer_options['gtol'] = 1e-5
+
+        if 'niter' not in self.basinhopping_kwargs:
+            self.basinhopping_kwargs['niter'] = 50
+        if 'T' not in self.basinhopping_kwargs:
+            self.basinhopping_kwargs['T'] = 0.1
+
+
 
         if self.initial_state is not None:
             self.N = self.initial_state.dims[0][0]
@@ -56,17 +118,17 @@ class CD_grape:
             self.sy = 1j*(self.q.dag() - self.q)
             self.n = self.a.dag()*self.a
         
-    def randomize(self, alpha_scale = None, beta_scale=None):
-        alpha_scale = self.max_alpha if alpha_scale is None else alpha_scale
+    def randomize(self, beta_scale=None, alpha_scale=None):
         beta_scale = self.max_beta if beta_scale is None else beta_scale
+        alpha_scale = self.max_alpha if alpha_scale is None else alpha_scale 
+        ang_beta = np.random.uniform(-np.pi, np.pi, self.N_blocks)
+        rho_beta = np.random.uniform(-beta_scale, beta_scale, self.N_blocks)
         ang_alpha = np.random.uniform(-np.pi,np.pi,self.N_blocks+1)
         rho_alpha = np.random.uniform(-alpha_scale, alpha_scale, self.N_blocks+1)
-        ang_beta = np.random.uniform(-np.pi,np.pi,self.N_blocks)
-        rho_beta = np.random.uniform(-beta_scale, beta_scale, self.N_blocks)
         phis = np.random.uniform(-np.pi, np.pi, self.N_blocks+1)
         thetas = np.random.uniform(0,np.pi,self.N_blocks+1)
-        self.alphas = np.array(np.exp(1j*ang_alpha)*rho_alpha, dtype=np.complex128)
         self.betas = np.array(np.exp(1j*ang_beta)*rho_beta, dtype=np.complex128)
+        self.alphas = np.array(np.exp(1j*ang_alpha)*rho_alpha, dtype=np.complex128)
         self.phis = np.array(phis, dtype=np.float64)
         self.thetas = np.array(thetas, dtype=np.float64)
 
@@ -76,69 +138,84 @@ class CD_grape:
     def CD(self, beta):
         if beta == 0:
             return qt.tensor(qt.identity(self.N),qt.identity(self.N2))
-        return self.R(0,np.pi)*((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
+        #return self.R(0,np.pi)*((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
+        #temp removing pi pulse from CD for analytic opt testing
+        return ((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
+        #zz = qt.tensor(qt.identity(self.N),qt.ket2dm(qt.basis(self.N2,0)))
+        #oo = qt.tensor(qt.identity(self.N), qt.ket2dm(qt.basis(self.N2, 1)))
+        #return self.D(beta/2.0)*zz + self.D(-beta/2.0)*oo
 
+    #TODO: is it faster with non-exponential form?
     def R(self, phi, theta):
-        return (-1j*(theta/2.0)*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)).expm()
+        #return (-1j*(theta/2.0)*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)).expm()
+        return np.cos(theta/2.0) - 1j*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)*np.sin(theta/2.0)
 
     #derivative multipliers
     #todo: optimization with derivatives
-    def dalphar_dD_mul(self, alpha):
-        return (self.a.dag() - self.a - (np.conj(alpha) - alpha)/2.0)
+    def dalphar_dD(self, alpha):
+        return (self.a.dag() - self.a - (np.conj(alpha) - alpha)/2.0)*\
+            self.D(alpha)
 
-    def dalphai_dD_mul(self, alpha):
-        return 1j*(self.a.dag() + self.a - (np.conj(alpha) + alpha)/2.0)
+    def dalphai_dD(self, alpha):
+        return 1j*(self.a.dag() + self.a - (np.conj(alpha) + alpha)/2.0)*\
+            self.D(alpha)
 
-    def dbetar_dCD_mul(self, beta):
-        return (self.a.dag() - self.a - (self.sz/2.0)*(np.conj(beta) - beta)/2.0)
+    def dbetar_dCD(self, beta):
+        return 0.5*(self.sz*(self.a.dag() - self.a) - ((np.conj(beta) - beta)/4.0))*\
+            self.CD(beta)
 
-    def dbetai_dCD_mul(self, beta):
-        return 1j*(self.a.dag() + self.a - (self.sz/2.0)*(np.conj(beta) + beta)/2.0)
+    def dbetai_dCD(self, beta):
+        return 1j*0.5*(self.sz*(self.a.dag() + self.a) - ((np.conj(beta) + beta)/4.0))*\
+            self.CD(beta)
 
-    def dtheta_dR_mul(self, phi, theta):
-        return (1j/2.0)*((np.sinc(theta/np.pi))*(self.sx*np.cos(phi)+self.sy*np.sin(phi))+\
-            (1 - np.sinc(theta/np.pi))*(self.sx*np.cos(phi)**2 + self.sy*np.sin(phi)**2))
+    def dtheta_dR(self, phi, theta):
+        #return (-1j/2.0)*(self.sx*np.cos(phi) + self.sy*np.sin(phi))*self.R(phi, theta)
+        return -0.5*(np.sin(theta/2.0) + \
+            1j*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)*np.cos(theta/2.0))
     
-    def dphi_dR_mul(self, phi, theta):
-        return (1j/2.0)*((np.sin(theta))*(self.sy*np.cos(phi)-self.sx*np.sin(phi)) +\
-            (1-np.cos(phi))*self.sz + np.cos(phi)*np.sin(phi)*(theta - np.sin(theta))*(self.sy - self.sx))
+    def dphi_dR(self, phi, theta):
+        return 1j*(np.sin(phi)*self.sx - np.cos(phi)*self.sy)*np.sin(theta/2.0)
 
-    def U_block(self, alpha, beta, phi, theta):
+    def U_block(self, beta, alpha, phi, theta):
         U = self.CD(beta)*self.D(alpha)*self.R(phi, theta)
         return U
 
-    def U_i_block(self, i, alphas=None,betas=None,phis=None,thetas=None):
-        alphas = self.alphas if alphas is None else alphas
+    def U_i_block(self, i, betas=None, alphas=None, phis=None, thetas=None):
         betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
         if i == self.N_blocks:
             beta = 0
         else:
             beta = betas[i]
-        return self.U_block(alphas[i], beta, phis[i], thetas[i])
+        return self.U_block(beta, alphas[i], phis[i], thetas[i])
 
-    def U_tot(self, alphas,betas,phis,thetas):
+    def U_tot(self, betas, alphas, phis, thetas):
         U = qt.tensor(qt.identity(self.N),qt.identity(self.N2))
         for i in range(self.N_blocks + 1):
-            U = self.U_i_block(i, alphas, betas, phis, thetas) * U
+            U = self.U_i_block(i, betas, alphas, phis, thetas) * U
         return U
 
     #TODO: work out optimization with the derivatives, include block # N_blocks + 1
-    def forward_states(self, alphas, betas, phis, thetas, aux_params):
+    def forward_states(self, betas, alphas, phis, thetas):
         psi_fwd = [self.initial_state]
+        #blocks
         for i in range(self.N_blocks):
             psi_fwd.append(self.R(phis[i],thetas[i])*psi_fwd[-1])
             psi_fwd.append(self.D(alphas[i])*psi_fwd[-1])
             psi_fwd.append(self.CD(betas[i])*psi_fwd[-1])
-        for i in range(len(self.aux_ops)):
-            psi_fwd.append((1j*aux_params[i]*self.aux_ops[i]).expm()*psi_fwd[-1])
+        #final rotation and displacement
+        psi_fwd.append(self.R(phis[-1], thetas[-1])*psi_fwd[-1])
+        psi_fwd.append(self.D(alphas[-1])*psi_fwd[-1])
         return psi_fwd
     
-    def reverse_states(self, alphas, betas, phis, thetas, aux_params):
+    def reverse_states(self, betas, alphas, phis, thetas):
         psi_bwd = [self.target_state.dag()]
-        for i in np.arange(len(self.aux_ops))[::-1]:
-            psi_bwd.append(psi_bwd[-1]*(1j*aux_params[i]*self.aux_ops[i]).expm())
+        #final rotation and displacement
+        psi_bwd.append(psi_bwd[-1]*self.D(alphas[-1]))
+        psi_bwd.append(psi_bwd[-1]*self.R(phis[-1], thetas[-1]))
+        #blocks
         for i in np.arange(self.N_blocks)[::-1]:
             psi_bwd.append(psi_bwd[-1]*self.CD(betas[i]))
             psi_bwd.append(psi_bwd[-1]*self.D(alphas[i]))
@@ -146,31 +223,31 @@ class CD_grape:
         return psi_bwd
 
     #TODO: Modify for aux params
-    def fid_and_grad_fid(self, alphas, betas, phis, thetas):
-        psi_fwd = self.forward_states(alphas, betas, phis, thetas)
-        psi_bwd = self.reverse_states(alphas, betas, phis, thetas)
+    def fid_and_grad_fid(self, betas, alphas, phis, thetas):
+        psi_fwd = self.forward_states(betas, alphas, phis, thetas)
+        psi_bwd = self.reverse_states(betas, alphas, phis, thetas)
         overlap = (psi_bwd[0]*psi_fwd[-1]).full()[0][0] #might be complex
         fid = np.abs(overlap)**2
         
-        dalphar = np.zeros(N_blocks, dtype=np.complex128)
-        dalphai = np.zeros(N_blocks, dtype=np.complex128)
-        dbetar = np.zeros(N_blocks, dtype=np.complex128)
-        dbetai = np.zeros(N_blocks, dtype=np.complex128)
-        dphi = np.zeros(N_blocks, dtype=np.complex128)
-        dtheta = np.zeros(N_blocks, dtype=np.complex128)
+        dbetar = np.zeros(self.N_blocks, dtype=np.complex128)
+        dbetai = np.zeros(self.N_blocks, dtype=np.complex128)  
+        dalphar = np.zeros(self.N_blocks+1, dtype=np.complex128)
+        dalphai = np.zeros(self.N_blocks+1, dtype=np.complex128)
+        dphi = np.zeros(self.N_blocks+1, dtype=np.complex128)
+        dtheta = np.zeros(self.N_blocks+1, dtype=np.complex128)
 
-        for i in range(self.N_blocks): #question: do I take the real part?
+        for i in range(self.N_blocks + 1):
             for j in [1,2,3]:
                 k = 3*i + j
                 if j == 1:
-                    dphi[i] = (psi_bwd[-(k+1)]*self.dphi_dR_mul(phis[i], thetas[i])*psi_fwd[k]).full()[0][0]
-                    dtheta[i] = (psi_bwd[-(k+1)]*self.dtheta_dR_mul(phis[i], thetas[i])*psi_fwd[k]).full()[0][0]
+                    dphi[i] = (psi_bwd[-(k+1)]*self.dphi_dR(phis[i], thetas[i])*psi_fwd[k-1]).full()[0][0]
+                    dtheta[i] = (psi_bwd[-(k+1)]*self.dtheta_dR(phis[i], thetas[i])*psi_fwd[k-1]).full()[0][0]
                 if j==2:
-                    dalphar[i] = (psi_bwd[-(k+1)]*self.dalphar_dD_mul(alphas[i])*psi_fwd[k]).full()[0][0]
-                    dalphai[i] = (psi_bwd[-(k+1)]*self.dalphai_dD_mul(alphas[i])*psi_fwd[k]).full()[0][0]
-                if j == 3:
-                    dbetar[i] = (psi_bwd[-(k+1)]*self.dbetar_dCD_mul(betas[i])*psi_fwd[k]).full()[0][0]
-                    dbetai[i] = (psi_bwd[-(k+1)]*self.dbetai_dCD_mul(betas[i])*psi_fwd[k]).full()[0][0]
+                    dalphar[i] = (psi_bwd[-(k+1)]*self.dalphar_dD(alphas[i])*psi_fwd[k-1]).full()[0][0]
+                    dalphai[i] = (psi_bwd[-(k+1)]*self.dalphai_dD(alphas[i])*psi_fwd[k-1]).full()[0][0]
+                if j == 3 and i<self.N_blocks:
+                    dbetar[i] = (psi_bwd[-(k+1)]*self.dbetar_dCD(betas[i])*psi_fwd[k-1]).full()[0][0]
+                    dbetai[i] = (psi_bwd[-(k+1)]*self.dbetai_dCD(betas[i])*psi_fwd[k-1]).full()[0][0]
                     
         dalphar = 2*np.abs(overlap)*np.real(overlap*np.conj(dalphar))/np.abs(overlap)
         dalphai = 2*np.abs(overlap)*np.real(overlap*np.conj(dalphai))/np.abs(overlap)
@@ -179,11 +256,11 @@ class CD_grape:
         dphi = 2*np.abs(overlap)*np.real(overlap*np.conj(dphi))/np.abs(overlap)
         dtheta = 2*np.abs(overlap)*np.real(overlap*np.conj(dtheta))/np.abs(overlap)
  
-        return fid, dalphar, dalphai, dbetar, dbetai, dphi, dtheta
+        return fid, dbetar, dbetai, dalphar, dalphai, dphi, dtheta
 
-    def final_state(self, alphas=None,betas=None,phis=None,thetas=None):
-        alphas = self.alphas if alphas is None else alphas
+    def final_state(self, betas=None, alphas=None,phis=None,thetas=None):
         betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
         psi = self.initial_state
@@ -194,12 +271,12 @@ class CD_grape:
                 psi = self.CD(betas[i])*psi
         return psi
     
-    def fidelity(self, alphas=None, betas=None, phis = None, thetas=None):
-        alphas = self.alphas if alphas is None else alphas
+    def fidelity(self, betas=None,alphas=None,  phis=None, thetas=None):
         betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
-        overlap =  (self.target_state.dag()*self.final_state(alphas,betas,phis,thetas)).full()[0][0]
+        overlap =  (self.target_state.dag()*self.final_state(betas,alphas,phis,thetas)).full()[0][0]
         return np.abs(overlap)**2
     
     def plot_initial_state(self):
@@ -225,33 +302,39 @@ class CD_grape:
         betas = betas_r + 1j*betas_i
         #temp.
         #TODO: later, implement more sophisticated saving and real time information.
-        self.alphas = alphas
-        self.betas = betas
-        self.phis = phis
-        self.thetas = thetas
-        f = self.fidelity(alphas,betas,phis,thetas)
-        print('fid: %.3f' % f, end='\r')
+        if f > self.best_f:
+            self.best_f = f
+            self.betas = betas
+            self.alphas = alphas
+            self.phis = phis
+            self.thetas = thetas
+        f = self.fidelity(betas, alphas, phis, thetas)
+        print('\rfid: %.3f' % f, end='')
         if self.term_fid is not None and f >= self.term_fid:
             raise OptFinishedException('Requested fidelity obtained', self)
         return -f
 
     #TODO: include final rotation and displacement
     def cost_function_analytic(self, parameters):
-        alphas_r = parameters[0:self.N_blocks]
-        alphas_i = parameters[self.N_blocks:2*self.N_blocks]
-        betas_r = parameters[2*self.N_blocks:3*self.N_blocks]
-        betas_i = parameters[3*self.N_blocks:4*self.N_blocks]
-        phis = parameters[4*self.N_blocks:5*self.N_blocks]
-        thetas = parameters[5*self.N_blocks:6*self.N_blocks]
+        betas_r = parameters[0:self.N_blocks]
+        betas_i = parameters[self.N_blocks:2*self.N_blocks]
+        alphas_r = parameters[2*self.N_blocks:(3*self.N_blocks + 1)]
+        alphas_i = parameters[(3*self.N_blocks + 1):(4*self.N_blocks + 2)]
+        phis = parameters[(4*self.N_blocks + 2):(5*self.N_blocks + 3)]
+        thetas = parameters[(5*self.N_blocks + 3):]
         alphas = alphas_r + 1j*alphas_i
         betas = betas_r + 1j*betas_i
-        self.alphas = alphas
-        self.betas = betas
-        self.phis = phis
-        self.thetas = thetas
-        f, dalphar, dalphai, dbetar, dbetai, dphi, dtheta = self.fid_and_grad_fid(alphas,betas,phis,thetas)
-        gradf = np.concatenate([dalphar,dalphai, dbetar, dbetai, dphi, dtheta])
-        print('fid: %.3f' % f, end='\r')
+        f, dbetar, dbetai, dalphar, dalphai, dphi, dtheta = self.fid_and_grad_fid(betas,alphas,phis,thetas)
+        gradf = np.concatenate([dbetar, dbetai, dalphar,dalphai, dphi, dtheta])
+        print('\rfid: %.3f' % f, end='')
+        if f > self.best_f:
+            self.best_f = f
+            self.betas = betas
+            self.alphas = alphas
+            self.phis = phis
+            self.thetas = thetas
+        if self.term_fid is not None and f >= self.term_fid:
+            raise OptFinishedException('Requested fidelity obtained', self)
         return (-f, -gradf)
     
     #TODO: if I only care about the cavity state, I can optimize on the partial trace of the
@@ -261,47 +344,54 @@ class CD_grape:
     #then somhow I can optimize that the cavity state conditioned on g or e is only 
     #a unitary operaton away from each other, which would allow me to implement feedback for
     #preperation in the experiment.
-    #TODO: implement and understand gtol and ftol
-    def optimize(self, maxiter = 1e4):
+    def optimize(self):
         init_params = \
-        np.array(np.concatenate([np.real(self.betas),np.imag(self.betas),
-                  np.real(self.alphas), np.imag(self.alphas),
-                  self.phis, self.thetas]),dtype=np.float64)
+            np.array(np.concatenate([np.real(self.betas), np.imag(self.betas),
+                                     np.real(self.alphas), np.imag(
+                                         self.alphas),
+                                     self.phis, self.thetas]), dtype=np.float64)
         bounds = np.concatenate(
-            [[(-self.max_beta,self.max_beta) for _ in range(2*self.N_blocks)],\
-            [(-self.max_alpha,self.max_alpha) for _ in range(2*self.N_blocks + 2)],\
-            [(-np.inf,np.inf) for _ in range(self.N_blocks + 1)],\
-            [(-np.inf,np.inf) for _ in range(self.N_blocks + 1)]])
+            [[(-self.max_beta, self.max_beta) for _ in range(2*self.N_blocks)],
+             [(-self.max_alpha, self.max_alpha)
+              for _ in range(2*self.N_blocks + 2)],
+             [(-np.inf, np.inf) for _ in range(self.N_blocks + 1)],
+             [(-np.inf, np.inf) for _ in range(self.N_blocks + 1)]])
+
+        def callback_fun(x, f, accepted):     
+            self.basinhopping_num += 1
+            print(" basin number %d at minimum %.4f. accepted: %d" %\
+                 (self.basinhopping_num,f, int(accepted)))
         try:
+            mytakestep = MyTakeStep(self)
+            mybounds = MyBounds(self)
             print("\n\nStarting optimization.\n\n")
-            result = minimize(self.cost_function, x0=init_params, method='L-BFGS-B',
-                              bounds=bounds, jac=False, options={'maxiter': maxiter})
+            minimizer_kwargs = {'method':'L-BFGS-B', 'jac':True, 'bounds':bounds,\
+                 'options':self.minimizer_options}
+            cost_function = self.cost_function_analytic if self.analytic else self.cost_function
+            self.basinhopping_num = 0
+            self.best_f = 0
+            #The first round of optimization: Basinhopping
+            basinhopping(cost_function, x0=[init_params],\
+                        minimizer_kwargs=minimizer_kwargs,\
+                        take_step=mytakestep, accept_test=mybounds,\
+                        callback=callback_fun, **self.basinhopping_kwargs)
+            #possible: second round of optimization with lower gtol and ftol
+            #would be nice to do this automatically. 
+            #The second round of optimization: Pure BFGS with a much lower ftol
+            #minimizer_options_2 = self.minimizer_options
+            #minimizer_options_2['ftol'] = 1e-6
+            #minimizer_options_2['gtol'] = 1e-6
+            #minimize(self.cost_function_analytic, x0=[init_params], method='L-BFGS-B',
+                     #bounds=bounds, jac=True, options=minimizer_options_2)
         except OptFinishedException as e:
             print("\n\ndesired fidelity reached.\n\n")
             fid = self.fidelity()
-            print('fidelity: ' + str(fid))
+            print('Best fidelity found: ' + str(fid))
         else:
             print("\n\noptimization failed to reach desired fidelity.\n\n")
             fid = self.fidelity()
-            print('fidelity: ' + str(fid))
+            print('Best fidelity found: ' + str(fid))
         return fid
-
-    #TODO: understand gtol and ftol
-    def optimize_analytic(self, check=False, maxiter = 1e4, gtol=1e-4, ftol=1e-4):
-        init_params = \
-        np.array(np.concatenate([np.real(self.alphas),np.imag(self.alphas),
-                  np.real(self.betas), np.imag(self.betas),
-                  self.phis, self.thetas]),dtype=np.float64)
-        bounds = np.concatenate(
-            [[(-self.max_alpha,self.max_alpha) for _ in range(2*N_blocks)],\
-            [(-self.max_beta,self.max_beta) for _ in range(2*N_blocks)],\
-            [(-1000,1000) for _ in range(N_blocks)],\
-            [(-1000,1000) for _ in range(N_blocks)]])
-            #note that for the cyclic variables the bounds are hard to define, you don't want to
-            #get stuck at the edge. For now, just give them enough room to move around.
-        result = minimize(self.cost_function_analytic,x0=[init_params],method='L-BFGS-B',
-                          bounds = bounds, jac=True, options={'maxiter':maxiter,'gtol':gtol,'ftol':ftol})
-        return result
 
     def save(self):
         datestr = datetime.now().strftime('%Y%m%d_%H_%M_%S')
