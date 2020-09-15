@@ -65,6 +65,7 @@ class CD_grape:
                  term_fid = 0.999, beta_step_size = 2,
                  alpha_step_size = 1, phi_step_size = 2*np.pi,
                  theta_step_size = np.pi, analytic = True,
+                 beta_penalty_multiplier = 0,
                  minimizer_options = {}, basinhopping_kwargs = {}):
 
         self.initial_state = initial_state
@@ -89,6 +90,7 @@ class CD_grape:
         self.phi_step_size = phi_step_size
         self.theta_step_size = theta_step_size
         self.analytic = analytic
+        self.beta_penalty_multiplier = beta_penalty_multiplier
         self.minimizer_options = minimizer_options
         self.basinhopping_kwargs = basinhopping_kwargs
         #maximium number of iterations in L-BFGS-B.
@@ -96,13 +98,13 @@ class CD_grape:
             self.minimizer_options['maxiter'] = 1e3
         #note: ftol is relative percent difference in fidelity before optimization stops
         if 'ftol' not in self.minimizer_options:
-            self.minimizer_options['ftol'] = 1e-5
+            self.minimizer_options['ftol'] = 5e-4
         #gtol is like the maximum gradient before optimization stops.
         if 'gtol' not in self.minimizer_options:
-            self.minimizer_options['gtol'] = 1e-5
+            self.minimizer_options['gtol'] = 5e-4
 
         if 'niter' not in self.basinhopping_kwargs:
-            self.basinhopping_kwargs['niter'] = 50
+            self.basinhopping_kwargs['niter'] = 20
         if 'T' not in self.basinhopping_kwargs:
             self.basinhopping_kwargs['T'] = 0.1
 
@@ -300,7 +302,6 @@ class CD_grape:
         thetas = parameters[(5*self.N_blocks + 3):]
         alphas = alphas_r + 1j*alphas_i
         betas = betas_r + 1j*betas_i
-        #temp.
         #TODO: later, implement more sophisticated saving and real time information.
         f = self.fidelity(betas, alphas, phis, thetas)
         print('\rfid: %.3f' % f, end='')
@@ -326,7 +327,15 @@ class CD_grape:
         betas = betas_r + 1j*betas_i
         f, dbetar, dbetai, dalphar, dalphai, dphi, dtheta = self.fid_and_grad_fid(betas,alphas,phis,thetas)
         gradf = np.concatenate([dbetar, dbetai, dalphar,dalphai, dphi, dtheta])
-        print('\rfid: %.3f' % f, end='')
+        if self.bpm > 0:
+            beta_penalty = self.bpm*(np.sum(np.abs(betas_r)) + np.sum(np.abs(betas_i)))
+            grad_beta_penalty = self.bpm*np.concatenate([\
+                betas_r/np.abs(betas_r), betas_i/np.abs(betas_i), np.zeros(4*self.N_blocks + 4)])
+            print('\rfid: %.4f beta penalty: %.4f' % (f,beta_penalty), end='')
+        else:
+            print('\rfid: %.4f' % f, end='')
+            beta_penalty = 0
+            grad_beta_penalty = 0
         if f > self.best_f:
             self.best_f = f
             self.betas = betas
@@ -335,7 +344,7 @@ class CD_grape:
             self.thetas = thetas
         if self.term_fid is not None and f >= self.term_fid:
             raise OptFinishedException('Requested fidelity obtained', self)
-        return (-f, -gradf)
+        return (-(f - beta_penalty), -(gradf - grad_beta_penalty))
     
     #TODO: if I only care about the cavity state, I can optimize on the partial trace of the
     #cavity. Then, in the experiment, I can measure and reset the qubit.
@@ -344,6 +353,14 @@ class CD_grape:
     #then somhow I can optimize that the cavity state conditioned on g or e is only 
     #a unitary operaton away from each other, which would allow me to implement feedback for
     #preperation in the experiment.
+
+    def flatten_parameters(self):
+        return np.array(np.concatenate([np.real(self.betas), np.imag(self.betas),
+                                        np.real(self.alphas), np.imag(self.alphas),
+                                        self.phis, self.thetas]), dtype=np.float64)
+
+    def unflatten_parameters(self):
+
     def optimize(self):
         init_params = \
             np.array(np.concatenate([np.real(self.betas), np.imag(self.betas),
@@ -359,7 +376,7 @@ class CD_grape:
 
         def callback_fun(x, f, accepted):     
             self.basinhopping_num += 1
-            print(" basin number %d at minimum %.4f. accepted: %d" %\
+            print(" basin #%d at min %.4f. accepted: %d" %\
                  (self.basinhopping_num,f, int(accepted)))
         try:
             mytakestep = MyTakeStep(self)
@@ -367,14 +384,37 @@ class CD_grape:
             print("\n\nStarting optimization.\n\n")
             minimizer_kwargs = {'method':'L-BFGS-B', 'jac':True, 'bounds':bounds,\
                  'options':self.minimizer_options}
-            cost_function = self.cost_function_analytic if self.analytic else self.cost_function
+            basinhopping_kwargs = self.basinhopping_kwargs
             self.basinhopping_num = 0
             self.best_f = 0
+            self.bpm = 0 
+            #don't use beta penalty in the first round
             #The first round of optimization: Basinhopping
+            print("First optimization round:")
+            print("ftol: " + str(minimizer_kwargs['options']['ftol']))
+            print("gtol: " + str(minimizer_kwargs['options']['gtol']))
+            print("niter: " + str(basinhopping_kwargs['niter']))
+            print("beta penality multipler: " + str(self.bpm))
+            print("starting step size: " + str(mytakestep.stepsize))
             basinhopping(cost_function, x0=[init_params],\
                         minimizer_kwargs=minimizer_kwargs,\
                         take_step=mytakestep, accept_test=mybounds,\
-                        callback=callback_fun, **self.basinhopping_kwargs)
+                        callback=callback_fun, **basinhopping_kwargs)
+            print("Second optimization round:")
+            self.bpm = self.beta_penalty_multiplier
+            minimizer_kwargs['options']['ftol'] = self.minimizer_options['ftol']/10.0
+            minimizer_kwargs['options']['gtol'] = self.minimizer_options['gtol']/10.0
+            print("First optimization round:")
+            print("ftol: " + str(minimizer_kwargs['options']['ftol']))
+            print("gtol: " + str(minimizer_kwargs['options']['gtol']))
+            print("niter: " + str(basinhopping_kwargs['niter']))
+            print("beta penality multipler: " + str(self.bpm))
+            print("starting step size: " + str(mytakestep.stepsize))
+            init_params
+            basinhopping(cost_function, x0=[init_params],
+                         minimizer_kwargs=minimizer_kwargs,
+                         take_step=mytakestep, accept_test=mybounds,
+                         callback=callback_fun, **basinhopping_kwargs)
             #possible: second round of optimization with lower gtol and ftol
             #would be nice to do this automatically. 
             #The second round of optimization: Pure BFGS with a much lower ftol
