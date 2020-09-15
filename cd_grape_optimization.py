@@ -37,12 +37,16 @@ class MyBounds(object):
     def __init__(self, cd_grape_obj):
         self.max_beta = cd_grape_obj.max_beta
         self.max_alpha = cd_grape_obj.max_alpha
+        self.N_blocks = cd_grape_obj.N_blocks
 
     def __call__(self, **kwargs):
         x = kwargs["x_new"]
-        tmax = bool(np.all(x <= self.xmax))
-        tmin = bool(np.all(x >= self.xmin))
-        return tmax and tmin
+        beta_min_constraint = bool(np.all(x[:2*self.N_blocks] >= -self.max_beta))
+        beta_max_constraint = bool(np.all(x[:2*self.N_blocks] <= self.max_beta))
+        alpha_min_constraint = bool(np.all(x[2*self.N_blocks:(4*self.N_blocks + 2)] >= -self.max_alpha))
+        alpha_max_constraint = bool(np.all(x[2*self.N_blocks:(4*self.N_blocks + 2)] <= self.max_alpha))
+        return beta_min_constraint and beta_max_constraint and\
+             alpha_min_constraint and alpha_max_constraint
 
 class OptFinishedException(Exception):
     def __init__(self, msg, CD_grape_obj):
@@ -58,9 +62,9 @@ class CD_grape:
                  phis = None, thetas = None, 
                  max_alpha = 5, max_beta = 5,
                  saving_directory = None, name = 'CD_grape',
-                 term_fid = 0.999, beta_step_size = 1,
-                 alpha_step_size = 0.5, phi_step_size = np.pi/2.0,
-                 theta_step_size = np.pi/4.0,
+                 term_fid = 0.999, beta_step_size = 2,
+                 alpha_step_size = 1, phi_step_size = 2*np.pi,
+                 theta_step_size = np.pi, analytic = True,
                  minimizer_options = {}, basinhopping_kwargs = {}):
 
         self.initial_state = initial_state
@@ -84,24 +88,23 @@ class CD_grape:
         self.alpha_step_size = alpha_step_size
         self.phi_step_size = phi_step_size
         self.theta_step_size = theta_step_size
+        self.analytic = analytic
         self.minimizer_options = minimizer_options
         self.basinhopping_kwargs = basinhopping_kwargs
         #maximium number of iterations in L-BFGS-B.
         if 'maxiter' not in self.minimizer_options:
             self.minimizer_options['maxiter'] = 1e3
-        #note: ftol is basically relative percent difference in fidelity before optimization stops
-        #since "3 nines" will usually be enough, we will set it to 1e-5
+        #note: ftol is relative percent difference in fidelity before optimization stops
         if 'ftol' not in self.minimizer_options:
             self.minimizer_options['ftol'] = 1e-5
         #gtol is like the maximum gradient before optimization stops.
-        # I will set it one order of mag below ftol
         if 'gtol' not in self.minimizer_options:
-            self.minimizer_options['gtol'] = 1e-6
+            self.minimizer_options['gtol'] = 1e-5
 
         if 'niter' not in self.basinhopping_kwargs:
-            self.basinhopping_kwargs['niter'] = 30 
+            self.basinhopping_kwargs['niter'] = 100 
         if 'T' not in self.basinhopping_kwargs:
-            self.basinhopping_kwargs['T'] = 0.5
+            self.basinhopping_kwargs['T'] = 0.1
 
 
 
@@ -299,10 +302,12 @@ class CD_grape:
         betas = betas_r + 1j*betas_i
         #temp.
         #TODO: later, implement more sophisticated saving and real time information.
-        self.betas = betas
-        self.alphas = alphas      
-        self.phis = phis
-        self.thetas = thetas
+        if f > self.best_f:
+            self.best_f = f
+            self.betas = betas
+            self.alphas = alphas
+            self.phis = phis
+            self.thetas = thetas
         f = self.fidelity(betas, alphas, phis, thetas)
         print('\rfid: %.3f' % f, end='')
         if self.term_fid is not None and f >= self.term_fid:
@@ -319,13 +324,15 @@ class CD_grape:
         thetas = parameters[(5*self.N_blocks + 3):]
         alphas = alphas_r + 1j*alphas_i
         betas = betas_r + 1j*betas_i
-        self.betas = betas
-        self.alphas = alphas
-        self.phis = phis
-        self.thetas = thetas
         f, dbetar, dbetai, dalphar, dalphai, dphi, dtheta = self.fid_and_grad_fid(betas,alphas,phis,thetas)
         gradf = np.concatenate([dbetar, dbetai, dalphar,dalphai, dphi, dtheta])
         print('\rfid: %.3f' % f, end='')
+        if f > self.best_f:
+            self.best_f = f
+            self.betas = betas
+            self.alphas = alphas
+            self.phis = phis
+            self.thetas = thetas
         if self.term_fid is not None and f >= self.term_fid:
             raise OptFinishedException('Requested fidelity obtained', self)
         return (-f, -gradf)
@@ -337,33 +344,7 @@ class CD_grape:
     #then somhow I can optimize that the cavity state conditioned on g or e is only 
     #a unitary operaton away from each other, which would allow me to implement feedback for
     #preperation in the experiment.
-    #TODO: implement and understand gtol and ftol
     def optimize(self):
-        init_params = \
-        np.array(np.concatenate([np.real(self.betas),np.imag(self.betas),
-                  np.real(self.alphas), np.imag(self.alphas),
-                  self.phis, self.thetas]),dtype=np.float64)
-        bounds = np.concatenate(
-            [[(-self.max_beta,self.max_beta) for _ in range(2*self.N_blocks)],\
-            [(-self.max_alpha,self.max_alpha) for _ in range(2*self.N_blocks + 2)],\
-            [(-np.inf,np.inf) for _ in range(self.N_blocks + 1)],\
-            [(-np.inf,np.inf) for _ in range(self.N_blocks + 1)]])
-        try:
-            print("\n\nStarting optimization.\n\n")
-            result = minimize(self.cost_function, x0=init_params, method='L-BFGS-B',
-                              bounds=bounds, jac=False, options=self.minimizer_options)
-        except OptFinishedException as e:
-            print("\n\ndesired fidelity reached.\n\n")
-            fid = self.fidelity()
-            print('fidelity: ' + str(fid))
-        else:
-            print("\n\noptimization failed to reach desired fidelity.\n\n")
-            fid = self.fidelity()
-            print('fidelity: ' + str(fid))
-        return fid
-
-    #TODO: understand gtol and ftol
-    def optimize_analytic(self, check=False):
         init_params = \
             np.array(np.concatenate([np.real(self.betas), np.imag(self.betas),
                                      np.real(self.alphas), np.imag(
@@ -376,53 +357,41 @@ class CD_grape:
              [(-np.inf, np.inf) for _ in range(self.N_blocks + 1)],
              [(-np.inf, np.inf) for _ in range(self.N_blocks + 1)]])
 
-        try:
-            print("\n\nStarting optimization.\n\n")
-            result = minimize(self.cost_function_analytic, x0=[init_params], method='L-BFGS-B',
-                              bounds=bounds, jac=True, options=self.minimizer_options)
-        except OptFinishedException as e:
-            print("\n\ndesired fidelity reached.\n\n")
-            fid = self.fidelity()
-            print('fidelity: ' + str(fid))
-        else:
-            print("\n\noptimization failed to reach desired fidelity.\n\n")
-            fid = self.fidelity()
-            print('fidelity: ' + str(fid))
-        return fid
-
-    #todo: use a lower gtol or ftol for this optimization?
-    #It would be nice to plot the different steps it's taking during the optimization.
-    def optimize_analytic_basinhopping(self, check=False, maxiter=1e4, gtol=1e-9, ftol=1e-9):
-        init_params = \
-            np.array(np.concatenate([np.real(self.betas), np.imag(self.betas),
-                                     np.real(self.alphas), np.imag(
-                                         self.alphas),
-                                     self.phis, self.thetas]), dtype=np.float64)
-        bounds = np.concatenate(
-            [[(-self.max_beta, self.max_beta) for _ in range(2*self.N_blocks)],
-             [(-self.max_alpha, self.max_alpha)
-              for _ in range(2*self.N_blocks + 2)],
-             [(-np.pi, np.pi) for _ in range(self.N_blocks + 1)],
-             [(0, np.pi) for _ in range(self.N_blocks + 1)]])
-
+        def callback_fun(x, f, accepted):     
+            self.basinhopping_num += 1
+            print(" basin number %d at minimum %.4f. accepted: %d" %\
+                 (self.basinhopping_num,f, int(accepted)))
         try:
             mytakestep = MyTakeStep(self)
+            mybounds = MyBounds(self)
             print("\n\nStarting optimization.\n\n")
             minimizer_kwargs = {'method':'L-BFGS-B', 'jac':True, 'bounds':bounds,\
                  'options':self.minimizer_options}
-            result = basinhopping(self.cost_function_analytic, x0=[init_params],\
-                                  minimizer_kwargs=minimizer_kwargs, niter=50,
-                                  take_step=mytakestep)
+            cost_function = self.cost_function_analytic if self.analytic else self.cost_function
+            self.basinhopping_num = 0
+            self.best_f = 0
+            #The first round of optimization: Basinhopping
+            basinhopping(cost_function, x0=[init_params],\
+                        minimizer_kwargs=minimizer_kwargs,\
+                        take_step=mytakestep, accept_test=mybounds,\
+                        callback=callback_fun, **self.basinhopping_kwargs)
+            #possible: second round of optimization with lower gtol and ftol
+            #would be nice to do this automatically. 
+            #The second round of optimization: Pure BFGS with a much lower ftol
+            #minimizer_options_2 = self.minimizer_options
+            #minimizer_options_2['ftol'] = 1e-6
+            #minimizer_options_2['gtol'] = 1e-6
+            #minimize(self.cost_function_analytic, x0=[init_params], method='L-BFGS-B',
+                     #bounds=bounds, jac=True, options=minimizer_options_2)
         except OptFinishedException as e:
             print("\n\ndesired fidelity reached.\n\n")
             fid = self.fidelity()
-            print('fidelity: ' + str(fid))
+            print('Best fidelity found: ' + str(fid))
         else:
             print("\n\noptimization failed to reach desired fidelity.\n\n")
             fid = self.fidelity()
-            print('fidelity: ' + str(fid))
+            print('Best fidelity found: ' + str(fid))
         return fid
-
 
     def save(self):
         datestr = datetime.now().strftime('%Y%m%d_%H_%M_%S')

@@ -19,7 +19,7 @@ max_beta = 5
 name = "Fock creation"
 saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_grape_parameters\\"
 cd_grape_obj = CD_grape(initial_state, target_state, N_blocks,\
-                    name='Cat creation', term_fid=term_fid,\
+                    name='Fock creation', term_fid=term_fid,\
                     max_alpha = max_alpha, max_beta=max_beta,
                     saving_directory=saving_directory)
 #%% We can plot the initial and target states (qubit traced out)
