@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 N = 60 #cavity hilbert space 
 N2 = 2 #qubit hilbert space
 alpha = 2 + 1j #cat alpha
-N_blocks = 3
+N_blocks = 5
 initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
 target_state = qt.tensor((qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit(),\
                           qt.basis(N2,0))

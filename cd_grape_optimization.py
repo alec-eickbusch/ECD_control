@@ -102,7 +102,7 @@ class CD_grape:
             self.minimizer_options['gtol'] = 1e-5
 
         if 'niter' not in self.basinhopping_kwargs:
-            self.basinhopping_kwargs['niter'] = 100 
+            self.basinhopping_kwargs['niter'] = 50
         if 'T' not in self.basinhopping_kwargs:
             self.basinhopping_kwargs['T'] = 0.1
 
