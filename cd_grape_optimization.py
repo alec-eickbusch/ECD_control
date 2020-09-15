@@ -302,14 +302,14 @@ class CD_grape:
         betas = betas_r + 1j*betas_i
         #temp.
         #TODO: later, implement more sophisticated saving and real time information.
+        f = self.fidelity(betas, alphas, phis, thetas)
+        print('\rfid: %.3f' % f, end='')
         if f > self.best_f:
             self.best_f = f
             self.betas = betas
             self.alphas = alphas
             self.phis = phis
             self.thetas = thetas
-        f = self.fidelity(betas, alphas, phis, thetas)
-        print('\rfid: %.3f' % f, end='')
         if self.term_fid is not None and f >= self.term_fid:
             raise OptFinishedException('Requested fidelity obtained', self)
         return -f
@@ -430,63 +430,3 @@ class CD_grape:
         print("thetas: " + repr(self.thetas))
         print("Fidelity: " + repr(self.fidelity()))
         print("\n")
-        
-
-    
-#%%
-if __name__ == '__main__':
-    N = 40
-    N2 = 2
-    N_blocks = 1
-    init_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
-    target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
-    #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
-    #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
-    name = "test_CD"
-    saving_directory = "C:\\Users\\Alec Eickbusch\\Desktop\\cd_grape_results\\"
-    term_fid = 0.6
-    a = CD_grape(init_state, target_state, N_blocks, max_alpha=4,max_beta = 4, name=name,\
-                 saving_directory=saving_directory, term_fid=term_fid)
-    a.randomize(alpha_scale=0.5, beta_scale = 1)
-    fs = a.save()
-    b = CD_grape()
-    b.load(fs)
-    #a.alphas = np.array([ 0.26770958-0.14984806j, 0.43046834+0.2849068j, 0.44571901+0.22912736j, -1.14223082-0.36287999j])
-    #a.betas =  np.array([-2.11342464+0.16635473j, 0.18959299-0.50403244j, -0.68346816-0.31073315j, 0.00263728-0.3142331j]) 
-    #a.aux_params = np.array([0.12630521, -0.77663552, 0.78854091])
-    if 0:
-        #a.plot_initial_state()
-        a.plot_final_state()
-        #a.plot_target_state()
-    print(a.fidelity())
-    #%% 
-    '''
-    init_params = \
-            np.array(np.concatenate([np.real(a.alphas),np.imag(a.alphas),
-                    np.real(a.betas), np.imag(a.betas),
-                    a.phis, a.thetas]),dtype=np.float64)
-
-    f, df = a.cost_function_analytic(init_params)
-
-    test_d = np.zeros_like(init_params)
-    test_d[4] = 0.001
-    f2, df2 = a.cost_function_analytic(init_params + test_d)
-
-    test_grad = (f2-f)/0.001
-    print(df)
-    print(test_grad)
-    print(f)
-    print(f2)
-    '''
-    #%%
-    a.optimize()
-    a.save()
-    # %%
-    #a.optimize_analytic()
-    # %%
-    a.plot_final_state()
-    print('betas = np.' + repr(a.betas))
-    print('alphas = np.' + repr(a.alphas))
-    print('phis = np.' + repr(a.phis))
-    print('thetas = np.' + repr(a.thetas))
-    # %%
