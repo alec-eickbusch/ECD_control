@@ -32,6 +32,18 @@ class MyTakeStep(object):
         x[(5*self.N_blocks + 3):] += np.random.uniform(-s*self.theta_step_size, s*self.theta_step_size)
         return x
 
+#custom basinhopping bounds for constrained global optimization
+class MyBounds(object):
+    def __init__(self, cd_grape_obj):
+        self.max_beta = cd_grape_obj.max_beta
+        self.max_alpha = cd_grape_obj.max_alpha
+
+    def __call__(self, **kwargs):
+        x = kwargs["x_new"]
+        tmax = bool(np.all(x <= self.xmax))
+        tmin = bool(np.all(x >= self.xmin))
+        return tmax and tmin
+
 class OptFinishedException(Exception):
     def __init__(self, msg, CD_grape_obj):
         super(OptFinishedException, self).__init__(msg)
@@ -85,6 +97,11 @@ class CD_grape:
         # I will set it one order of mag below ftol
         if 'gtol' not in self.minimizer_options:
             self.minimizer_options['gtol'] = 1e-6
+
+        if 'niter' not in self.basinhopping_kwargs:
+            self.basinhopping_kwargs['niter'] = 30 
+        if 'T' not in self.basinhopping_kwargs:
+            self.basinhopping_kwargs['T'] = 0.5
 
 
 
@@ -373,6 +390,7 @@ class CD_grape:
             print('fidelity: ' + str(fid))
         return fid
 
+    #todo: use a lower gtol or ftol for this optimization?
     #It would be nice to plot the different steps it's taking during the optimization.
     def optimize_analytic_basinhopping(self, check=False, maxiter=1e4, gtol=1e-9, ftol=1e-9):
         init_params = \
