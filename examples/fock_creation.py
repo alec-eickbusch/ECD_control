@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 #%%
 N = 20 #cavity hilbert space 
 N2 = 2 #qubit hilbert space
-fock = 1 #fock state to create
-N_blocks = 6
+fock = 4 #fock state to create
+N_blocks = 4
 initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
 target_state = qt.tensor(qt.basis(N, fock), qt.basis(N2, 0))
 term_fid = 0.99
