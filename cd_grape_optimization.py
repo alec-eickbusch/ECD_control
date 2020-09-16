@@ -436,7 +436,7 @@ class CD_grape:
             self.bpm = self.beta_penalty_multiplier
             minimizer_kwargs['options']['ftol'] = self.minimizer_options['ftol']/10.0
             minimizer_kwargs['options']['gtol'] = self.minimizer_options['gtol']/10.0
-            mytakestep.stepsize = 0.05
+            mytakestep.stepsize = 0.2
             self.tf = self.term_fid
             print("First optimization round:")
             print("ftol: " + str(minimizer_kwargs['options']['ftol']))
