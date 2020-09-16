@@ -66,7 +66,7 @@ class CD_grape:
                  term_fid = 0.999, beta_step_size = 2,
                  alpha_step_size = 1, phi_step_size = 2*np.pi,
                  theta_step_size = np.pi, analytic = True,
-                 beta_penalty_multiplier = 1e-4,
+                 beta_penalty_multiplier = 5e-5,
                  minimizer_options = {}, basinhopping_kwargs = {}):
 
         self.initial_state = initial_state
@@ -100,13 +100,13 @@ class CD_grape:
             self.minimizer_options['maxiter'] = 1e3
         #note: ftol is relative percent difference in fidelity before optimization stops
         if 'ftol' not in self.minimizer_options:
-            self.minimizer_options['ftol'] = 1e-4
+            self.minimizer_options['ftol'] = 1e-5
         #gtol is like the maximum gradient before optimization stops.
         if 'gtol' not in self.minimizer_options:
-            self.minimizer_options['gtol'] = 1e-4
+            self.minimizer_options['gtol'] = 1e-5
 
         if 'niter' not in self.basinhopping_kwargs:
-            self.basinhopping_kwargs['niter'] = 20
+            self.basinhopping_kwargs['niter'] = 30
         if 'T' not in self.basinhopping_kwargs:
             self.basinhopping_kwargs['T'] = 0.1
 
@@ -305,18 +305,19 @@ class CD_grape:
         else:
             print('\rfid: %.4f' % f, end='')
             beta_penalty = 0
+        fn = f - beta_penalty
         #TODO: Maybe we can have a bit worse f if we want lower betas.
         #I should save parameters when the cost function is the lowest, not the fidelity.
         #but do we stop when the cost function reaches the term? Or the fidelity?
-        if f > self.best_f:
-            self.best_f = f
+        if fn > self.best_fn:
+            self.best_fn = fn
             self.betas = betas
             self.alphas = alphas
             self.phis = phis
             self.thetas = thetas
         if self.tf is not None and f >= self.term_fid:
             raise OptFinishedException('Requested fidelity obtained', self)
-        return -(f - beta_penalty)
+        return -fn
 
     #TODO: include final rotation and displacement
     #TODO: Would it be easier for things instead to specify |beta| and angle(beta) instead of 
@@ -337,15 +338,16 @@ class CD_grape:
             print('\rfid: %.4f' % f, end='')
             beta_penalty = 0
             grad_beta_penalty = 0
-        if f > self.best_f:
-            self.best_f = f
+        fn = f - beta_penalty
+        if fn > self.best_fn:
+            self.best_fn = fn
             self.betas = betas
             self.alphas = alphas
             self.phis = phis
             self.thetas = thetas
         if self.tf is not None and f >= self.tf:
             raise OptFinishedException('Requested fidelity obtained', self)
-        return (-(f - beta_penalty), -(gradf - grad_beta_penalty))
+        return (-fn, -(gradf - grad_beta_penalty))
     
     #TODO: if I only care about the cavity state, I can optimize on the partial trace of the
     #cavity. Then, in the experiment, I can measure and reset the qubit.
@@ -396,10 +398,12 @@ class CD_grape:
             minimizer_kwargs = {'method':'L-BFGS-B', 'jac':True, 'bounds':bounds,\
                  'options':self.minimizer_options}
             basinhopping_kwargs = self.basinhopping_kwargs
+            self.bpm = self.beta_penalty_multiplier
             self.basinhopping_num = 0
-            self.best_f = 0
-            self.bpm = 0 
-            self.tf = self.term_fid_intermediate
+            self.best_fn = 0
+            #self.bpm = 0 
+            #self.tf = self.term_fid_intermediate
+            self.tf = self.term_fid
             #don't use beta penalty in the first round
             #The first round of optimization: Basinhopping
             print("First optimization round:")
@@ -413,15 +417,6 @@ class CD_grape:
                         minimizer_kwargs=minimizer_kwargs,\
                         take_step=mytakestep, accept_test=mybounds,\
                         callback=callback_fun, **basinhopping_kwargs)
-            
-            #possible: second round of optimization with lower gtol and ftol
-            #would be nice to do this automatically. 
-            #The second round of optimization: Pure BFGS with a much lower ftol
-            #minimizer_options_2 = self.minimizer_options
-            #minimizer_options_2['ftol'] = 1e-6
-            #minimizer_options_2['gtol'] = 1e-6
-            #minimize(self.cost_function_analytic, x0=[init_params], method='L-BFGS-B',
-                     #bounds=bounds, jac=True, options=minimizer_options_2)
         except OptFinishedException as e:
             print("\n\ndesired intermediate fidelity reached.\n\n")
             fid = self.fidelity()
@@ -430,13 +425,14 @@ class CD_grape:
             print("\n\nFirst optimization failed to reach desired fidelity.\n\n")
             fid = self.fidelity()
             print('Best fidelity found: ' + str(fid))
+        '''
         try:
             print("Second optimization round:")
             init_params = self.flatten_parameters()
             self.bpm = self.beta_penalty_multiplier
             minimizer_kwargs['options']['ftol'] = self.minimizer_options['ftol']/10.0
             minimizer_kwargs['options']['gtol'] = self.minimizer_options['gtol']/10.0
-            mytakestep.stepsize = 0.2
+            mytakestep.stepsize = 0.25
             self.tf = self.term_fid
             print("First optimization round:")
             print("ftol: " + str(minimizer_kwargs['options']['ftol']))
@@ -458,6 +454,8 @@ class CD_grape:
             print("\n\noptimization failed to reach desired fidelity.\n\n")
             fid = self.fidelity()
             print('Best fidelity found: ' + str(fid))
+        '''
+
         return fid
 
     def save(self):
