@@ -25,7 +25,8 @@ cd_grape_obj = CD_grape(initial_state, target_state, N_blocks,\
                     name=name, term_fid=term_fid,\
                     max_alpha = max_alpha, max_beta=max_beta,
                     saving_directory=saving_directory,
-                    basinhopping_kwargs={'T':0.1})
+                    basinhopping_kwargs={'T':0.1},
+                    save_all_minima = True)
 #%% We can plot the initial and target states (qubit traced out)
 plt.figure(figsize=(5,5), dpi=200)
 cd_grape_obj.plot_initial_state()
