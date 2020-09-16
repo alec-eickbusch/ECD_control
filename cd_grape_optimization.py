@@ -347,7 +347,7 @@ class CD_grape:
             self.best_fn = fn
             self.betas = betas
             self.alphas = alphas
-            self.phis = phis
+            self.phis = phis 
             self.thetas = thetas
         if self.tf is not None and f >= self.tf:
             raise OptFinishedException('Requested fidelity obtained', self)
@@ -472,7 +472,8 @@ class CD_grape:
         filename_np = filestring + '.npz'
         filename_qt = filestring + '.qt'
         np.savez(filename_np, betas=self.betas, alphas=self.alphas, phis=self.phis, thetas=self.thetas,
-                 max_alpha = self.max_alpha, max_beta = self.max_beta, name=self.name)
+                 max_alpha = self.max_alpha, max_beta = self.max_beta, name=self.name,
+                 circuits = self.circuits)
         print('\n\nparameters saved as: ' + filename_np)
         qt.qsave([self.initial_state,self.target_state], filename_qt)
         print('states saved as: ' + filename_qt)
@@ -484,8 +485,9 @@ class CD_grape:
         filename_np = filestring + '.npz'
         filename_qt = filestring + '.qt'
         f = np.load(filename_np)
-        betas, alphas, phis, thetas, max_alpha, max_beta, name =\
-             f['betas'], f['alphas'], f['phis'],f['thetas'], f['max_alpha'], f['max_beta'], str(f['name'])
+        betas, alphas, phis, thetas, max_alpha, max_beta, name, circuits =\
+             f['betas'], f['alphas'], f['phis'],f['thetas'], f['max_alpha'], f['max_beta'], str(f['name']),\
+                 f['circuits']
         print('loaded parameters from:' + filename_np)
         f.close()
         states = qt.qload(filename_qt)
