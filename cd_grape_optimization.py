@@ -23,11 +23,13 @@ class MyTakeStep(object):
         self.alpha_step_size = cd_grape_obj.alpha_step_size
         self.phi_step_size = cd_grape_obj.phi_step_size
         self.theta_step_size = cd_grape_obj.theta_step_size
+        self.use_displacements = cd_grape_obj.use_displacements
 
     def __call__(self, x):
         s = self.stepsize
         x[:2*self.N_blocks] += np.random.uniform(-s*self.beta_step_size, s*self.beta_step_size)
-        x[2*self.N_blocks:(4*self.N_blocks + 2)] += np.random.uniform(-s*self.alpha_step_size, s*self.alpha_step_size)
+        if self.use_displacements:
+            x[2*self.N_blocks:(4*self.N_blocks + 2)] += np.random.uniform(-s*self.alpha_step_size, s*self.alpha_step_size)
         x[(4*self.N_blocks + 2):(5*self.N_blocks + 3)] += np.random.uniform(-s*self.phi_step_size, s*self.phi_step_size)
         x[(5*self.N_blocks + 3):] += np.random.uniform(-s*self.theta_step_size, s*self.theta_step_size)
         return x
@@ -68,7 +70,8 @@ class CD_grape:
                  theta_step_size = np.pi, analytic = True,
                  beta_penalty_multiplier = 5e-5,
                  minimizer_options = {}, basinhopping_kwargs = {},
-                 save_all_minima = False):
+                 save_all_minima = False,
+                 use_displacements = True):
 
         self.initial_state = initial_state
         self.target_state = target_state
@@ -113,6 +116,7 @@ class CD_grape:
         
         self.save_all_minima = save_all_minima
         self.circuits = []
+        self.use_displacements = use_displacements
 
 
 
@@ -136,7 +140,10 @@ class CD_grape:
         phis = np.random.uniform(-np.pi, np.pi, self.N_blocks+1)
         thetas = np.random.uniform(0,np.pi,self.N_blocks+1)
         self.betas = np.array(np.exp(1j*ang_beta)*rho_beta, dtype=np.complex128)
-        self.alphas = np.array(np.exp(1j*ang_alpha)*rho_alpha, dtype=np.complex128)
+        if self.use_displacements:
+            self.alphas = np.array(np.exp(1j*ang_alpha)*rho_alpha, dtype=np.complex128)
+        else:
+            self.alphas = np.zeros(self.N_blocks+1, dtype=np.complex128)
         self.phis = np.array(phis, dtype=np.float64)
         self.thetas = np.array(thetas, dtype=np.float64)
 
@@ -257,10 +264,14 @@ class CD_grape:
                     dbetar[i] = (psi_bwd[-(k+1)]*self.dbetar_dCD(betas[i])*psi_fwd[k-1]).full()[0][0]
                     dbetai[i] = (psi_bwd[-(k+1)]*self.dbetai_dCD(betas[i])*psi_fwd[k-1]).full()[0][0]
                     
-        dalphar = 2*np.abs(overlap)*np.real(overlap*np.conj(dalphar))/np.abs(overlap)
-        dalphai = 2*np.abs(overlap)*np.real(overlap*np.conj(dalphai))/np.abs(overlap)
         dbetar = 2*np.abs(overlap)*np.real(overlap*np.conj(dbetar))/np.abs(overlap)
         dbetai = 2*np.abs(overlap)*np.real(overlap*np.conj(dbetai))/np.abs(overlap)
+        if self.use_displacements: #if not they are left at 0
+            dalphar = 2*np.abs(overlap)*np.real(overlap*np.conj(dalphar))/np.abs(overlap)
+            dalphai = 2*np.abs(overlap)*np.real(overlap*np.conj(dalphai))/np.abs(overlap)
+        else:
+            dalphar = np.zeros(len(dalphar),dtype=np.float64)
+            dalphai = np.zeros(len(dalphar),dtype=np.float64)
         dphi = 2*np.abs(overlap)*np.real(overlap*np.conj(dphi))/np.abs(overlap)
         dtheta = 2*np.abs(overlap)*np.real(overlap*np.conj(dtheta))/np.abs(overlap)
  
