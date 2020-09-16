@@ -1,4 +1,6 @@
 #%%
+%load_ext autoreload
+%autoreload 2
 from CD_GRAPE.cd_grape_optimization import CD_grape
 from CD_GRAPE.helper_functions import plot_pulse, plot_wigner
 from CD_GRAPE.analysis import System, CD_grape_analysis

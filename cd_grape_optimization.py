@@ -415,6 +415,7 @@ class CD_grape:
             #don't use beta penalty in the first round
             #The first round of optimization: Basinhopping
             print("First optimization round:")
+            print("N_blocks: " + str(self.N_blocks))
             print("ftol: " + str(minimizer_kwargs['options']['ftol']))
             print("gtol: " + str(minimizer_kwargs['options']['gtol']))
             print("niter: " + str(basinhopping_kwargs['niter']))
