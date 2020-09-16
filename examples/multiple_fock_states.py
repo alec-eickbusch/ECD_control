@@ -9,10 +9,10 @@ import qutip as qt
 import matplotlib.pyplot as plt
 #%%
 #later, for a test like this, put each fock state on a different node
-target_fock_values = np.arange(1,3)
-max_N_blocks = 2
+target_fock_values = np.arange(1,11)
+max_N_blocks = 15
 term_fid = 0.99
-niter = 2
+niter = 50
 #%% The object shared by all optimizations
 N = 80  # cavity hilbert space
 N2 = 2  # qubit hilbert space
@@ -22,7 +22,7 @@ max_beta = 8
 alpha_scale = 0.5
 beta_scale = 2
 #all else will use default parameters in CD grape
-saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_grape_parameters\\"
+saving_directory = "Z:\\Data\\Tennessee2020\\20200915_cooldown\\fock_state_CD_grape_optimizations\\"
 cd_grape_obj = CD_grape(initial_state=initial_state, term_fid=term_fid,
                         max_alpha=max_alpha, max_beta=max_beta,
                         saving_directory=saving_directory,
@@ -54,6 +54,7 @@ for fock in target_fock_values:
         N_blocks_used[fock].append(N_blocks)
         sucessful = (fid >= term_fid)
         N_blocks += 1
+#%%
 print(savefile_list)
 print(fidelities)
 print(N_blocks_used)
@@ -61,14 +62,17 @@ print(N_blocks_used)
         
 # %%
 plt.figure(figsize=(8,6),dpi=200)
+plt.axhline(0.99,linestyle='-',color='black', alpha=0.5)
 for fock, fids in fidelities.items():
     plt.plot(N_blocks_used[fock],fids, '--.', label='fock %d' % fock)
 plt.xlabel('N blocks')
 plt.ylabel('Optimized fidelity')
+
 plt.legend()
 plt.grid()
 plt.tight_layout()
 plt.show()
+figname = saving_directory + 'fock_results.png'
 plt.savefig(saving_directory + 'fock_results.png', filetype='png')
-
+print("fig saved as: " + figname)
 # %%
