@@ -67,7 +67,8 @@ class CD_grape:
                  alpha_step_size = 1, phi_step_size = 2*np.pi,
                  theta_step_size = np.pi, analytic = True,
                  beta_penalty_multiplier = 5e-5,
-                 minimizer_options = {}, basinhopping_kwargs = {}):
+                 minimizer_options = {}, basinhopping_kwargs = {},
+                 save_all_minima = False):
 
         self.initial_state = initial_state
         self.target_state = target_state
@@ -109,6 +110,9 @@ class CD_grape:
             self.basinhopping_kwargs['niter'] = 50
         if 'T' not in self.basinhopping_kwargs:
             self.basinhopping_kwargs['T'] = 0.1
+        
+        self.save_all_minima = save_all_minima
+        self.circuits = []
 
 
 
@@ -387,7 +391,11 @@ class CD_grape:
              [(-np.inf, np.inf) for _ in range(self.N_blocks + 1)]])
         cost_function = self.cost_function_analytic if self.analytic \
             else self.cost_function
-        def callback_fun(x, f, accepted):     
+        def callback_fun(x, f, accepted):
+            if self.save_all_minima:
+                self.circuits.append(
+                    np.concatenate([np.array([f]),np.array(x)])
+                )     
             self.basinhopping_num += 1
             print(" basin #%d at min %.4f. accepted: %d" %\
                  (self.basinhopping_num,f, int(accepted)))
