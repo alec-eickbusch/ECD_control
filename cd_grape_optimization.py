@@ -100,13 +100,13 @@ class CD_grape:
             self.minimizer_options['maxiter'] = 1e3
         #note: ftol is relative percent difference in fidelity before optimization stops
         if 'ftol' not in self.minimizer_options:
-            self.minimizer_options['ftol'] = 1e-5
+            self.minimizer_options['ftol'] = 1e-6
         #gtol is like the maximum gradient before optimization stops.
         if 'gtol' not in self.minimizer_options:
-            self.minimizer_options['gtol'] = 1e-5
+            self.minimizer_options['gtol'] = 1e-6
 
         if 'niter' not in self.basinhopping_kwargs:
-            self.basinhopping_kwargs['niter'] = 30
+            self.basinhopping_kwargs['niter'] = 50
         if 'T' not in self.basinhopping_kwargs:
             self.basinhopping_kwargs['T'] = 0.1
 
