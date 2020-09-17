@@ -71,7 +71,8 @@ class CD_grape:
                  beta_penalty_multiplier = 5e-5,
                  minimizer_options = {}, basinhopping_kwargs = {},
                  save_all_minima = False,
-                 use_displacements = True):
+                 use_displacements = True,
+                 circuits = []):
 
         self.initial_state = initial_state
         self.target_state = target_state
@@ -115,7 +116,7 @@ class CD_grape:
             self.basinhopping_kwargs['T'] = 0.1
         
         self.save_all_minima = save_all_minima
-        self.circuits = []
+        self.circuits = list(circuits)
         self.use_displacements = use_displacements
 
 
@@ -404,8 +405,13 @@ class CD_grape:
             else self.cost_function
         def callback_fun(x, f, accepted):
             if self.save_all_minima:
+                betas, alphas, phis, thetas = self.unflatten_parameters(x)
+                betas_r = np.real(betas)
+                betas_i = np.imag(betas)
+                beta_penalty = self.bpm*(np.sum(np.abs(betas_r)) + np.sum(np.abs(betas_i)))
+                fid = -f + beta_penalty #easiest is to just add back the penalty to get fidelity
                 self.circuits.append(
-                    np.concatenate([np.array([f]),np.array(x)])
+                    np.concatenate([np.array([fid]),np.array(x)])
                 )     
             self.basinhopping_num += 1
             print(" basin #%d at min %.4f. accepted: %d" %\
@@ -505,8 +511,9 @@ class CD_grape:
         states = qt.qload(filename_qt)
         initial_state, target_state = states[0], states[1]
         print('loaded states from:' + filename_qt)
-        self.__init__(initial_state, target_state, len(betas),\
-                 betas, alphas, phis, thetas, max_alpha, max_beta, None, name)
+        self.__init__(initial_state=initial_state, target_state=target_state, N_blocks = len(betas),\
+                     betas=betas, alphas=alphas, phis=phis, thetas=thetas, max_alpha=max_alpha,\
+                     max_beta=max_beta, name=name, circuits=circuits)
         self.print_info()
     
     def print_info(self):
