@@ -27,12 +27,13 @@ class MyTakeStep(object):
 
     def __call__(self, x):
         s = self.stepsize
-        x[:2*self.N_blocks] += np.random.uniform(-s*self.beta_step_size, s*self.beta_step_size)
-        if self.use_displacements:
-            x[2*self.N_blocks:(4*self.N_blocks + 2)] += np.random.uniform(-s*self.alpha_step_size, s*self.alpha_step_size)
-        x[(4*self.N_blocks + 2):(5*self.N_blocks + 3)] += np.random.uniform(-s*self.phi_step_size, s*self.phi_step_size)
-        x[(5*self.N_blocks + 3):] += np.random.uniform(-s*self.theta_step_size, s*self.theta_step_size)
-        return x
+        step_array = np.concatenate([
+                np.random.uniform(-s*self.beta_step_size, s*self.beta_step_size,2*self.N_blocks),#betas
+                np.random.uniform(-s*self.alpha_step_size, s*self.alpha_step_size,2*self.N_blocks + 2), #alphas
+                np.random.uniform(-s*self.phi_step_size, s*self.phi_step_size,self.N_blocks + 1), #phis
+                np.random.uniform(-s*self.theta_step_size, s*self.theta_step_size, self.N_blocks + 1), #thetas
+        ])
+        return x + step_array
 
 #custom basinhopping bounds for constrained global optimization
 class MyBounds(object):
