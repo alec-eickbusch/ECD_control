@@ -339,6 +339,7 @@ class CD_grape:
     #TODO: include final rotation and displacement
     #TODO: Would it be easier for things instead to specify |beta| and angle(beta) instead of 
     #doing things with beta_r and beta_i?
+    #TODO: Gauge degree of freedom
     def cost_function_analytic(self, parameters):
         betas, alphas, phis, thetas = self.unflatten_parameters(parameters)
         f, dbetar, dbetai, dalphar, dalphai, dphi, dtheta = self.fid_and_grad_fid(betas,alphas,phis,thetas)
