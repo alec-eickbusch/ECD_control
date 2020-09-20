@@ -10,7 +10,14 @@ from CD_GRAPE.helper_functions import plot_wigner
 from scipy.optimize import minimize, basinhopping
 import scipy.optimize
 from datetime import datetime
+from scipy.special import genlaguerre
 
+try:
+    from scipy.misc import factorial
+except:
+    from scipy.special import factorial
+
+#%%
 #TODO: Handle cases when phi, theta outside range.
 
   #custom step-taking class for basinhopping optimization.
@@ -152,15 +159,40 @@ class CD_grape:
     def D(self, alpha):
         return (alpha*self.a.dag() - np.conj(alpha)*self.a).expm()
     
+    def D2(self, alpha):
+        dim = self.N
+        x_mat = np.zeros((self.N, self.N), dtype=np.complex128)
+        for m in range(self.N):
+            x_mat[m, m] = genlaguerre(m, 0)(np.abs(alpha)**2)
+            for n in range(0, m):  # scan over lower triangle, n < m
+                x_mn = (
+                    np.sqrt(factorial(n) / factorial(m))
+                    * (alpha) ** (m - n)
+                    * genlaguerre(n, m - n)(np.abs(alpha)**2)
+                )
+                x_mat[m, n] = x_mn
+
+            for n in range(m + 1, dim):  # scan over upper triangle, m < n
+                x_mn = (
+                    np.sqrt(factorial(m) / factorial(n))
+                    * (-np.conj(alpha)) ** (n - m)
+                    * genlaguerre(m, n - m)(np.abs(alpha)**2)
+                )
+                x_mat[m, n] = x_mn
+        x_mat = x_mat*np.exp(-np.abs(alpha)**2/2.0)
+        D = qt.Qobj(x_mat)
+        return qt.tensor(D,qt.identity(self.N2))
+
+    
     def CD(self, beta):
         if beta == 0:
             return qt.tensor(qt.identity(self.N),qt.identity(self.N2))
         #return self.R(0,np.pi)*((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
         #temp removing pi pulse from CD for analytic opt testing
-        return ((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
-        #zz = qt.tensor(qt.identity(self.N),qt.ket2dm(qt.basis(self.N2,0)))
-        #oo = qt.tensor(qt.identity(self.N), qt.ket2dm(qt.basis(self.N2, 1)))
-        #return self.D(beta/2.0)*zz + self.D(-beta/2.0)*oo
+        #return ((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
+        zz = qt.tensor(qt.identity(self.N),qt.ket2dm(qt.basis(self.N2,0)))
+        oo = qt.tensor(qt.identity(self.N), qt.ket2dm(qt.basis(self.N2, 1)))
+        return self.D(beta/2.0)*zz + self.D(-beta/2.0)*oo
 
     #TODO: is it faster with non-exponential form?
     def R(self, phi, theta):
@@ -526,3 +558,5 @@ class CD_grape:
         print("thetas: " + repr(self.thetas))
         print("Fidelity: " + repr(self.fidelity()))
         print("\n")
+
+# %%
