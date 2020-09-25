@@ -1,6 +1,8 @@
 #%%
 %load_ext autoreload
 %autoreload 2
+import sys
+sys.path.append("../../")
 from CD_GRAPE.cd_grape_optimization import CD_grape
 from CD_GRAPE.helper_functions import plot_pulse, plot_wigner
 from CD_GRAPE.analysis import System, CD_grape_analysis
@@ -11,13 +13,13 @@ import matplotlib.pyplot as plt
 N = 20 #cavity hilbert space 
 N2 = 2 #qubit hilbert space
 fock = 4 #fock state to create
-N_blocks = 4
+N_blocks = 10
 initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
 target_state = qt.tensor(qt.basis(N, fock), qt.basis(N2, 0))
 term_fid = 0.99
 #max alpha and beta are the maximum values of alpha and beta for optimization
 max_alpha = 5
-max_beta = 5
+max_beta = 30
 name = "Fock creation"
 saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_grape_parameters\\"
 cd_grape_obj = CD_grape(initial_state, target_state, N_blocks,\

@@ -66,20 +66,42 @@ class MyBounds(object):
 
     def __call__(self, **kwargs):
         x = kwargs["x_new"]
-        beta_min_constraint = bool(np.all(x[: 2 * self.N_blocks] >= -self.max_beta))
-        beta_max_constraint = bool(np.all(x[: 2 * self.N_blocks] <= self.max_beta))
-        alpha_min_constraint = bool(
-            np.all(x[2 * self.N_blocks : (4 * self.N_blocks + 2)] >= -self.max_alpha)
+        beta_r_min_constraint = bool(np.all(x[: self.N_blocks] >= 0))
+        beta_r_max_constraint = bool(np.all(x[: self.N_blocks] <= self.max_beta))
+
+        alpha_r_min_constraint = bool(
+            np.all(x[2 * self.N_blocks : (4 * self.N_blocks + 2)] >= 0)
         )
-        alpha_max_constraint = bool(
+        alpha_r_max_constraint = bool(
             np.all(x[2 * self.N_blocks : (4 * self.N_blocks + 2)] <= self.max_alpha)
         )
+
+        # beta_theta_min_constraint = bool(
+        #     np.all(x[self.N_blocks : 2 * self.N_blocks] >= 0)
+        # )
+        # beta_theta_max_constraint = bool(
+        #     np.all(x[self.N_blocks : 2 * self.N_blocks] <= 2 * np.pi)
+        # )
+
+        # alpha_theta_min_constraint = bool(
+        #     np.all(x[2 * self.N_blocks : (4 * self.N_blocks + 2)] >= 0)
+        # )
+        # alpha_theta_max_constraint = bool(
+        #     np.all(x[2 * self.N_blocks : (4 * self.N_blocks + 2)] <= 2 * np.pi)
+        # )
+
         return (
-            beta_min_constraint
-            and beta_max_constraint
-            and alpha_min_constraint
-            and alpha_max_constraint
+            beta_r_min_constraint
+            and beta_r_max_constraint
+            and alpha_r_min_constraint
+            and alpha_r_max_constraint
         )
+
+        #     and beta_theta_min_constraint
+        #     and beta_theta_max_constraint
+        #     and alpha_theta_min_constraint
+        #     and alpha_theta_max_constraint
+        # )
 
 
 class OptFinishedException(Exception):
@@ -191,9 +213,9 @@ class CD_grape:
         beta_scale = self.max_beta if beta_scale is None else beta_scale
         alpha_scale = self.max_alpha if alpha_scale is None else alpha_scale
         ang_beta = np.random.uniform(-np.pi, np.pi, self.N_blocks)
-        rho_beta = np.random.uniform(-beta_scale, beta_scale, self.N_blocks)
+        rho_beta = np.random.uniform(0, beta_scale, self.N_blocks)
         ang_alpha = np.random.uniform(-np.pi, np.pi, self.N_blocks + 1)
-        rho_alpha = np.random.uniform(-alpha_scale, alpha_scale, self.N_blocks + 1)
+        rho_alpha = np.random.uniform(0, alpha_scale, self.N_blocks + 1)
         phis = np.random.uniform(-np.pi, np.pi, self.N_blocks + 1)
         thetas = np.random.uniform(0, np.pi, self.N_blocks + 1)
         self.betas = np.array(np.exp(1j * ang_beta) * rho_beta, dtype=np.complex128)
@@ -478,15 +500,14 @@ class CD_grape:
 
     # for the optimization, we will flatten the parameters
     # the will be, in order,
-    # [betas_r, betas_i, alphas_r, alphas_i,  phis, thetas]
+    # [betas_r, betas_theta, alphas_r, alphas_theta,  phis, thetas]
     def cost_function(self, parameters):
         betas, alphas, phis, thetas = self.unflatten_parameters(parameters)
         # TODO: later, implement more sophisticated saving and real time information.
         f = self.fidelity(betas, alphas, phis, thetas)
         if self.bpm > 0:
-            beta_penalty = self.bpm * (
-                np.sum(np.abs(betas_r)) + np.sum(np.abs(betas_i))
-            )
+            betas_r = np.abs(betas)
+            beta_penalty = self.bpm * np.sum(betas_r)
             print("\rfid: %.4f beta penalty: %.4f" % (f, beta_penalty), end="")
         else:
             print("\rfid: %.4f" % f, end="")
@@ -565,10 +586,10 @@ class CD_grape:
         return np.array(
             np.concatenate(
                 [
-                    np.real(self.betas),
-                    np.imag(self.betas),
-                    np.real(self.alphas),
-                    np.imag(self.alphas),
+                    np.abs(self.betas),
+                    np.angle(self.betas),
+                    np.abs(self.alphas),
+                    np.angle(self.alphas),
                     self.phis,
                     self.thetas,
                 ]
@@ -578,13 +599,13 @@ class CD_grape:
 
     def unflatten_parameters(self, parameters):
         betas_r = parameters[0 : self.N_blocks]
-        betas_i = parameters[self.N_blocks : 2 * self.N_blocks]
+        betas_theta = parameters[self.N_blocks : 2 * self.N_blocks]
         alphas_r = parameters[2 * self.N_blocks : (3 * self.N_blocks + 1)]
-        alphas_i = parameters[(3 * self.N_blocks + 1) : (4 * self.N_blocks + 2)]
+        alphas_theta = parameters[(3 * self.N_blocks + 1) : (4 * self.N_blocks + 2)]
         phis = parameters[(4 * self.N_blocks + 2) : (5 * self.N_blocks + 3)]
         thetas = parameters[(5 * self.N_blocks + 3) :]
-        alphas = alphas_r + 1j * alphas_i
-        betas = betas_r + 1j * betas_i
+        alphas = alphas_r * np.exp(1j * alphas_theta)
+        betas = betas_r * np.exp(1j * betas_theta)
         return betas, alphas, phis, thetas
 
     def optimize(self):
@@ -606,12 +627,9 @@ class CD_grape:
 
         def callback_fun(x, f, accepted):
             if self.save_all_minima:
-                betas, alphas, phis, thetas = self.unflatten_parameters(x)
-                betas_r = np.real(betas)
-                betas_i = np.imag(betas)
-                beta_penalty = self.bpm * (
-                    np.sum(np.abs(betas_r)) + np.sum(np.abs(betas_i))
-                )
+                betas, _, _, _ = self.unflatten_parameters(x)
+                betas_r = np.abs(betas)
+                beta_penalty = self.bpm * np.sum(betas_r)
                 fid = (
                     -f + beta_penalty
                 )  # easiest is to just add back the penalty to get fidelity

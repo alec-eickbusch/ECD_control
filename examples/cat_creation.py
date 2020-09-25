@@ -13,14 +13,14 @@ import matplotlib.pyplot as plt
 N = 60 #cavity hilbert space 
 N2 = 2 #qubit hilbert space
 alpha = 2 + 1j #cat alpha
-N_blocks = 3
+N_blocks = 5
 initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
 target_state = qt.tensor((qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit(),\
                           qt.basis(N2,0))
 term_fid = 0.99
 #max alpha and beta are the maximum values of alpha and beta for optimization
-max_alpha = 2
-max_beta = 6
+max_alpha = 5
+max_beta = 20
 name = "Cat creation"
 saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_grape_parameters\\"
 cd_grape_obj = CD_grape(initial_state, target_state, N_blocks,\
@@ -29,7 +29,7 @@ cd_grape_obj = CD_grape(initial_state, target_state, N_blocks,\
                     saving_directory=saving_directory,
                     basinhopping_kwargs={'T':0.1},
                     save_all_minima = True,
-                    use_displacements=True)
+                    use_displacements=True, analytic=True)
 #%% We can plot the initial and target states (qubit traced out)
 plt.figure(figsize=(5,5), dpi=200)
 cd_grape_obj.plot_initial_state()
