@@ -1,6 +1,8 @@
 #%%
 %load_ext autoreload
 %autoreload 2
+import sys
+sys.path.append("../../")
 from CD_GRAPE.cd_grape_optimization import CD_grape
 from CD_GRAPE.helper_functions import plot_pulse, plot_wigner
 from CD_GRAPE.analysis import System, CD_grape_analysis
@@ -27,7 +29,7 @@ cd_grape_obj = CD_grape(initial_state, target_state, N_blocks,\
                     saving_directory=saving_directory,
                     basinhopping_kwargs={'T':0.1},
                     save_all_minima = True,
-                    use_displacements=False)
+                    use_displacements=True)
 #%% We can plot the initial and target states (qubit traced out)
 plt.figure(figsize=(5,5), dpi=200)
 cd_grape_obj.plot_initial_state()
