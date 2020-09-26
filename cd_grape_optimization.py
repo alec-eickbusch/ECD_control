@@ -26,8 +26,10 @@ class MyTakeStep(object):
     def __init__(self, cd_grape_obj, stepsize=1):
         self.stepsize = stepsize
         self.N_blocks = cd_grape_obj.N_blocks
-        self.beta_step_size = cd_grape_obj.beta_step_size
-        self.alpha_step_size = cd_grape_obj.alpha_step_size
+        self.beta_r_step_size = cd_grape_obj.beta_r_step_size
+        self.beta_theta_step_size = cd_grape_obj.beta_theta_step_size
+        self.alpha_r_step_size = cd_grape_obj.alpha_r_step_size
+        self.alpha_theta_step_size = cd_grape_obj.alpha_theta_step_size
         self.phi_step_size = cd_grape_obj.phi_step_size
         self.theta_step_size = cd_grape_obj.theta_step_size
         self.use_displacements = cd_grape_obj.use_displacements
@@ -37,13 +39,23 @@ class MyTakeStep(object):
         step_array = np.concatenate(
             [
                 np.random.uniform(
-                    -s * self.beta_step_size, s * self.beta_step_size, 2 * self.N_blocks
-                ),  # betas
+                    -s * self.beta_r_step_size, s * self.beta_r_step_size, self.N_blocks
+                ),  # betas_r
                 np.random.uniform(
-                    -s * self.alpha_step_size,
-                    s * self.alpha_step_size,
-                    2 * self.N_blocks + 2,
-                ),  # alphas
+                    -s * self.beta_theta_step_size,
+                    s * self.beta_theta_step_size,
+                    self.N_blocks,
+                ),  # betas_theta
+                np.random.uniform(
+                    -s * self.alpha_r_step_size,
+                    s * self.alpha_r_step_size,
+                    self.N_blocks + 1,
+                ),  # alphas_r
+                np.random.uniform(
+                    -s * self.alpha_theta_step_size,
+                    s * self.alpha_theta_step_size,
+                    self.N_blocks + 1,
+                ),  # alphas_theta
                 np.random.uniform(
                     -s * self.phi_step_size, s * self.phi_step_size, self.N_blocks + 1
                 ),  # phis
@@ -76,32 +88,12 @@ class MyBounds(object):
             np.all(x[2 * self.N_blocks : (4 * self.N_blocks + 2)] <= self.max_alpha)
         )
 
-        # beta_theta_min_constraint = bool(
-        #     np.all(x[self.N_blocks : 2 * self.N_blocks] >= 0)
-        # )
-        # beta_theta_max_constraint = bool(
-        #     np.all(x[self.N_blocks : 2 * self.N_blocks] <= 2 * np.pi)
-        # )
-
-        # alpha_theta_min_constraint = bool(
-        #     np.all(x[2 * self.N_blocks : (4 * self.N_blocks + 2)] >= 0)
-        # )
-        # alpha_theta_max_constraint = bool(
-        #     np.all(x[2 * self.N_blocks : (4 * self.N_blocks + 2)] <= 2 * np.pi)
-        # )
-
         return (
             beta_r_min_constraint
             and beta_r_max_constraint
             and alpha_r_min_constraint
             and alpha_r_max_constraint
         )
-
-        #     and beta_theta_min_constraint
-        #     and beta_theta_max_constraint
-        #     and alpha_theta_min_constraint
-        #     and alpha_theta_max_constraint
-        # )
 
 
 class OptFinishedException(Exception):
@@ -118,7 +110,9 @@ class CD_grape:
         self,
         initial_state=None,
         target_state=None,
+        target_unitary=None,
         N_blocks=1,
+        unitary_optimization=False,
         betas=None,
         alphas=None,
         phis=None,
@@ -129,8 +123,10 @@ class CD_grape:
         name="CD_grape",
         term_fid_intermediate=0.97,
         term_fid=0.999,
-        beta_step_size=2,
-        alpha_step_size=1,
+        beta_r_step_size=2,
+        beta_theta_step_size=2 * np.pi,
+        alpha_r_step_size=1,
+        alpha_theta_step_size=2 * np.pi,
         phi_step_size=2 * np.pi,
         theta_step_size=np.pi,
         analytic=True,
@@ -140,10 +136,14 @@ class CD_grape:
         save_all_minima=False,
         use_displacements=True,
         circuits=[],
+        N=None,
+        N2=None,
     ):
 
         self.initial_state = initial_state
         self.target_state = target_state
+        self.target_unitary = target_unitary
+        self.unitary_optimization = unitary_optimization or (target_unitary is not None)
         self.N_blocks = N_blocks
         self.betas = (
             np.array(betas, dtype=np.complex128)
@@ -172,8 +172,10 @@ class CD_grape:
         self.name = name
         self.term_fid_intermediate = term_fid_intermediate
         self.term_fid = term_fid
-        self.beta_step_size = beta_step_size
-        self.alpha_step_size = alpha_step_size
+        self.beta_r_step_size = beta_r_step_size
+        self.beta_theta_step_size = beta_theta_step_size
+        self.alpha_r_step_size = alpha_r_step_size
+        self.alpha_theta_step_size = alpha_theta_step_size
         self.phi_step_size = phi_step_size
         self.theta_step_size = theta_step_size
         self.analytic = analytic
@@ -202,12 +204,26 @@ class CD_grape:
         if self.initial_state is not None:
             self.N = self.initial_state.dims[0][0]
             self.N2 = self.initial_state.dims[0][1]
-            self.a = qt.tensor(qt.destroy(self.N), qt.identity(self.N2))
-            self.q = qt.tensor(qt.identity(self.N), qt.destroy(self.N2))
-            self.sz = 1 - 2 * self.q.dag() * self.q
-            self.sx = self.q + self.q.dag()
-            self.sy = 1j * (self.q.dag() - self.q)
-            self.n = self.a.dag() * self.a
+            self.init_operators(self.N, self.N2)
+        elif self.target_state is not None:
+            self.N = self.target_state.dims[0][0]
+            self.N2 = self.target_state.dims[0][1]
+            self.init_operators(self.N, self.N2)
+        else:
+            self.N = N
+            self.N2 = N2
+            self.init_operators(self.N, self.N2)
+
+    def init_operators(self, N, N2):
+        self.N = N
+        self.N2 = N2
+        self.I = qt.tensor(qt.identity(self.N), qt.identity(self.N2))
+        self.a = qt.tensor(qt.destroy(self.N), qt.identity(self.N2))
+        self.q = qt.tensor(qt.identity(self.N), qt.destroy(self.N2))
+        self.sz = 1 - 2 * self.q.dag() * self.q
+        self.sx = self.q + self.q.dag()
+        self.sy = 1j * (self.q.dag() - self.q)
+        self.n = self.a.dag() * self.a
 
     def randomize(self, beta_scale=None, alpha_scale=None):
         beta_scale = self.max_beta if beta_scale is None else beta_scale
@@ -437,6 +453,7 @@ class CD_grape:
         dbeta_r = (
             2 * np.abs(overlap) * np.real(overlap * np.conj(dbeta_r)) / np.abs(overlap)
         )
+
         dbeta_theta = (
             2
             * np.abs(overlap)
@@ -489,6 +506,7 @@ class CD_grape:
         ).full()[0][0]
         return np.abs(overlap) ** 2
 
+
     def plot_initial_state(self):
         plot_wigner(self.initial_state)
 
@@ -504,7 +522,10 @@ class CD_grape:
     def cost_function(self, parameters):
         betas, alphas, phis, thetas = self.unflatten_parameters(parameters)
         # TODO: later, implement more sophisticated saving and real time information.
-        f = self.fidelity(betas, alphas, phis, thetas)
+        if self.unitary_optimization:
+            f = self.unitary_fidelity(betas, alphas, phis, thetas)
+        else:
+            f = self.fidelity(betas, alphas, phis, thetas)
         if self.bpm > 0:
             betas_r = np.abs(betas)
             beta_penalty = self.bpm * np.sum(betas_r)
@@ -646,7 +667,7 @@ class CD_grape:
             print("\n\nStarting optimization.\n\n")
             minimizer_kwargs = {
                 "method": "L-BFGS-B",
-                "jac": True,
+                "jac": self.analytic,
                 "bounds": bounds,
                 "options": self.minimizer_options,
             }
@@ -678,11 +699,17 @@ class CD_grape:
             )
         except OptFinishedException as e:
             print("\n\ndesired intermediate fidelity reached.\n\n")
-            fid = self.fidelity()
+            if self.unitary_optimization:
+                fid = self.unitary_fidelity()
+            else:
+                fid = self.fidelity()
             print("Best fidelity found: " + str(fid))
         else:
             print("\n\nFirst optimization failed to reach desired fidelity.\n\n")
-            fid = self.fidelity()
+            if self.unitary_optimization:
+                fid = self.unitary_fidelity()
+            else:
+                fid = self.fidelity()
             print("Best fidelity found: " + str(fid))
         """
         try:
@@ -781,7 +808,8 @@ class CD_grape:
         print("alphas: " + repr(self.alphas))
         print("phis: " + repr(self.phis))
         print("thetas: " + repr(self.thetas))
-        print("Fidelity: " + repr(self.fidelity()))
+        f = self.unitary_fidelity() if self.unitary_optimization else self.fidelity()
+        print("Fidelity: " + repr(f))
         print("\n")
 
 
