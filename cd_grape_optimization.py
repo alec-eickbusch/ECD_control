@@ -211,11 +211,11 @@ class CD_grape:
             self.D(alpha)
 
     def dbetar_dCD(self, beta):
-        return self.R(0,np.pi)*0.5*(self.sz*(self.a.dag() - self.a) - ((np.conj(beta) - beta)/4.0))*\
+        return 0.5*(-self.sz*(self.a.dag() - self.a) - ((np.conj(beta) - beta)/4.0))*\
             self.CD(beta)
 
     def dbetai_dCD(self, beta):
-        return self.R(0,np.pi)*1j*0.5*(self.sz*(self.a.dag() + self.a) - ((np.conj(beta) + beta)/4.0))*\
+        return 1j*0.5*(-self.sz*(self.a.dag() + self.a) - ((np.conj(beta) + beta)/4.0))*\
             self.CD(beta)
 
     def dtheta_dR(self, phi, theta):
