@@ -506,6 +506,104 @@ class CD_grape:
         ).full()[0][0]
         return np.abs(overlap) ** 2
 
+    def unitary_forward_states(self, betas, alphas, phis, thetas):
+        U_fwd = [self.I]
+        # blocks
+        for i in range(self.N_blocks):
+            U_fwd.append(self.R(phis[i], thetas[i]) * U_fwd[-1])
+            U_fwd.append(self.D(alphas[i]) * U_fwd[-1])
+            U_fwd.append(self.CD(betas[i]) * U_fwd[-1])
+        # final rotation and displacement
+        U_fwd.append(self.R(phis[-1], thetas[-1]) * U_fwd[-1])
+        U_fwd.append(self.D(alphas[-1]) * U_fwd[-1])
+        return U_fwd
+
+    def unitary_reverse_states(self, betas, alphas, phis, thetas):
+        U_bwd = [self.target_unitary.dag()]
+        # final rotation and displacement
+        U_bwd.append(U_bwd[-1] * self.D(alphas[-1]))
+        U_bwd.append(U_bwd[-1] * self.R(phis[-1], thetas[-1]))
+        # blocks
+        for i in np.arange(self.N_blocks)[::-1]:
+            U_bwd.append(U_bwd[-1] * self.CD(betas[i]))
+            U_bwd.append(U_bwd[-1] * self.D(alphas[i]))
+            U_bwd.append(U_bwd[-1] * self.R(phis[i], thetas[i]))
+        return U_bwd
+
+    def unitary_fid_and_grad_fid(self, betas=None, alphas=None, phis=None, thetas=None):
+        betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+
+        U_fwd = self.unitary_forward_states(betas, alphas, phis, thetas)
+        U_bwd = self.unitary_reverse_states(betas, alphas, phis, thetas)
+
+        D = self.N * self.N2
+        overlap = (U_bwd[0] * U_fwd[-1]).tr()
+        fid = np.abs((1 / D) * overlap) ** 2
+
+        dbeta_r = np.zeros(self.N_blocks, dtype=np.complex128)
+        dbeta_theta = np.zeros(self.N_blocks, dtype=np.complex128)
+        dalpha_r = np.zeros(self.N_blocks + 1, dtype=np.complex128)
+        dalpha_theta = np.zeros(self.N_blocks + 1, dtype=np.complex128)
+        dphi = np.zeros(self.N_blocks + 1, dtype=np.complex128)
+        dtheta = np.zeros(self.N_blocks + 1, dtype=np.complex128)
+
+        for i in range(self.N_blocks + 1):
+            for j in [1, 2, 3]:
+                k = 3 * i + j
+                if j == 1:
+                    dphi[i] = (
+                        U_fwd[k - 1]
+                        * U_bwd[-(k + 1)]
+                        * self.dphi_dR(phis[i], thetas[i])
+                    ).tr()
+                    dtheta[i] = (
+                        U_fwd[k - 1]
+                        * U_bwd[-(k + 1)]
+                        * self.dtheta_dR(phis[i], thetas[i])
+                    ).tr()
+                if j == 2:
+                    dalpha_r[i] = (
+                        U_fwd[k - 1] * U_bwd[-(k + 1)] * self.dalpha_r_dD(alphas[i])
+                    ).tr()
+                    dalpha_theta[i] = (
+                        U_fwd[k - 1] * U_bwd[-(k + 1)] * self.dalpha_theta_dD(alphas[i])
+                    ).tr()
+                if j == 3 and i < self.N_blocks:
+                    dbeta_r[i] = (
+                        U_fwd[k - 1] * U_bwd[-(k + 1)] * self.dbeta_r_dCD(betas[i])
+                    ).tr()
+                    dbeta_theta[i] = (
+                        U_fwd[k - 1] * U_bwd[-(k + 1)] * self.dbeta_theta_dCD(betas[i])
+                    ).tr()
+
+        scalar = 2.0 / D ** 2 * overlap
+        dbeta_r = np.real(scalar * dbeta_r)
+        dbeta_theta = np.real(scalar * dbeta_theta)
+
+        if self.use_displacements:  # if not they are left at 0
+            dalpha_r = np.real(scalar * dalpha_r)
+            dalpha_theta = np.real(scalar * dalpha_theta)
+        else:
+            dalpha_r = np.zeros(len(dalpha_r), dtype=np.float64)
+            dalpha_theta = np.zeros(len(dalpha_theta), dtype=np.float64)
+
+        dphi = np.real(scalar * dphi)
+        dtheta = np.real(scalar * dtheta)
+
+        return fid, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta
+
+    def unitary_fidelity(self, betas=None, alphas=None, phis=None, thetas=None):
+        betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+        U_circuit = self.U_tot(betas, alphas, phis, thetas)
+        D = self.N * self.N2
+        overlap = (self.target_unitary.dag() * U_circuit).tr()
+        return np.abs((1 / D) * overlap) ** 2
 
     def plot_initial_state(self):
         plot_wigner(self.initial_state)
