@@ -192,7 +192,8 @@ class CD_grape:
         #return ((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
         zz = qt.tensor(qt.identity(self.N),qt.ket2dm(qt.basis(self.N2,0)))
         oo = qt.tensor(qt.identity(self.N), qt.ket2dm(qt.basis(self.N2, 1)))
-        return self.D(beta/2.0)*zz + self.D(-beta/2.0)*oo
+        return self.R(0,np.pi)*(self.D(beta/2.0)*zz + self.D(-beta/2.0)*oo) 
+        #includes pi rotation
 
     #TODO: is it faster with non-exponential form?
     def R(self, phi, theta):
@@ -210,11 +211,11 @@ class CD_grape:
             self.D(alpha)
 
     def dbetar_dCD(self, beta):
-        return 0.5*(self.sz*(self.a.dag() - self.a) - ((np.conj(beta) - beta)/4.0))*\
+        return self.R(0,np.pi)*0.5*(self.sz*(self.a.dag() - self.a) - ((np.conj(beta) - beta)/4.0))*\
             self.CD(beta)
 
     def dbetai_dCD(self, beta):
-        return 1j*0.5*(self.sz*(self.a.dag() + self.a) - ((np.conj(beta) + beta)/4.0))*\
+        return self.R(0,np.pi)*1j*0.5*(self.sz*(self.a.dag() + self.a) - ((np.conj(beta) + beta)/4.0))*\
             self.CD(beta)
 
     def dtheta_dR(self, phi, theta):
