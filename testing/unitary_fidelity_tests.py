@@ -91,12 +91,17 @@ def calc_num_gradient(dx, betas=None, alphas=None, phis=None, thetas=None):
 
 # %% \del_{alpha_r_k} F
 k = 1
-dalpha_r = 1e-7
+dx = 1e-5
 alpha_r_k = np.abs(cd_grape_obj.alphas[k])
 alpha_theta_k = np.angle(cd_grape_obj.alphas[k])
 alphas_new = np.copy(cd_grape_obj.alphas)
-alphas_new[k] = (alpha_r_k + dalpha_r)*np.exp(1j*alpha_theta_k)
-num_gradient, diff = calc_num_gradient(dalpha_r, alphas=alphas_new)
+alphas_new[k] = (alpha_r_k + dx)*np.exp(1j*alpha_theta_k)
+num_gradient, diff = calc_num_gradient(dx, alphas=alphas_new)
 print(diff)
 print(num_gradient)
+# %%
+fid, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta = cd_grape_obj.unitary_fid_and_grad_fid()
+print(dalpha_r[k])
+print("Precentage Diff: " + str((dalpha_r[k] - num_gradient)/num_gradient*100) + "%")
+
 # %%
