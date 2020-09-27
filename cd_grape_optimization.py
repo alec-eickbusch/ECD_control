@@ -113,6 +113,8 @@ class CD_grape:
         target_unitary=None,
         N_blocks=1,
         unitary_optimization=False,
+        unitary_initial_states=None,
+        unitary_initial_state_weights=None,
         betas=None,
         alphas=None,
         phis=None,
@@ -144,6 +146,8 @@ class CD_grape:
         self.target_state = target_state
         self.target_unitary = target_unitary
         self.unitary_optimization = unitary_optimization or (target_unitary is not None)
+        self.unitary_initial_states = unitary_initial_states
+        self.unitary_initial_state_weights = unitary_initial_state_weights
         self.N_blocks = N_blocks
         self.betas = (
             np.array(betas, dtype=np.complex128)
@@ -372,15 +376,22 @@ class CD_grape:
             beta = betas[i]
         return self.U_block(beta, alphas[i], phis[i], thetas[i])
 
-    def U_tot(self, betas, alphas, phis, thetas):
-        U = qt.tensor(qt.identity(self.N), qt.identity(self.N2))
+    def U_tot(self, betas=None, alphas=None, phis=None, thetas=None):
+        betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+        U = self.I
         for i in range(self.N_blocks + 1):
             U = self.U_i_block(i, betas, alphas, phis, thetas) * U
         return U
 
     # TODO: work out optimization with the derivatives, include block # N_blocks + 1
-    def forward_states(self, betas, alphas, phis, thetas):
-        psi_fwd = [self.initial_state]
+    def forward_states(self, betas, alphas, phis, thetas, initial_state):
+        initial_state = (
+            initial_state if initial_state is not None else self.initial_state
+        )
+        psi_fwd = [initial_state]
         # blocks
         for i in range(self.N_blocks):
             psi_fwd.append(self.R(phis[i], thetas[i]) * psi_fwd[-1])
@@ -391,8 +402,9 @@ class CD_grape:
         psi_fwd.append(self.D(alphas[-1]) * psi_fwd[-1])
         return psi_fwd
 
-    def reverse_states(self, betas, alphas, phis, thetas):
-        psi_bwd = [self.target_state.dag()]
+    def reverse_states(self, betas, alphas, phis, thetas, target_state=None):
+        target_state = target_state if target_state is not None else self.target_state
+        psi_bwd = [target_state.dag()]
         # final rotation and displacement
         psi_bwd.append(psi_bwd[-1] * self.D(alphas[-1]))
         psi_bwd.append(psi_bwd[-1] * self.R(phis[-1], thetas[-1]))
@@ -404,9 +416,30 @@ class CD_grape:
         return psi_bwd
 
     # TODO: Modify for aux params
-    def fid_and_grad_fid(self, betas, alphas, phis, thetas):
-        psi_fwd = self.forward_states(betas, alphas, phis, thetas)
-        psi_bwd = self.reverse_states(betas, alphas, phis, thetas)
+    def fid_and_grad_fid(
+        self,
+        betas=None,
+        alphas=None,
+        phis=None,
+        thetas=None,
+        initial_state=None,
+        target_state=None,
+        unitary_fid=False,
+    ):
+        betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+        initial_state = (
+            initial_state if initial_state is not None else self.initial_state
+        )
+        target_state = target_state if target_state is not None else self.target_state
+        psi_fwd = self.forward_states(
+            betas, alphas, phis, thetas, initial_state=initial_state
+        )
+        psi_bwd = self.reverse_states(
+            betas, alphas, phis, thetas, target_state=target_state
+        )
         overlap = (psi_bwd[0] * psi_fwd[-1]).full()[0][0]  # might be complex
         fid = np.abs(overlap) ** 2
 
@@ -431,7 +464,7 @@ class CD_grape:
                         * self.dtheta_dR(phis[i], thetas[i])
                         * psi_fwd[k - 1]
                     ).full()[0][0]
-                if j == 2:
+                if j == 2 and self.use_displacements:
                     dalpha_r[i] = (
                         psi_bwd[-(k + 1)] * self.dalpha_r_dD(alphas[i]) * psi_fwd[k - 1]
                     ).full()[0][0]
@@ -449,6 +482,8 @@ class CD_grape:
                         * self.dbeta_theta_dCD(betas[i])
                         * psi_fwd[k - 1]
                     ).full()[0][0]
+        if unitary_fid:
+            return overlap, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta
 
         dbeta_r = (
             2 * np.abs(overlap) * np.real(overlap * np.conj(dbeta_r)) / np.abs(overlap)
@@ -460,22 +495,17 @@ class CD_grape:
             * np.real(overlap * np.conj(dbeta_theta))
             / np.abs(overlap)
         )
-        if self.use_displacements:  # if not they are left at 0
-            dalpha_r = (
-                2
-                * np.abs(overlap)
-                * np.real(overlap * np.conj(dalpha_r))
-                / np.abs(overlap)
-            )
-            dalpha_theta = (
-                2
-                * np.abs(overlap)
-                * np.real(overlap * np.conj(dalpha_theta))
-                / np.abs(overlap)
-            )
-        else:
-            dalpha_r = np.zeros(len(dalpha_r), dtype=np.float64)
-            dalpha_theta = np.zeros(len(dalpha_theta), dtype=np.float64)
+
+        dalpha_r = (
+            2 * np.abs(overlap) * np.real(overlap * np.conj(dalpha_r)) / np.abs(overlap)
+        )
+        dalpha_theta = (
+            2
+            * np.abs(overlap)
+            * np.real(overlap * np.conj(dalpha_theta))
+            / np.abs(overlap)
+        )
+
         dphi = 2 * np.abs(overlap) * np.real(overlap * np.conj(dphi)) / np.abs(overlap)
         dtheta = (
             2 * np.abs(overlap) * np.real(overlap * np.conj(dtheta)) / np.abs(overlap)
@@ -483,12 +513,14 @@ class CD_grape:
 
         return fid, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta
 
-    def final_state(self, betas=None, alphas=None, phis=None, thetas=None):
+    def final_state(
+        self, betas=None, alphas=None, phis=None, thetas=None, initial_state=None
+    ):
         betas = self.betas if betas is None else betas
         alphas = self.alphas if alphas is None else alphas
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
-        psi = self.initial_state
+        psi = initial_state if initial_state is not None else self.initial_state
         for i in range(self.N_blocks + 1):
             psi = self.R(phis[i], thetas[i]) * psi
             psi = self.D(alphas[i]) * psi
@@ -529,6 +561,86 @@ class CD_grape:
             U_bwd.append(U_bwd[-1] * self.D(alphas[i]))
             U_bwd.append(U_bwd[-1] * self.R(phis[i], thetas[i]))
         return U_bwd
+
+    def unitary_fid_and_grad_fid_approx(
+        self,
+        unitary_initial_state_weights=None,
+        unitary_initial_states=None,
+        betas=None,
+        alphas=None,
+        phis=None,
+        thetas=None,
+        testing=False,
+    ):
+        unitary_initial_states = (
+            self.unitary_initial_states
+            if unitary_initial_states is None
+            else unitary_initial_states
+        )
+        betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+
+        U_circuit = self.U_tot(betas, alphas, phis, thetas)
+        D = self.N * self.N2
+        overlap = (self.target_unitary.dag() * U_circuit).tr()
+        fid = np.abs((1 / D) * overlap) ** 2
+
+        num_states = len(unitary_initial_states)
+        approx_overlap, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta = (
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        )
+
+        for i in range(num_states):
+            weight = unitary_initial_state_weights[i]
+            initial_state = unitary_initial_states[i]
+            target_state = self.target_unitary * initial_state
+            (
+                approx_overlap_i,
+                dbeta_r_i,
+                dbeta_theta_i,
+                dalpha_r_i,
+                dalpha_theta_i,
+                dphi_i,
+                dtheta_i,
+            ) = self.fid_and_grad_fid(
+                initial_state=initial_state, target_state=target_state, unitary_fid=True
+            )
+            approx_overlap += weight * approx_overlap_i
+            dbeta_r += weight * dbeta_r_i
+            dbeta_theta += weight * dbeta_theta_i
+            dalpha_r += weight * dalpha_r_i
+            dalpha_theta += weight * dalpha_theta_i
+            dphi += weight * dphi_i
+            dtheta += weight * dtheta_i
+        approx_fid = np.abs(1.0 / num_states * approx_overlap) ** 2
+
+        scaling_factor = approx_overlap * (2.0 / (num_states ** 2))
+        dbeta_r = np.real(scaling_factor * dbeta_r)
+        dbeta_theta = np.real(scaling_factor * dbeta_theta)
+        dalpha_r = np.real(scaling_factor * dalpha_r)
+        dalpha_theta = np.real(scaling_factor * dalpha_theta)
+        dphi = np.real(scaling_factor * dphi)
+        dtheta = np.real(scaling_factor * dtheta)
+        if testing:
+            return (
+                fid,
+                approx_fid,
+                dbeta_r,
+                dbeta_theta,
+                dalpha_r,
+                dalpha_theta,
+                dphi,
+                dtheta,
+            )
+        return fid, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta
 
     def unitary_fid_and_grad_fid(self, betas=None, alphas=None, phis=None, thetas=None):
         betas = self.betas if betas is None else betas
