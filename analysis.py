@@ -14,11 +14,12 @@ class System:
     #for now will use the same sigma and chop for the displacement and qubit pulses
     #the sigma_cd and chop_cd will be for the gaussian displacement pulses during the conditional displacement
     def __init__(self, chi, Ec, alpha0, epsilon_m, sigma, chop, buffer_time =0,\
-                 ring_up_time = 8):
+                 ring_up_time = 8, kappa_cavity = 1/250.0):
         self.chi = chi
         self.Ec = Ec
         self.alpha0 = alpha0
         self.kerr = chi**2/(4*Ec)
+        self.kappa_cavity = kappa_cavity
         #sigma and chop for qubit pulse and displacements
     
         self.sigma = int(sigma)
@@ -77,16 +78,15 @@ class System:
             #chip = self.chi_prime
         #else:
         chip = 0
-        #if use_kappa:
-            #kappa = self.kappa_cavity
-        #else:   
-        kappa = 0
+        if use_kappa:
+            kappa = self.kappa_cavity
+        else:   
+            kappa = 0
         if stark_shift:
             ss = 1.0
         else:
             ss = 0.0
 
-        ts = np.arange(len(Omega))*dt
         H_array = []
         #TODO: make H construction parallel
         for i in tqdm(range(len(Omega)), desc="constructing H"):
