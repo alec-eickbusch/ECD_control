@@ -51,7 +51,7 @@ class System:
         return epsilon, Omega_corrected
 
 
-    def simulate_pulse_trotter(self, epsilon, Omega, psi0, use_kerr = False,\
+    def simulate_pulse_trotter(self, epsilon, Omega, psi0, use_kerr = True,\
                                use_chi_prime = False, use_kappa = False, dt=1, pad=20,
                                stark_shift = True):
         epsilon = np.pad(epsilon, 20)
