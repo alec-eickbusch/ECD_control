@@ -14,7 +14,7 @@ class System:
     #for now will use the same sigma and chop for the displacement and qubit pulses
     #the sigma_cd and chop_cd will be for the gaussian displacement pulses during the conditional displacement
     def __init__(self, chi, Ec, alpha0, epsilon_m, sigma, chop, buffer_time =0,\
-                 ring_up_time = 8, kappa_cavity = 1/250.0):
+                 ring_up_time = 8, kappa_cavity = 1/(250.0e3)):
         self.chi = chi
         self.Ec = Ec
         self.alpha0 = alpha0
