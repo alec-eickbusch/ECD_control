@@ -541,6 +541,7 @@ class CD_grape:
         betas, alphas, phis, thetas, max_alpha, max_beta, name, circuits =\
              f['betas'], f['alphas'], f['phis'],f['thetas'], f['max_alpha'], f['max_beta'], str(f['name']),\
                  f['circuits']
+        circuits = f['circuits'] if ['circuits'] in f else []
         print('loaded parameters from:' + filename_np)
         f.close()
         states = qt.qload(filename_qt)
