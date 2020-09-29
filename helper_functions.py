@@ -7,7 +7,7 @@ from scipy.interpolate import interp1d
 from scipy.integrate import solve_ivp, quad
 #%%
 
-def plot_wigner(state, tensor_state=True, contour=False, fig=None, ax=None,max_alpha=6):
+def plot_wigner(state, tensor_state=True, contour=False, fig=None, ax=None,max_alpha=6, cbar=True):
     xvec = np.linspace(-max_alpha,max_alpha,81)
     if fig is None:
         fig = plt.figure(figsize=(6,5))
@@ -25,29 +25,52 @@ def plot_wigner(state, tensor_state=True, contour=False, fig=None, ax=None,max_a
     else:
         im = ax.pcolormesh(xvec-dx/2.0, xvec-dx/2.0, W, cmap='seismic',
                     vmin=-1, vmax=+1)
-    ax.axhline(0, linestyle='-', color='black', alpha=0.8)
-    ax.axvline(0, linestyle='-', color='black', alpha=0.8)
+    ax.axhline(0, linestyle='-', color='black', alpha=0.4)
+    ax.axvline(0, linestyle='-', color='black', alpha=0.4)
     ax.set_xlabel(r'Re$(\alpha)$')
     ax.set_ylabel(r'Im$(\alpha)$')
     ax.grid()
     #ax.set_title(title)
     #TODO: Gaurentee that the wigners are square!
     fig.tight_layout()
-    fig.subplots_adjust(right=0.8, hspace=0.3, wspace=0.3)
-    cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-    ticks = np.linspace(-1, 1, 5)
-    fig.colorbar(im, cax=cbar_ax, ticks=ticks)
-    cbar_ax.set_title(r'$\frac{\pi}{2} W(\alpha)$', pad=20)
+    if cbar:
+        fig.subplots_adjust(right=0.8, hspace=0.25, wspace=0.25)
+        #todo: ensure colorbar even with plot...
+        #todo: fix this colorbar
+        
+        cbar_ax = fig.add_axes([0.6, 0.225, 0.025, 0.65])
+        ticks = np.linspace(-1, 1, 5)
+        fig.colorbar(im, cax=cbar_ax, ticks=ticks)
+        cbar_ax.set_title(r'$\frac{\pi}{2} W(\alpha)$', pad=10)
+    ax.set_aspect('equal', adjustable='box')
 
-def plot_pulse(epsilon, Omega):
+def plot_pulse(epsilon, Omega, fig = None):
+    if fig is None:
+        fig = plt.figure(figsize=(8,4), dpi=200)
+    axs = fig.subplots(2, sharex=True)
     ts = np.arange(len(epsilon))
-    plt.plot(ts,1e3*np.real(epsilon)/2/np.pi,label='Re(epsilon)')
-    plt.plot(ts,1e3*np.imag(epsilon)/2/np.pi,label='Im(epsilon)')
-    plt.plot(ts,10*1e3*np.real(Omega)/2/np.pi,label='10*Re(Omega)')
-    plt.plot(ts,10*1e3*np.imag(Omega)/2/np.pi,label='10*Im(Omega)')
-    plt.ylabel('drive amplitude (MHz)')
-    plt.xlabel('t (ns)')
-    plt.legend()
+    axs[0].plot(ts,1e3*np.real(epsilon)/2/np.pi,label='I', color='firebrick')
+    axs[0].plot(ts,1e3*np.imag(epsilon)/2/np.pi,':',label='Q', color='firebrick')
+    axs[1].plot(ts,1e3*np.real(Omega)/2/np.pi,label='I', color='darkblue')
+    axs[1].plot(ts,1e3*np.imag(Omega)/2/np.pi,':',label='Q', color='darkblue')
+    axs[0].set_ylabel(r'$\varepsilon(t)$ (MHz)')
+    axs[1].set_ylabel(r'$\Omega(t)$ (MHz)')
+    axs[1].set_xlabel('t (ns)')
+    axs[0].yaxis.tick_right()
+    axs[1].yaxis.tick_right()
+    axs[0].yaxis.set_ticks_position('both') 
+    axs[1].yaxis.set_ticks_position('both')
+    axs[0].tick_params(direction='in')
+    axs[1].tick_params(direction='in')
+    y_max_e = 1.1*1e3*np.max([np.abs(np.real(epsilon)),np.abs(np.imag(epsilon))])/2/np.pi
+    axs[0].set_ylim([-y_max_e, +y_max_e])
+    y_max_O = 1.1*1e3*np.max([np.abs(np.real(Omega)),np.abs(np.imag(Omega))])/2/np.pi
+    axs[1].set_ylim([-y_max_O, +y_max_O])
+    
+    #axs[0].set_title(r'')
+    #axs[1].set_title(r'')
+    #axs[1].legend()
+    #axs[0].legend()
 
 def interp(data_array, dt=1):
     ts = np.arange(0,len(data_array))*dt
