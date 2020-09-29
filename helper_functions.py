@@ -7,16 +7,37 @@ from scipy.interpolate import interp1d
 from scipy.integrate import solve_ivp, quad
 #%%
 
-def plot_wigner(state, xvec = np.linspace(-5,5,81), tensor_state=True):
+def plot_wigner(state, tensor_state=True, contour=False, fig=None, ax=None,max_alpha=6):
+    xvec = np.linspace(-max_alpha,max_alpha,81)
+    if fig is None:
+        fig = plt.figure(figsize=(6,5))
+    if ax is None:
+        ax = fig.subplots()
     if tensor_state:
         state = qt.ptrace(state, 0)
-    W = qt.wigner(state,xvec,xvec, g=2)
-    plt.figure(figsize=(6,5))
-    plt.pcolormesh(xvec,xvec,W, cmap='seismic', vmin=-2/np.pi, vmax=+2/np.pi)
-    plt.axhline(0,linestyle='--', color='black',alpha=0.4)
-    plt.axvline(0,linestyle='--', color='black',alpha=0.4)
-    plt.colorbar()
-    plt.grid()
+    W = (np.pi/2.0)*qt.wigner(state,xvec,xvec, g=2)
+    dx = xvec[1] - xvec[0]
+    
+    if contour:
+        levels = np.linspace(-1.1, 1.1, 102)
+        im = ax.contourf(xvec, xvec, W, cmap='seismic',
+                        vmin=-1, vmax=+1, levels = levels)
+    else:
+        im = ax.pcolormesh(xvec-dx/2.0, xvec-dx/2.0, W, cmap='seismic',
+                    vmin=-1, vmax=+1)
+    ax.axhline(0, linestyle='-', color='black', alpha=0.8)
+    ax.axvline(0, linestyle='-', color='black', alpha=0.8)
+    ax.set_xlabel(r'Re$(\alpha)$')
+    ax.set_ylabel(r'Im$(\alpha)$')
+    ax.grid()
+    #ax.set_title(title)
+    #TODO: Gaurentee that the wigners are square!
+    fig.tight_layout()
+    fig.subplots_adjust(right=0.8, hspace=0.3, wspace=0.3)
+    cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+    ticks = np.linspace(-1, 1, 5)
+    fig.colorbar(im, cax=cbar_ax, ticks=ticks)
+    cbar_ax.set_title(r'$\frac{\pi}{2} W(\alpha)$', pad=20)
 
 def plot_pulse(epsilon, Omega):
     ts = np.arange(len(epsilon))

@@ -6,6 +6,7 @@
 
 import numpy as np
 import qutip as qt 
+import matplotlib.pyplot as plt
 from CD_GRAPE.helper_functions import plot_wigner
 from scipy.optimize import minimize, basinhopping
 import scipy.optimize
@@ -248,7 +249,11 @@ class CD_grape:
         return U
 
     #TODO: work out optimization with the derivatives, include block # N_blocks + 1
-    def forward_states(self, betas, alphas, phis, thetas):
+    def forward_states(self, betas=None, alphas=None, phis=None, thetas=None):
+        betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
         psi_fwd = [self.initial_state]
         #blocks
         for i in range(self.N_blocks):
@@ -332,16 +337,59 @@ class CD_grape:
         thetas = self.thetas if thetas is None else thetas
         overlap =  (self.target_state.dag()*self.final_state(betas,alphas,phis,thetas)).full()[0][0]
         return np.abs(overlap)**2
+
+    #i is state after each operation. Set i = 0 for initial state, i = -1 for final state
+    def plot_state(self, i=0, contour=True, fig=None, ax=None, max_alpha = 6):
+        state = self.forward_states()[i]
+        plot_wigner(state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha)
     
-    def plot_initial_state(self):
-        plot_wigner(self.initial_state)
-        
-    def plot_final_state(self):
-        plot_wigner(self.final_state())
-    
-    def plot_target_state(self):
-        plot_wigner(self.target_state)
-        
+    def plot_target_state(self, contour=True, fig=None, ax=None, max_alpha = 6):
+        plot_wigner(self.target_state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha)
+
+    def plot_projected_state(self, i = 0, p = 'g', contour=True, fig=None, ax=None, max_alpha = 6):
+        state = self.forward_states()[i]
+        rho = qt.ket2dm(state)
+        if p == 'g':
+            ket = qt.tensor(qt.identity(self.N),qt.basis(self.N2,0))
+        elif p == 'e':
+            ket = qt.tensor(qt.identity(self.N),qt.basis(self.N2,1))
+        elif p == '+':
+            ket = qt.tensor(qt.identity(self.N),(qt.basis(self.N2,0) + qt.basis(self.N2,1))/np.sqrt(2.0))
+        elif p == '-':
+            ket = qt.tensor(qt.identity(self.N),(qt.basis(self.N2,0) - qt.basis(self.N2,1))/np.sqrt(2.0))
+        rho_proj = (ket.dag()*rho*ket).unit()
+        plot_wigner(rho_proj, tensor_state=False, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha)
+
+    def plot_projected_states_ge(self, i = 0, contour=True, max_alpha = 6):
+        fig, axs = plt.subplots(1, 2,figsize=(9, 3.5), dpi=200)
+        self.plot_projected_state(contour=contour, i = i, p = 'g', fig=fig, ax=axs[0], max_alpha=max_alpha)
+        self.plot_projected_state(contour=contour, i=i, p = 'e', fig=fig, ax=axs[1], max_alpha=max_alpha)
+        axs[0].set_title(r'$\rho_{gg}$')
+        axs[1].set_title(r'$\rho_{ee}$')
+        axs[1].set_ylabel('')
+
+    def plot_projected_states_pm(self, i = 0, contour=True, max_alpha = 6):
+        fig, axs = plt.subplots(1, 2,figsize=(9, 3.5), dpi=200)
+        self.plot_projected_state(contour=contour, i = i, p = '+', fig=fig, ax=axs[0], max_alpha=max_alpha)
+        self.plot_projected_state(contour=contour, i=i, p = '-', fig=fig, ax=axs[1], max_alpha=max_alpha)
+        axs[0].set_title(r'$\rho_{++}$')
+        axs[1].set_title(r'$\rho_{--}$')
+        axs[1].set_ylabel('')
+
+    def plot_full_projection(self, i = 0, contour=True, max_alpha = 6):
+        fig, axs = plt.subplots(2, 2,figsize=(8, 6), dpi=200)
+        self.plot_projected_state(contour=contour, i = i, p = 'g', fig=fig, ax=axs[0,0], max_alpha=max_alpha)
+        self.plot_projected_state(contour=contour, i=i, p = 'e', fig=fig, ax=axs[0,1], max_alpha=max_alpha)
+        self.plot_projected_state(contour=contour, i = i, p = '+', fig=fig, ax=axs[1,0], max_alpha=max_alpha)
+        self.plot_projected_state(contour=contour, i=i, p = '-', fig=fig, ax=axs[1,1], max_alpha=max_alpha)
+        axs[0,0].set_title(r'$\rho_{gg}$')
+        axs[0,1].set_title(r'$\rho_{ee}$')
+        axs[1,0].set_title(r'$\rho_{++}$')
+        axs[1,1].set_title(r'$\rho_{--}$')
+        axs[0,1].set_ylabel('')
+        axs[1,1].set_ylabel('')
+        axs[0,0].set_xlabel('')
+        axs[0,1].set_xlabel('')        
     #for the optimization, we will flatten the parameters
     #the will be, in order, 
     #[betas_r, betas_i, alphas_r, alphas_i,  phis, thetas]
