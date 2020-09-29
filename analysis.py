@@ -89,10 +89,11 @@ class System:
 
         H_array = []
         #TODO: make H construction parallel
-        for i in tqdm(range(len(Omega)), desc="constructing H         "):
+        for i in tqdm(range(len(Omega)), desc="constructing H        "):
             alpha = alphas[i]
             O = Omega[i]
-            H_array.append(-chi_qs*a.dag()*a*q.dag()*q -chi_qs*(alpha*a.dag() + np.conj(alpha)*a)*q.dag()*q+ - ss*chi_qs * np.abs(alpha)**2*q.dag()*q\
+            H_array.append(-(chi_qs/2.0)*a.dag()*a*(2*q.dag()*q - 1.0) -(chi_qs/2.0)*(alpha*a.dag() + np.conj(alpha)*a)*(2*q.dag()*q-1.0)+\
+                         - ss*(chi_qs/2.0) * np.abs(alpha)**2*(2*q.dag()*q-1.0)\
                         - 1j*(kappa/2.0)*alpha*(a.dag() - a) + \
                         -kerr * (a.dag() + np.conj(alpha))**2 * (a + alpha)**2 + \
                     -chip*(a.dag()+np.conj(alpha))**2 * (a + alpha)**2 * q.dag() * q + \
