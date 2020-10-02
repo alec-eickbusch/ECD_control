@@ -245,6 +245,8 @@ class CD_grape:
         phis = np.random.uniform(-np.pi, np.pi, self.N_blocks)
         thetas = np.random.uniform(0, np.pi, self.N_blocks)
         self.betas = np.array(np.exp(1j * ang_beta) * rho_beta, dtype=np.complex128)
+        if self.no_CD_end:
+            self.betas[-1] = 0.0 + 1j * 0.0
         if self.use_displacements:
             self.alphas = np.array(
                 np.exp(1j * ang_alpha) * rho_alpha, dtype=np.complex128
@@ -349,11 +351,7 @@ class CD_grape:
         alphas = self.alphas if alphas is None else alphas
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
-        if i == self.N_blocks:
-            beta = 0
-        else:
-            beta = betas[i]
-        return self.U_block(beta, alphas[i], phis[i], thetas[i])
+        return self.U_block(betas[i], alphas[i], phis[i], thetas[i])
 
     def U_tot(self, betas=None, alphas=None, phis=None, thetas=None):
         betas = self.betas if betas is None else betas
@@ -376,18 +374,12 @@ class CD_grape:
             psi_fwd.append(self.R(phis[i], thetas[i]) * psi_fwd[-1])
             psi_fwd.append(self.D(alphas[i]) * psi_fwd[-1])
             psi_fwd.append(self.CD(betas[i]) * psi_fwd[-1])
-        # final rotation and displacement
-        psi_fwd.append(self.R(phis[-1], thetas[-1]) * psi_fwd[-1])
-        psi_fwd.append(self.D(alphas[-1]) * psi_fwd[-1])
         return psi_fwd
 
     def reverse_states(self, betas, alphas, phis, thetas, target_state=None):
         target_state = target_state if target_state is not None else self.target_state
         target_state = qt.Qobj(target_state)
         psi_bwd = [target_state.dag()]
-        # final rotation and displacement
-        psi_bwd.append(psi_bwd[-1] * self.D(alphas[-1]))
-        psi_bwd.append(psi_bwd[-1] * self.R(phis[-1], thetas[-1]))
         # blocks
         for i in np.arange(self.N_blocks)[::-1]:
             psi_bwd.append(psi_bwd[-1] * self.CD(betas[i]))
@@ -528,16 +520,10 @@ class CD_grape:
             U_fwd.append(self.R(phis[i], thetas[i]) * U_fwd[-1])
             U_fwd.append(self.D(alphas[i]) * U_fwd[-1])
             U_fwd.append(self.CD(betas[i]) * U_fwd[-1])
-        # final rotation and displacement
-        U_fwd.append(self.R(phis[-1], thetas[-1]) * U_fwd[-1])
-        U_fwd.append(self.D(alphas[-1]) * U_fwd[-1])
         return U_fwd
 
     def unitary_reverse_states(self, betas, alphas, phis, thetas):
         U_bwd = [self.target_unitary.dag()]
-        # final rotation and displacement
-        U_bwd.append(U_bwd[-1] * self.D(alphas[-1]))
-        U_bwd.append(U_bwd[-1] * self.R(phis[-1], thetas[-1]))
         # blocks
         for i in np.arange(self.N_blocks)[::-1]:
             U_bwd.append(U_bwd[-1] * self.CD(betas[i]))
@@ -594,11 +580,11 @@ class CD_grape:
             if unitary_initial_states is None
             else unitary_initial_states
         )
-        unitary_final_states = (
-            self.unitary_final_states
-            if unitary_final_states is None
-            else unitary_final_states
-        )
+        # unitary_final_states = (
+        #     self.unitary_final_states
+        #     if unitary_final_states is None
+        #     else unitary_final_states
+        # )
 
         betas = self.betas if betas is None else betas
         alphas = self.alphas if alphas is None else alphas
@@ -647,7 +633,6 @@ class CD_grape:
             dphi += dphi_i
             dtheta += dtheta_i
         approx_fid = np.abs(1.0 / num_states * approx_overlap) ** 2
-
         scaling_factor = (
             (2.0 / D) * overlap * (1 / num_states) * self.unitary_learning_rate
         )
@@ -711,7 +696,7 @@ class CD_grape:
                     dalpha_theta[i] = (
                         U_fwd[k - 1] * U_bwd[-(k + 1)] * self.dalpha_theta_dD(alphas[i])
                     ).tr()
-                if j == 3 and i < self.N_blocks:
+                if j == 3:
                     dbeta_r[i] = (
                         U_fwd[k - 1] * U_bwd[-(k + 1)] * self.dbeta_r_dCD(betas[i])
                     ).tr()
