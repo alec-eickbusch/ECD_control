@@ -120,4 +120,18 @@ class CD_grape_init(CD_grape):
             self.params["phis"][n] = self.phis[0]
             self.params["thetas"][n] = self.thetas[0]
             self.fids_reached[n] = self.fidelity()
+            self.N_reached = n + 1
 
+    def concat_controls(self, include_N=None):
+        include_N = include_N if include_N is not None else self.N_reached
+        self.betas_full = []
+        self.alphas_full = []
+        self.thetas_full = []
+        self.phis_full = []
+
+        for i in self.ind_order[::-1]:  # TODO adapt for Unitary initialization
+            if i in self.params["betas"] and i < include_N:
+                self.betas_full.append(self.params["betas"][i])
+                self.alphas_full.append(self.params["alphas"][i])
+                self.thetas_full.append(self.params["thetas"][i])
+                self.phis_full.append(self.params["phis"][i])

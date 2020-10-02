@@ -30,7 +30,7 @@ cd_grape_obj = CD_grape(N_blocks = N_blocks, unitary_optimization=True,
                     beta_r_step_size=0.5, alpha_r_step_size=0.2,
                     saving_directory=saving_directory,
                     use_displacements=True, N = N, N2=N2,
-                    beta_penalty_multiplier=0,
+                    beta_penalty_multiplier=0, no_CD_end=False,
                     minimizer_options = {'gtol': 1e-4, 'ftol':1e-4}, basinhopping_kwargs={'niter':1000, 'T':0.01})
 # %% Setup Target
 # U_targ = cd_grape_obj.CD(2)*cd_grape_obj.D(1)*cd_grape_obj.R(1,1)
