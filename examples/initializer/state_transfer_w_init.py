@@ -16,15 +16,17 @@ N2 = 2 #qubit hilbert space
 alpha = 2 + 1j #cat alpha
 N_blocks = 5
 initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
-target_state = qt.tensor((qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit(),\
-                          qt.basis(N2,0))
+# target_state = qt.tensor((qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit(),\
+                        #   qt.basis(N2,0))
+
+target_state = qt.tensor(qt.basis(N,10),qt.basis(N2,0))
 term_fid = 0.99
 #max alpha and beta are the maximum values of alpha and beta for optimization
-max_alpha = 5
-max_beta = 20
+max_alpha = 6
+max_beta = 8
 name = "Cat creation"
 saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_grape_parameters\\"
-max_N = 3
+max_N = 8
 cd_grape_obj_init = CD_grape_init(initial_state=initial_state, target_state=target_state, max_N=max_N,\
                     name=name, term_fid=term_fid,\
                     max_alpha = max_alpha, max_beta=max_beta,
@@ -32,10 +34,11 @@ cd_grape_obj_init = CD_grape_init(initial_state=initial_state, target_state=targ
                     basinhopping_kwargs={'T':0.1},
                     save_all_minima = True,
                     use_displacements=True, analytic=True)
+#%% 
+cd_grape_obj_init.binary_initialize()
 
 #%% 
-
-cd_grape_obj = CD_grape(initial_state=initial_state, target_state=target_state, N_blocks=max_N,\
+cd_grape_obj = CD_grape(cd_grape_init_obj=cd_grape_obj_init, N_blocks=max_N,\
                     name=name, term_fid=term_fid,\
                     max_alpha = max_alpha, max_beta=max_beta,
                     saving_directory=saving_directory,
@@ -52,7 +55,7 @@ cd_grape_obj.plot_target_state()
 plt.title("target state")
 #%% Doing the optimization
 #The alpha and beta scale are scales for the random initialization.
-cd_grape_obj.randomize(alpha_scale=0.2, beta_scale=1)
+# cd_grape_obj.randomize(alpha_scale=0.2, beta_scale=1)
 print("Randomized parameters:")
 cd_grape_obj.print_info()
 cd_grape_obj.optimize()

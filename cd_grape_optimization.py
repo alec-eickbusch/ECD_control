@@ -144,7 +144,45 @@ class CD_grape:
         circuits=[],
         N=None,
         N2=None,
+        cd_grape_init_obj=None,
     ):
+        if cd_grape_init_obj is not None:
+            N = cd_grape_init_obj.N
+            N2 = cd_grape_init_obj.N2
+            no_CD_end = cd_grape_init_obj.no_CD_end if no_CD_end is None else no_CD_end
+            cd_grape_init_obj.concat_controls(N_blocks)  # take the first N_blocks
+            betas = cd_grape_init_obj.betas_full if betas is None else betas
+            alphas = cd_grape_init_obj.alphas_full if alphas is None else alphas
+            phis = cd_grape_init_obj.phis_full if phis is None else phis
+            thetas = cd_grape_init_obj.thetas_full if thetas is None else thetas
+
+            # presumably the same prob to optimize over as in the initialization..
+            initial_state = (
+                cd_grape_init_obj.initial_state_original
+                if initial_state is None
+                else initial_state
+            )
+            target_state = (
+                cd_grape_init_obj.target_state_original
+                if target_state is None
+                else target_state
+            )
+            target_unitary = (
+                cd_grape_init_obj.target_unitary
+                if target_unitary is None
+                else target_unitary
+            )
+
+            unitary_initial_states = (
+                cd_grape_init_obj.unitary_initial_states
+                if unitary_initial_states is None
+                else unitary_initial_states
+            )
+            unitary_final_states = (
+                cd_grape_init_obj.unitary_final_states
+                if unitary_final_states is None
+                else unitary_final_states
+            )
 
         self.initial_state = initial_state
         self.target_state = target_state
@@ -902,7 +940,6 @@ class CD_grape:
             self.basinhopping_num = 0
             self.best_fn = 0
             # self.bpm = 0
-            # self.tf = self.term_fid_intermediate
             self.tf = self.term_fid
             # don't use beta penalty in the first round
             # The first round of optimization: Basinhopping

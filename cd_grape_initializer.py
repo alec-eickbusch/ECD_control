@@ -47,6 +47,15 @@ class CD_grape_init(CD_grape):
         N=None,
         N2=None,
     ):
+        if "niter" not in basinhopping_kwargs:
+            basinhopping_kwargs["niter"] = 5
+        # note: ftol is relative percent difference in fidelity before optimization stops
+        if "ftol" not in minimizer_options:
+            minimizer_options["ftol"] = 1e-7  # lower than usual
+        # gtol is like the maximum gradient before optimization stops.
+        if "gtol" not in minimizer_options:
+            minimizer_options["gtol"] = 1e-7  # lower than usual
+
         CD_grape.__init__(
             self,
             initial_state=initial_state,
@@ -86,7 +95,7 @@ class CD_grape_init(CD_grape):
         )
         self.max_N = max_N
         self.initial_state_original = self.initial_state
-        self.final_state_original = self.final_state
+        self.target_state_original = self.target_state
         self.reset_init()
 
     def reset_init(self):
@@ -108,9 +117,9 @@ class CD_grape_init(CD_grape):
                     U_i = self.Ucs[index] * U_i
             for index in inds_f:
                 if index in self.Ucs:
-                    U_f = self.Ucs[index] * U_f
+                    U_f = self.Ucs[index].dag() * U_f
             self.initial_state = U_i * self.initial_state_original
-            self.final_state = U_f * self.final_state_original
+            self.target_state = U_f * self.target_state_original
             self.randomize(alpha_scale=0.2, beta_scale=3)
             self.optimize()
             self.print_info()
@@ -120,6 +129,7 @@ class CD_grape_init(CD_grape):
             self.params["phis"][n] = self.phis[0]
             self.params["thetas"][n] = self.thetas[0]
             self.fids_reached[n] = self.fidelity()
+            self.Ucs[n] = self.U_tot()
             self.N_reached = n + 1
 
     def concat_controls(self, include_N=None):
