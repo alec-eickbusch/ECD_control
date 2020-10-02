@@ -91,7 +91,7 @@ class CD_grape_init(CD_grape):
 
     def reset_init(self):
         self.fids_reached = {}
-        self.Ucs = {}
+        self.Ucs = {}  # key: index representing order unitary was added in, val: U
         self.params = {"betas": {}, "alphas": {}, "phis": {}, "thetas": {}}
         self.ind_order = [x.val for x in bt.build(list(range(self.max_N))).inorder]
 
@@ -106,11 +106,11 @@ class CD_grape_init(CD_grape):
             for index in inds_i[::-1]:
                 if index in self.Ucs:
                     U_i = self.Ucs[index] * U_i
-            for index in inds_f[::-1]:
+            for index in inds_f:
                 if index in self.Ucs:
                     U_f = self.Ucs[index] * U_f
             self.initial_state = U_i * self.initial_state_original
-            self.final_state = self.final_state_original * U_f
+            self.final_state = U_f * self.final_state_original
             self.randomize(alpha_scale=0.2, beta_scale=3)
             self.optimize()
             self.print_info()
