@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 #%%
 N = 20 #cavity hilbert space 
 N2 = 2 #qubit hilbert space
-N_blocks = 2
+N_blocks = 1
 term_fid = 0.99
 #max alpha and beta are the maximum values of alpha and beta for optimization
 max_alpha = 4
@@ -22,8 +22,8 @@ saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_grape_parameters\\"
 #TODO: can we control the step size in the local optimizations?
 #TODO: Are there few enough parameters we can do more of a global search? 
 # Just sweep each parameter over its range?
-cd_grape_obj = CD_grape(N_blocks = N_blocks, unitary_optimization="full",
-                    name=name, term_fid=term_fid, analytic=True,\
+cd_grape_obj = CD_grape(N_blocks = N_blocks, unitary_optimization=True, no_CD_end=False,
+                    name=name, term_fid=term_fid, analytic=False,\
                     max_alpha = max_alpha, max_beta=max_beta,
                     beta_r_step_size=0.5, alpha_r_step_size=0.2,
                     saving_directory=saving_directory,
@@ -32,9 +32,9 @@ cd_grape_obj = CD_grape(N_blocks = N_blocks, unitary_optimization="full",
                     minimizer_options = {'gtol': 1e-4, 'ftol':1e-4}, basinhopping_kwargs={'niter':1000, 'T':0.01})
 #%%
 beta = 2.0
-# cd_grape_obj.target_unitary = cd_grape_obj.CD(beta)
-parity = (1j*np.pi*cd_grape_obj.a.dag()*cd_grape_obj.a*cd_grape_obj.sz).expm()
-cd_grape_obj.target_unitary = parity
+cd_grape_obj.target_unitary = cd_grape_obj.CD(beta)
+# parity = (1j*np.pi*cd_grape_obj.a.dag()*cd_grape_obj.a*cd_grape_obj.sz).expm()
+# cd_grape_obj.target_unitary = parity
 n = N*N2//3
 unitary_eigvals = np.array(cd_grape_obj.target_unitary.eigenstates()[0])[:n]
 cd_grape_obj.unitary_initial_states = cd_grape_obj.target_unitary.eigenstates()[1][:n]
@@ -49,10 +49,7 @@ cd_grape_obj.print_info()
 cd_grape_obj.optimize()
 print("after optimization:")
 cd_grape_obj.print_info()
-#%% plotting the final state
-plt.figure(figsize=(5, 5), dpi=200)
-cd_grape_obj.plot_final_state()
-plt.title("final state")
+
 #%% Now, we can convert these parameters to a pulse we can run on the experiment
 #first, creating a system object
 epsilon_m = 2*np.pi*1e-3*300.0  # maximum displacement rate
