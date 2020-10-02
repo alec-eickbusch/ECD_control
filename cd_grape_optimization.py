@@ -114,7 +114,8 @@ class CD_grape:
         N_blocks=1,
         unitary_optimization=False,
         unitary_initial_states=None,
-        unitary_initial_state_weights=None,
+        unitary_final_states=None,
+        unitary_learning_rate=1,
         betas=None,
         alphas=None,
         phis=None,
@@ -145,9 +146,10 @@ class CD_grape:
         self.initial_state = initial_state
         self.target_state = target_state
         self.target_unitary = target_unitary
-        self.unitary_optimization = unitary_optimization or (target_unitary is not None)
+        self.unitary_optimization = unitary_optimization
         self.unitary_initial_states = unitary_initial_states
-        self.unitary_initial_state_weights = unitary_initial_state_weights
+        self.unitary_final_states = unitary_final_states
+        self.unitary_learning_rate = unitary_learning_rate
         self.N_blocks = N_blocks
         self.betas = (
             np.array(betas, dtype=np.complex128)
@@ -292,33 +294,6 @@ class CD_grape:
             np.cos(phi) * self.sx + np.sin(phi) * self.sy
         ) * np.sin(theta / 2.0)
 
-    # derivative multipliers
-    # todo: optimization with derivatives
-    # def dalphar_dD(self, alpha):
-    #     return (self.a.dag() - self.a - (np.conj(alpha) - alpha) / 2.0) * self.D(alpha)
-
-    # def dalphai_dD(self, alpha):
-    #     return (
-    #         1j
-    #         * (self.a.dag() + self.a - (np.conj(alpha) + alpha) / 2.0)
-    #         * self.D(alpha)
-    #     )
-
-    # def dbetar_dCD(self, beta):
-    #     return (
-    #         0.5
-    #         * (self.sz * (self.a.dag() - self.a) - ((np.conj(beta) - beta) / 4.0))
-    #         * self.CD(beta)
-    #     )
-
-    # def dbetai_dCD(self, beta):
-    #     return (
-    #         1j
-    #         * 0.5
-    #         * (self.sz * (self.a.dag() + self.a) - ((np.conj(beta) + beta) / 4.0))
-    #         * self.CD(beta)
-    #     )
-
     def dalpha_r_dD(self, alpha):
         r = np.abs(alpha)
         return (
@@ -404,6 +379,7 @@ class CD_grape:
 
     def reverse_states(self, betas, alphas, phis, thetas, target_state=None):
         target_state = target_state if target_state is not None else self.target_state
+        target_state = qt.Qobj(target_state)
         psi_bwd = [target_state.dag()]
         # final rotation and displacement
         psi_bwd.append(psi_bwd[-1] * self.D(alphas[-1]))
@@ -440,8 +416,6 @@ class CD_grape:
         psi_bwd = self.reverse_states(
             betas, alphas, phis, thetas, target_state=target_state
         )
-        overlap = (psi_bwd[0] * psi_fwd[-1]).full()[0][0]  # might be complex
-        fid = np.abs(overlap) ** 2
 
         dbeta_r = np.zeros(self.N_blocks, dtype=np.complex128)
         dbeta_theta = np.zeros(self.N_blocks, dtype=np.complex128)
@@ -482,8 +456,14 @@ class CD_grape:
                         * self.dbeta_theta_dCD(betas[i])
                         * psi_fwd[k - 1]
                     ).full()[0][0]
+
+        # TODO: move this after unitary_fid, after testing
+        overlap = (psi_bwd[0] * psi_fwd[-1]).full()[0][0]
+
         if unitary_fid:
             return overlap, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta
+
+        fid = np.abs(overlap) ** 2
 
         dbeta_r = (
             2 * np.abs(overlap) * np.real(overlap * np.conj(dbeta_r)) / np.abs(overlap)
@@ -562,10 +542,44 @@ class CD_grape:
             U_bwd.append(U_bwd[-1] * self.R(phis[i], thetas[i]))
         return U_bwd
 
+    def unitary_fid_and_grad_fid_stochastic(
+        self,
+        unitary_initial_states=None,
+        unitary_final_states=None,
+        betas=None,
+        alphas=None,
+        phis=None,
+        thetas=None,
+        testing=False,
+    ):  # stochastic gradient descent
+        unitary_initial_states = (
+            self.unitary_initial_states
+            if unitary_initial_states is None
+            else unitary_initial_states
+        )
+        unitary_final_states = (
+            self.unitary_final_states
+            if unitary_final_states is None
+            else unitary_final_states
+        )
+
+        i = np.random.randint(len(unitary_initial_states))
+        unitary_initial_state = [unitary_initial_states[i]]
+        unitary_final_state = [unitary_final_states[i]]
+        return self.unitary_fid_and_grad_fid_approx(
+            unitary_initial_states=unitary_initial_state,
+            unitary_final_states=unitary_final_state,
+            betas=betas,
+            alphas=alphas,
+            phis=phis,
+            thetas=thetas,
+            testing=testing,
+        )
+
     def unitary_fid_and_grad_fid_approx(
         self,
-        unitary_initial_state_weights=None,
         unitary_initial_states=None,
+        unitary_final_states=None,
         betas=None,
         alphas=None,
         phis=None,
@@ -577,6 +591,12 @@ class CD_grape:
             if unitary_initial_states is None
             else unitary_initial_states
         )
+        unitary_final_states = (
+            self.unitary_final_states
+            if unitary_final_states is None
+            else unitary_final_states
+        )
+
         betas = self.betas if betas is None else betas
         alphas = self.alphas if alphas is None else alphas
         phis = self.phis if phis is None else phis
@@ -599,9 +619,12 @@ class CD_grape:
         )
 
         for i in range(num_states):
-            weight = unitary_initial_state_weights[i]
             initial_state = unitary_initial_states[i]
-            target_state = self.target_unitary * initial_state
+            target_state = (
+                unitary_final_states[i]
+                if unitary_final_states is not None
+                else self.target_unitary * initial_state
+            )  # if the initial state is an eigenstate of target_unitary, the target_state = eigenvalue*initial_state
             (
                 approx_overlap_i,
                 dbeta_r_i,
@@ -613,16 +636,18 @@ class CD_grape:
             ) = self.fid_and_grad_fid(
                 initial_state=initial_state, target_state=target_state, unitary_fid=True
             )
-            approx_overlap += weight * approx_overlap_i
-            dbeta_r += weight * dbeta_r_i
-            dbeta_theta += weight * dbeta_theta_i
-            dalpha_r += weight * dalpha_r_i
-            dalpha_theta += weight * dalpha_theta_i
-            dphi += weight * dphi_i
-            dtheta += weight * dtheta_i
+            approx_overlap += approx_overlap_i
+            dbeta_r += dbeta_r_i
+            dbeta_theta += dbeta_theta_i
+            dalpha_r += dalpha_r_i
+            dalpha_theta += dalpha_theta_i
+            dphi += dphi_i
+            dtheta += dtheta_i
         approx_fid = np.abs(1.0 / num_states * approx_overlap) ** 2
 
-        scaling_factor = approx_overlap * (2.0 / (num_states ** 2))
+        scaling_factor = (
+            (2.0 / D) * overlap * (1 / num_states) * self.unitary_learning_rate
+        )
         dbeta_r = np.real(scaling_factor * dbeta_r)
         dbeta_theta = np.real(scaling_factor * dbeta_theta)
         dalpha_r = np.real(scaling_factor * dalpha_r)
@@ -691,7 +716,7 @@ class CD_grape:
                         U_fwd[k - 1] * U_bwd[-(k + 1)] * self.dbeta_theta_dCD(betas[i])
                     ).tr()
 
-        scalar = 2.0 / D ** 2 * overlap
+        scalar = 2.0 / D ** 2 * overlap * self.unitary_learning_rate
         dbeta_r = np.real(scalar * dbeta_r)
         dbeta_theta = np.real(scalar * dbeta_theta)
 
@@ -763,15 +788,18 @@ class CD_grape:
     # TODO: Gauge degree of freedom
     def cost_function_analytic(self, parameters):
         betas, alphas, phis, thetas = self.unflatten_parameters(parameters)
-        (
-            f,
-            dbeta_r,
-            dbeta_theta,
-            dalpha_r,
-            dalpha_theta,
-            dphi,
-            dtheta,
-        ) = self.fid_and_grad_fid(betas, alphas, phis, thetas)
+
+        if self.unitary_optimization == "approximate":
+            fid_grads = self.unitary_fid_and_grad_fid_approx
+        elif self.unitary_optimization == "stochastic":
+            fid_grads = self.unitary_fid_and_grad_fid_stochastic
+        elif self.unitary_optimization:
+            fid_grads = self.unitary_fid_and_grad_fid
+        else:
+            fid_grads = self.fid_and_grad_fid
+        (f, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta,) = fid_grads(
+            betas, alphas, phis, thetas
+        )
         gradf = np.concatenate(
             [dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta]
         )
@@ -907,7 +935,7 @@ class CD_grape:
                 callback=callback_fun,
                 **basinhopping_kwargs
             )
-        except OptFinishedException as e:
+        except OptFinishedException:
             print("\n\ndesired intermediate fidelity reached.\n\n")
             if self.unitary_optimization:
                 fid = self.unitary_fidelity()

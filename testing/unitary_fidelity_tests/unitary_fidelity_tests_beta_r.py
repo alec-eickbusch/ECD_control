@@ -2,7 +2,7 @@
 %load_ext autoreload
 %autoreload 2
 import sys
-sys.path.append("../../")
+sys.path.append("../../../")
 import importlib
 from CD_GRAPE.cd_grape_optimization import *
 from CD_GRAPE.basic_pulses import *
@@ -101,10 +101,9 @@ print("Precentage Diff: " + str((dbeta_r[k] - num_gradient)/num_gradient*100) + 
 
 # %% Approx Unitary Fidelity (with fock states)
 unitary_initial_states = []
-for i in range(N):
+for i in range(N*N2):
     unitary_initial_states.append(qt.tensor(qt.basis(N,i%N), qt.basis(N2,i//N)))
-unitary_initial_state_weights = np.ones(len(unitary_initial_states))
-fid, afid, adbeta_r, adbeta_theta, adalpha_r, adalpha_theta, adphi, adtheta = cd_grape_obj.unitary_fid_and_grad_fid_approx(unitary_initial_states=unitary_initial_states,unitary_initial_state_weights=unitary_initial_state_weights, testing=True)
+fid, afid, adbeta_r, adbeta_theta, adalpha_r, adalpha_theta, adphi, adtheta = cd_grape_obj.unitary_fid_and_grad_fid_approx(unitary_initial_states=unitary_initial_states, testing=True)
 
 print(fid)
 print(afid)
@@ -112,18 +111,12 @@ print(adbeta_r[k])
 print("Precentage Diff: " + str((adbeta_r[k] - num_gradient)/num_gradient*100) + "%")
 
 # %% Approx Unitary Fidelity (with eigenstates)
-unitary_initial_states = []
-unitary_initial_state_weights = np.array(cd_grape_obj.target_unitary.eigenstates()[0])
 n = N*N2
-# n = N*N2*5//8
-sorted_ind = np.argsort(np.abs(unitary_initial_state_weights))[:n]
+unitary_eigvals = np.array(cd_grape_obj.target_unitary.eigenstates()[0])[:n]
+unitary_initial_states = cd_grape_obj.target_unitary.eigenstates()[1][:n]
+unitary_final_states = unitary_initial_states*unitary_eigvals
 
-unitary_initial_state_weights = unitary_initial_state_weights[sorted_ind]
-estates = cd_grape_obj.target_unitary.eigenstates()[1]
-for i in sorted_ind:
-    unitary_initial_states.append(estates[i]/estates[i].norm())
-
-fid, afid, adbeta_r, adbeta_theta, adalpha_r, adalpha_theta, adphi, adtheta = cd_grape_obj.unitary_fid_and_grad_fid_approx(unitary_initial_states=unitary_initial_states,unitary_initial_state_weights=unitary_initial_state_weights, testing=True)
+fid, afid, adbeta_r, adbeta_theta, adalpha_r, adalpha_theta, adphi, adtheta = cd_grape_obj.unitary_fid_and_grad_fid_approx(unitary_initial_states=unitary_initial_states,unitary_final_states=unitary_final_states, testing=True)
 print(fid)
 print(afid)
 print(adbeta_r[k])
