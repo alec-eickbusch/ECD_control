@@ -49,20 +49,18 @@ class MyTakeStep(object):
                 np.random.uniform(
                     -s * self.alpha_r_step_size,
                     s * self.alpha_r_step_size,
-                    self.N_blocks + 1,
+                    self.N_blocks,
                 ),  # alphas_r
                 np.random.uniform(
                     -s * self.alpha_theta_step_size,
                     s * self.alpha_theta_step_size,
-                    self.N_blocks + 1,
+                    self.N_blocks,
                 ),  # alphas_theta
                 np.random.uniform(
-                    -s * self.phi_step_size, s * self.phi_step_size, self.N_blocks + 1
+                    -s * self.phi_step_size, s * self.phi_step_size, self.N_blocks
                 ),  # phis
                 np.random.uniform(
-                    -s * self.theta_step_size,
-                    s * self.theta_step_size,
-                    self.N_blocks + 1,
+                    -s * self.theta_step_size, s * self.theta_step_size, self.N_blocks,
                 ),  # thetas
             ]
         )
@@ -75,17 +73,21 @@ class MyBounds(object):
         self.max_beta = cd_grape_obj.max_beta
         self.max_alpha = cd_grape_obj.max_alpha
         self.N_blocks = cd_grape_obj.N_blocks
+        self.no_CD_end = cd_grape_obj.no_CD_end
 
     def __call__(self, **kwargs):
         x = kwargs["x_new"]
         beta_r_min_constraint = bool(np.all(x[: self.N_blocks] >= 0))
         beta_r_max_constraint = bool(np.all(x[: self.N_blocks] <= self.max_beta))
-
+        if self.no_CD_end:
+            beta_r_max_constraint = bool(
+                np.all(x[self.N_blocks - 1 : self.N_blocks] <= 0)
+            )
         alpha_r_min_constraint = bool(
-            np.all(x[2 * self.N_blocks : (4 * self.N_blocks + 2)] >= 0)
+            np.all(x[2 * self.N_blocks : (3 * self.N_blocks)] >= 0)
         )
         alpha_r_max_constraint = bool(
-            np.all(x[2 * self.N_blocks : (4 * self.N_blocks + 2)] <= self.max_alpha)
+            np.all(x[2 * self.N_blocks : (3 * self.N_blocks)] <= self.max_alpha)
         )
 
         return (
@@ -138,6 +140,7 @@ class CD_grape:
         basinhopping_kwargs={},
         save_all_minima=False,
         use_displacements=True,
+        no_CD_end=True,
         circuits=[],
         N=None,
         N2=None,
@@ -159,17 +162,17 @@ class CD_grape:
         self.alphas = (
             np.array(alphas, dtype=np.complex128)
             if alphas is not None
-            else np.zeros(N_blocks + 1, dtype=np.complex128)
+            else np.zeros(N_blocks, dtype=np.complex128)
         )
         self.phis = (
             np.array(phis, dtype=np.float64)
             if phis is not None
-            else np.zeros(N_blocks + 1, dtype=np.float64)
+            else np.zeros(N_blocks, dtype=np.float64)
         )
         self.thetas = (
             np.array(thetas, dtype=np.float64)
             if thetas is not None
-            else np.zeros(N_blocks + 1, dtype=np.float64)
+            else np.zeros(N_blocks, dtype=np.float64)
         )
 
         self.max_alpha = max_alpha
@@ -206,6 +209,7 @@ class CD_grape:
         self.save_all_minima = save_all_minima
         self.circuits = list(circuits)
         self.use_displacements = use_displacements
+        self.no_CD_end = no_CD_end
 
         if self.initial_state is not None:
             self.N = self.initial_state.dims[0][0]
@@ -236,17 +240,17 @@ class CD_grape:
         alpha_scale = self.max_alpha if alpha_scale is None else alpha_scale
         ang_beta = np.random.uniform(-np.pi, np.pi, self.N_blocks)
         rho_beta = np.random.uniform(0, beta_scale, self.N_blocks)
-        ang_alpha = np.random.uniform(-np.pi, np.pi, self.N_blocks + 1)
-        rho_alpha = np.random.uniform(0, alpha_scale, self.N_blocks + 1)
-        phis = np.random.uniform(-np.pi, np.pi, self.N_blocks + 1)
-        thetas = np.random.uniform(0, np.pi, self.N_blocks + 1)
+        ang_alpha = np.random.uniform(-np.pi, np.pi, self.N_blocks)
+        rho_alpha = np.random.uniform(0, alpha_scale, self.N_blocks)
+        phis = np.random.uniform(-np.pi, np.pi, self.N_blocks)
+        thetas = np.random.uniform(0, np.pi, self.N_blocks)
         self.betas = np.array(np.exp(1j * ang_beta) * rho_beta, dtype=np.complex128)
         if self.use_displacements:
             self.alphas = np.array(
                 np.exp(1j * ang_alpha) * rho_alpha, dtype=np.complex128
             )
         else:
-            self.alphas = np.zeros(self.N_blocks + 1, dtype=np.complex128)
+            self.alphas = np.zeros(self.N_blocks, dtype=np.complex128)
         self.phis = np.array(phis, dtype=np.float64)
         self.thetas = np.array(thetas, dtype=np.float64)
 
@@ -357,11 +361,11 @@ class CD_grape:
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
         U = self.I
-        for i in range(self.N_blocks + 1):
+        for i in range(self.N_blocks):
             U = self.U_i_block(i, betas, alphas, phis, thetas) * U
         return U
 
-    # TODO: work out optimization with the derivatives, include block # N_blocks + 1
+    # TODO: work out optimization with the derivatives, include block # N_blocks
     def forward_states(self, betas, alphas, phis, thetas, initial_state):
         initial_state = (
             initial_state if initial_state is not None else self.initial_state
@@ -419,12 +423,12 @@ class CD_grape:
 
         dbeta_r = np.zeros(self.N_blocks, dtype=np.complex128)
         dbeta_theta = np.zeros(self.N_blocks, dtype=np.complex128)
-        dalpha_r = np.zeros(self.N_blocks + 1, dtype=np.complex128)
-        dalpha_theta = np.zeros(self.N_blocks + 1, dtype=np.complex128)
-        dphi = np.zeros(self.N_blocks + 1, dtype=np.complex128)
-        dtheta = np.zeros(self.N_blocks + 1, dtype=np.complex128)
+        dalpha_r = np.zeros(self.N_blocks, dtype=np.complex128)
+        dalpha_theta = np.zeros(self.N_blocks, dtype=np.complex128)
+        dphi = np.zeros(self.N_blocks, dtype=np.complex128)
+        dtheta = np.zeros(self.N_blocks, dtype=np.complex128)
 
-        for i in range(self.N_blocks + 1):
+        for i in range(self.N_blocks):
             for j in [1, 2, 3]:
                 k = 3 * i + j
                 if j == 1:
@@ -447,7 +451,7 @@ class CD_grape:
                         * self.dalpha_theta_dD(alphas[i])
                         * psi_fwd[k - 1]
                     ).full()[0][0]
-                if j == 3 and i < self.N_blocks:
+                if j == 3:
                     dbeta_r[i] = (
                         psi_bwd[-(k + 1)] * self.dbeta_r_dCD(betas[i]) * psi_fwd[k - 1]
                     ).full()[0][0]
@@ -501,11 +505,10 @@ class CD_grape:
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
         psi = initial_state if initial_state is not None else self.initial_state
-        for i in range(self.N_blocks + 1):
+        for i in range(self.N_blocks):
             psi = self.R(phis[i], thetas[i]) * psi
             psi = self.D(alphas[i]) * psi
-            if i < self.N_blocks:
-                psi = self.CD(betas[i]) * psi
+            psi = self.CD(betas[i]) * psi
         return psi
 
     def fidelity(self, betas=None, alphas=None, phis=None, thetas=None):
@@ -682,12 +685,12 @@ class CD_grape:
 
         dbeta_r = np.zeros(self.N_blocks, dtype=np.complex128)
         dbeta_theta = np.zeros(self.N_blocks, dtype=np.complex128)
-        dalpha_r = np.zeros(self.N_blocks + 1, dtype=np.complex128)
-        dalpha_theta = np.zeros(self.N_blocks + 1, dtype=np.complex128)
-        dphi = np.zeros(self.N_blocks + 1, dtype=np.complex128)
-        dtheta = np.zeros(self.N_blocks + 1, dtype=np.complex128)
+        dalpha_r = np.zeros(self.N_blocks, dtype=np.complex128)
+        dalpha_theta = np.zeros(self.N_blocks, dtype=np.complex128)
+        dphi = np.zeros(self.N_blocks, dtype=np.complex128)
+        dtheta = np.zeros(self.N_blocks, dtype=np.complex128)
 
-        for i in range(self.N_blocks + 1):
+        for i in range(self.N_blocks):
             for j in [1, 2, 3]:
                 k = 3 * i + j
                 if j == 1:
@@ -810,7 +813,7 @@ class CD_grape:
             grad_beta_penalty = (
                 self.bpm
                 * np.concatenate(  # todo: fix gradient of beta penalty, maybe use soft relu penalty for acceptable range of beta?
-                    [-1.0 * betas_r / np.abs(betas_r), np.zeros(5 * self.N_blocks + 4),]
+                    [-1.0 * betas_r / np.abs(betas_r), np.zeros(5 * self.N_blocks),]
                 )
             )
             print("\rfid: %.4f beta penalty: %.4f" % (f, beta_penalty), end="")
@@ -859,10 +862,10 @@ class CD_grape:
     def unflatten_parameters(self, parameters):
         betas_r = parameters[0 : self.N_blocks]
         betas_theta = parameters[self.N_blocks : 2 * self.N_blocks]
-        alphas_r = parameters[2 * self.N_blocks : (3 * self.N_blocks + 1)]
-        alphas_theta = parameters[(3 * self.N_blocks + 1) : (4 * self.N_blocks + 2)]
-        phis = parameters[(4 * self.N_blocks + 2) : (5 * self.N_blocks + 3)]
-        thetas = parameters[(5 * self.N_blocks + 3) :]
+        alphas_r = parameters[2 * self.N_blocks : (3 * self.N_blocks)]
+        alphas_theta = parameters[(3 * self.N_blocks) : (4 * self.N_blocks)]
+        phis = parameters[(4 * self.N_blocks) : (5 * self.N_blocks)]
+        thetas = parameters[(5 * self.N_blocks) :]
         alphas = alphas_r * np.exp(1j * alphas_theta)
         betas = betas_r * np.exp(1j * betas_theta)
         return betas, alphas, phis, thetas
@@ -871,13 +874,13 @@ class CD_grape:
         init_params = self.flatten_parameters()
         bounds = np.concatenate(
             [
-                [(-self.max_beta, self.max_beta) for _ in range(2 * self.N_blocks)],
-                [
-                    (-self.max_alpha, self.max_alpha)
-                    for _ in range(2 * self.N_blocks + 2)
-                ],
-                [(-np.inf, np.inf) for _ in range(self.N_blocks + 1)],
-                [(-np.inf, np.inf) for _ in range(self.N_blocks + 1)],
+                [(0, self.max_beta) for _ in range(self.N_blocks - 1)]
+                + [(0, 0 if self.no_CD_end else self.max_beta)],
+                [(-np.inf, np.inf) for _ in range(self.N_blocks)],
+                [(0, self.max_alpha) for _ in range(self.N_blocks)],
+                [(-np.inf, np.inf) for _ in range(self.N_blocks)],
+                [(-np.inf, np.inf) for _ in range(self.N_blocks)],
+                [(-np.inf, np.inf) for _ in range(self.N_blocks)],
             ]
         )
         cost_function = (
