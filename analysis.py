@@ -159,6 +159,7 @@ class CD_grape_analysis:
             return [],[]
         
         #Now, pad with trailing zeros only if there is another pulse coming
+        #TODO: update this with new block rules.
         if i < self.cd_grape_object.N_blocks:
             if not (i == self.cd_grape_object.N_blocks -1 and self.cd_grape_object.thetas[-1] == 0):
                 epsilon = np.pad(epsilon, (0, self.system.buffer_time), mode='constant')
@@ -169,7 +170,7 @@ class CD_grape_analysis:
     def composite_pulse(self):
         e = []
         O = []
-        for i in range(self.cd_grape_object.N_blocks + 1):
+        for i in range(self.cd_grape_object.N_blocks):
             epsilon, Omega = self.pulse_block(i)
             e.append(epsilon)
             O.append(Omega)
