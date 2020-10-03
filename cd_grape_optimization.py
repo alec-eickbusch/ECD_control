@@ -79,14 +79,14 @@ class MyBounds(object):
 
     def __call__(self, **kwargs):
         x = kwargs["x_new"]
-        beta_r_min_constraint = bool(np.all(x[: self.N_blocks] >= 0))
+        beta_r_min_constraint = bool(np.all(x[: self.N_blocks] >= -self.max_beta))
         beta_r_max_constraint = bool(np.all(x[: self.N_blocks] <= self.max_beta))
         if self.no_CD_end:
             beta_r_max_constraint = bool(
                 np.all(x[self.N_blocks - 1 : self.N_blocks] <= 0)
             )
         alpha_r_min_constraint = bool(
-            np.all(x[2 * self.N_blocks : (3 * self.N_blocks)] >= 0)
+            np.all(x[2 * self.N_blocks : (3 * self.N_blocks)] >= -self.max_alpha)
         )
         alpha_r_max_constraint = bool(
             np.all(x[2 * self.N_blocks : (3 * self.N_blocks)] <= self.max_alpha)
