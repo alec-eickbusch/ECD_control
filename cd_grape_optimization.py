@@ -60,7 +60,9 @@ class MyTakeStep(object):
                     -s * self.phi_step_size, s * self.phi_step_size, self.N_blocks
                 ),  # phis
                 np.random.uniform(
-                    -s * self.theta_step_size, s * self.theta_step_size, self.N_blocks,
+                    -s * self.theta_step_size,
+                    s * self.theta_step_size,
+                    self.N_blocks,
                 ),  # thetas
             ]
         )
@@ -258,7 +260,7 @@ class CD_grape:
         else:
             self.N = N
             self.N2 = N2
-        
+
         self.init_operators(self.N, self.N2)
 
     def init_operators(self, N, N2):
@@ -434,6 +436,7 @@ class CD_grape:
             psi_bwd.append(psi_bwd[-1] * self.D(alphas[i]))
             psi_bwd.append(psi_bwd[-1] * self.R(phis[i], thetas[i]))
         return psi_bwd
+
     def fid_and_grad_fid(
         self,
         betas=None,
@@ -776,6 +779,7 @@ class CD_grape:
         return np.abs((1 / D) * overlap) ** 2
 
         # i is state after each operation. Set i = 0 for initial state, i = -1 for final state
+
     def plot_state(self, i=0, contour=True, fig=None, ax=None, max_alpha=6, cbar=True):
         state = self.forward_states()[i]
         plot_wigner(
@@ -1026,9 +1030,15 @@ class CD_grape:
             fid_grads = self.unitary_fid_and_grad_fid
         else:
             fid_grads = self.fid_and_grad_fid
-        (f, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta,) = fid_grads(
-            betas, alphas, phis, thetas
-        )
+        (
+            f,
+            dbeta_r,
+            dbeta_theta,
+            dalpha_r,
+            dalpha_theta,
+            dphi,
+            dtheta,
+        ) = fid_grads(betas, alphas, phis, thetas)
         gradf = np.concatenate(
             [dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta]
         )
@@ -1039,7 +1049,10 @@ class CD_grape:
             grad_beta_penalty = (
                 self.bpm
                 * np.concatenate(  # todo: fix gradient of beta penalty, maybe use soft relu penalty for acceptable range of beta?
-                    [-1.0 * betas_r / np.abs(betas_r), np.zeros(5 * self.N_blocks),]
+                    [
+                        -1.0 * betas_r / np.abs(betas_r),
+                        np.zeros(5 * self.N_blocks),
+                    ]
                 )
             )
             print("\rfid: %.4f beta penalty: %.4f" % (f, beta_penalty), end="")
@@ -1255,7 +1268,7 @@ class CD_grape:
         filename_np = filestring + ".npz"
         filename_qt = filestring + ".qt"
         f = np.load(filename_np)
-        betas, alphas, phis, thetas, max_alpha, max_beta, name, circuits = (
+        betas, alphas, phis, thetas, max_alpha, max_beta, name = (
             f["betas"],
             f["alphas"],
             f["phis"],
@@ -1263,8 +1276,8 @@ class CD_grape:
             f["max_alpha"],
             f["max_beta"],
             str(f["name"]),
-        circuits = f["circuits"] if ["circuits"] in f else []
         )
+        circuits = f["circuits"] if ["circuits"] in f else []
         print("loaded parameters from:" + filename_np)
         f.close()
         states = qt.qload(filename_qt)
