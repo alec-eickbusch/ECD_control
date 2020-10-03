@@ -168,7 +168,7 @@ class CD_grape:
                 else target_state
             )
             target_unitary = (
-                cd_grape_init_obj.target_unitary
+                cd_grape_init_obj.target_unitary_original
                 if target_unitary is None
                 else target_unitary
             )
