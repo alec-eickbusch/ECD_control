@@ -403,8 +403,13 @@ class CD_grape:
             U = self.U_i_block(i, betas, alphas, phis, thetas) * U
         return U
 
-    # TODO: work out optimization with the derivatives, include block # N_blocks
-    def forward_states(self, betas, alphas, phis, thetas, initial_state):
+    def forward_states(
+        self, betas=None, alphas=None, phis=None, thetas=None, initial_state=None
+    ):
+        betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
         initial_state = (
             initial_state if initial_state is not None else self.initial_state
         )
@@ -420,16 +425,6 @@ class CD_grape:
         target_state = target_state if target_state is not None else self.target_state
         target_state = qt.Qobj(target_state)
         psi_bwd = [target_state.dag()]
-        # final rotation and displacement
-        psi_fwd.append(self.R(phis[-1], thetas[-1]) * psi_fwd[-1])
-        psi_fwd.append(self.D(alphas[-1]) * psi_fwd[-1])
-        return psi_fwd
-
-    def reverse_states(self, betas, alphas, phis, thetas):
-        psi_bwd = [self.target_state.dag()]
-        # final rotation and displacement
-        psi_bwd.append(psi_bwd[-1] * self.D(alphas[-1]))
-        psi_bwd.append(psi_bwd[-1] * self.R(phis[-1], thetas[-1]))
         # blocks
         for i in np.arange(self.N_blocks)[::-1]:
             psi_bwd.append(psi_bwd[-1] * self.CD(betas[i]))
