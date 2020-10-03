@@ -11,6 +11,7 @@ import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import random
 
 #%%
 N = 20 #cavity hilbert space 
@@ -110,8 +111,9 @@ data['approx_random_grad'] = []
 # %% Approx Unitary Fidelity (with fock states)
 def approx_grad_fid_fock(D, printing=False):
     unitary_initial_states = []
-    for i in range(D):
+    for i in range(N*N2):
         unitary_initial_states.append(qt.tensor(qt.basis(N,i%N), qt.basis(N2,i//N)))
+    unitary_initial_states = random.sample(unitary_initial_states,D)
     fid, afid, adbeta_r, adbeta_theta, adalpha_r, adalpha_theta, adphi, adtheta = cd_grape_obj.unitary_fid_and_grad_fid_approx(unitary_initial_states=unitary_initial_states, testing=True)
     
     percent_diff_fid = np.abs((afid - analytic_fid)/analytic_fid*100)
