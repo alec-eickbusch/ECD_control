@@ -52,11 +52,11 @@ class System:
         return epsilon, Omega_corrected
 
 
-    def simulate_pulse_trotter(self, epsilon, Omega, psi0, use_kerr = True,\
+    def simulate_pulse_trotter(self, epsilon, Omega, psi0, use_kerr = False,\
                                use_chi_prime = False, use_kappa = False, dt=1, pad=20,
-                               stark_shift = True):
-        epsilon = np.pad(epsilon, 20)
-        Omega = np.pad(Omega, 20)
+                               stark_shift = True, return_all_psis = False):
+        #epsilon = np.pad(epsilon, 20)
+        #Omega = np.pad(Omega, 20)
         alphas = alpha_from_epsilon(epsilon)
         N = psi0.dims[0][0]
         N2 = psi0.dims[0][1]
@@ -100,11 +100,16 @@ class System:
                 - (self.Ec/2.0)*q.dag()**2 * q**2 + np.real(O)*(q+q.dag()) +  np.imag(O)*1j*(q.dag() - q))
 
         psi = psi0
+        psis = []
         for H in tqdm(H_array, desc='trotterized simulation'):
             U = (-1j*H*dt).expm()
             psi = U*psi
+            if return_all_psis:
+                psis.append(psi)
         #finally, move psi to displaced frame
         D = qt.tensor(qt.displace(N,alphas[-1]),qt.identity(N2))
+        if return_all_psis:
+            return psis
         return  D*psi
 
 
