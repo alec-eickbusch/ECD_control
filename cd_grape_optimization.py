@@ -6,6 +6,7 @@
 
 import numpy as np
 import qutip as qt
+import matplotlib.pyplot as plt
 from CD_GRAPE.helper_functions import plot_wigner
 from scipy.optimize import minimize, basinhopping
 import scipy.optimize
@@ -19,7 +20,6 @@ except:
 
 #%%
 # TODO: Handle cases when phi, theta outside range.
-
 # custom step-taking class for basinhopping optimization.
 # TODO: make the step sizes changeable
 class MyTakeStep(object):
@@ -252,15 +252,14 @@ class CD_grape:
         if self.initial_state is not None:
             self.N = self.initial_state.dims[0][0]
             self.N2 = self.initial_state.dims[0][1]
-            self.init_operators(self.N, self.N2)
         elif self.target_state is not None:
             self.N = self.target_state.dims[0][0]
             self.N2 = self.target_state.dims[0][1]
-            self.init_operators(self.N, self.N2)
         else:
             self.N = N
             self.N2 = N2
-            self.init_operators(self.N, self.N2)
+        
+        self.init_operators(self.N, self.N2)
 
     def init_operators(self, N, N2):
         self.N = N
@@ -329,7 +328,8 @@ class CD_grape:
         # return ((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
         zz = qt.tensor(qt.identity(self.N), qt.ket2dm(qt.basis(self.N2, 0)))
         oo = qt.tensor(qt.identity(self.N), qt.ket2dm(qt.basis(self.N2, 1)))
-        return self.D(beta / 2.0) * zz + self.D(-beta / 2.0) * oo
+        return self.R(0, np.pi) * (self.D(beta / 2.0) * zz + self.D(-beta / 2.0) * oo)
+        # includes pi rotation
 
     # TODO: is it faster with non-exponential form?
     def R(self, phi, theta):
@@ -418,14 +418,22 @@ class CD_grape:
         target_state = target_state if target_state is not None else self.target_state
         target_state = qt.Qobj(target_state)
         psi_bwd = [target_state.dag()]
+        # final rotation and displacement
+        psi_fwd.append(self.R(phis[-1], thetas[-1]) * psi_fwd[-1])
+        psi_fwd.append(self.D(alphas[-1]) * psi_fwd[-1])
+        return psi_fwd
+
+    def reverse_states(self, betas, alphas, phis, thetas):
+        psi_bwd = [self.target_state.dag()]
+        # final rotation and displacement
+        psi_bwd.append(psi_bwd[-1] * self.D(alphas[-1]))
+        psi_bwd.append(psi_bwd[-1] * self.R(phis[-1], thetas[-1]))
         # blocks
         for i in np.arange(self.N_blocks)[::-1]:
             psi_bwd.append(psi_bwd[-1] * self.CD(betas[i]))
             psi_bwd.append(psi_bwd[-1] * self.D(alphas[i]))
             psi_bwd.append(psi_bwd[-1] * self.R(phis[i], thetas[i]))
         return psi_bwd
-
-    # TODO: Modify for aux params
     def fid_and_grad_fid(
         self,
         betas=None,
@@ -519,7 +527,6 @@ class CD_grape:
             * np.real(overlap * np.conj(dalpha_theta))
             / np.abs(overlap)
         )
-
         dphi = 2 * np.abs(overlap) * np.real(overlap * np.conj(dphi)) / np.abs(overlap)
         dtheta = (
             2 * np.abs(overlap) * np.real(overlap * np.conj(dtheta)) / np.abs(overlap)
@@ -768,14 +775,211 @@ class CD_grape:
         overlap = (self.target_unitary.dag() * U_circuit).tr()
         return np.abs((1 / D) * overlap) ** 2
 
-    def plot_initial_state(self):
-        plot_wigner(self.initial_state)
+        # i is state after each operation. Set i = 0 for initial state, i = -1 for final state
+    def plot_state(self, i=0, contour=True, fig=None, ax=None, max_alpha=6, cbar=True):
+        state = self.forward_states()[i]
+        plot_wigner(
+            state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar
+        )
 
-    def plot_final_state(self):
-        plot_wigner(self.final_state())
+    def plot_target_state(
+        self, contour=True, fig=None, ax=None, max_alpha=6, cbar=True
+    ):
+        plot_wigner(
+            self.target_state,
+            contour=contour,
+            fig=fig,
+            ax=ax,
+            max_alpha=max_alpha,
+            cbar=cbar,
+        )
 
-    def plot_target_state(self):
-        plot_wigner(self.target_state)
+    def plot_projected_state(
+        self,
+        i=0,
+        p="g",
+        contour=True,
+        fig=None,
+        ax=None,
+        max_alpha=6,
+        cbar=True,
+        normalize=True,
+    ):
+        state = self.forward_states()[i]
+        rho = qt.ket2dm(state)
+        if p == "g":
+            ket = qt.tensor(qt.identity(self.N), qt.basis(self.N2, 0))
+            rho_proj = ket.dag() * rho * ket
+        elif p == "e":
+            ket = qt.tensor(qt.identity(self.N), qt.basis(self.N2, 1))
+            rho_proj = ket.dag() * rho * ket
+        elif p == "+":
+            ket = qt.tensor(
+                qt.identity(self.N),
+                (qt.basis(self.N2, 0) + qt.basis(self.N2, 1)) / np.sqrt(2.0),
+            )
+            rho_proj = ket.dag() * rho * ket
+        elif p == "-":
+            ket = qt.tensor(
+                qt.identity(self.N),
+                (qt.basis(self.N2, 0) - qt.basis(self.N2, 1)) / np.sqrt(2.0),
+            )
+            rho_proj = ket.dag() * rho * ket
+        elif p == "+-":
+            ketp = qt.tensor(
+                qt.identity(self.N),
+                (qt.basis(self.N2, 0) - qt.basis(self.N2, 1)) / np.sqrt(2.0),
+            )
+            ketm = qt.tensor(
+                qt.identity(self.N),
+                (qt.basis(self.N2, 0) - qt.basis(self.N2, 1)) / np.sqrt(2.0),
+            )
+            rho_proj = ketp.dag() * rho * ketm
+        elif p == "-+":
+            ketm = qt.tensor(
+                qt.identity(self.N),
+                (qt.basis(self.N2, 0) - qt.basis(self.N2, 1)) / np.sqrt(2.0),
+            )
+            ketp = qt.tensor(
+                qt.identity(self.N),
+                (qt.basis(self.N2, 0) - qt.basis(self.N2, 1)) / np.sqrt(2.0),
+            )
+            rho_proj = ketm.dag() * rho * ketp
+        elif p == "ge":
+            ketg = qt.tensor(qt.identity(self.N), qt.basis(self.N2, 0))
+            kete = qt.tensor(qt.identity(self.N), qt.basis(self.N2, 1))
+            rho_proj = ketg.dag() * rho * kete
+        elif p == "eg":
+            ketg = qt.tensor(qt.identity(self.N), qt.basis(self.N2, 0))
+            kete = qt.tensor(qt.identity(self.N), qt.basis(self.N2, 1))
+            rho_proj = kete.dag() * rho * ketg
+
+        if normalize:
+            rho_proj = rho_proj.unit()
+        plot_wigner(
+            rho_proj,
+            tensor_state=False,
+            contour=contour,
+            fig=fig,
+            ax=ax,
+            max_alpha=max_alpha,
+            cbar=cbar,
+        )
+
+    def plot_projected_states_ge(
+        self, i=0, contour=True, max_alpha=6, cbar=True, fig=None, normalize=True
+    ):
+        if fig is None:
+            fig = plt.figure(figsize=(9, 3.5), dpi=200)
+        axs = fig.subplots(1, 2)
+        self.plot_projected_state(
+            contour=contour,
+            i=i,
+            p="g",
+            fig=fig,
+            ax=axs[0],
+            max_alpha=max_alpha,
+            cbar=cbar,
+            normalize=normalize,
+        )
+        self.plot_projected_state(
+            contour=contour,
+            i=i,
+            p="e",
+            fig=fig,
+            ax=axs[1],
+            max_alpha=max_alpha,
+            cbar=cbar,
+            normalize=normalize,
+        )
+        axs[0].set_title(r"$\rho_{gg}$")
+        axs[1].set_title(r"$\rho_{ee}$")
+        axs[1].set_ylabel("")
+
+    def plot_projected_states_pm(
+        self, i=0, contour=True, max_alpha=6, cbar=True, fig=None, normalize=True
+    ):
+        if fig is None:
+            fig = plt.figure(figsize=(9, 3.5), dpi=200)
+        axs = fig.subplots(1, 2)
+        self.plot_projected_state(
+            contour=contour,
+            i=i,
+            p="+",
+            fig=fig,
+            ax=axs[0],
+            max_alpha=max_alpha,
+            cbar=cbar,
+            normalize=normalize,
+        )
+        self.plot_projected_state(
+            contour=contour,
+            i=i,
+            p="-",
+            fig=fig,
+            ax=axs[1],
+            max_alpha=max_alpha,
+            cbar=cbar,
+            normalize=normalize,
+        )
+        axs[0].set_title(r"$\rho_{++}$")
+        axs[1].set_title(r"$\rho_{--}$")
+        axs[1].set_ylabel("")
+
+    def plot_full_projection(
+        self, i=0, contour=True, max_alpha=6, cbar=True, fig=None, normalize=True
+    ):
+        if fig is None:
+            fig = plt.figure(figsize=(8, 6), dpi=200)
+        axs = fig.subplots(2, 2)
+        self.plot_projected_state(
+            contour=contour,
+            i=i,
+            p="g",
+            fig=fig,
+            ax=axs[0, 0],
+            max_alpha=max_alpha,
+            cbar=cbar,
+            normalize=normalize,
+        )
+        self.plot_projected_state(
+            contour=contour,
+            i=i,
+            p="ge",
+            fig=fig,
+            ax=axs[0, 1],
+            max_alpha=max_alpha,
+            cbar=cbar,
+            normalize=normalize,
+        )
+        self.plot_projected_state(
+            contour=contour,
+            i=i,
+            p="eg",
+            fig=fig,
+            ax=axs[1, 0],
+            max_alpha=max_alpha,
+            cbar=cbar,
+            normalize=normalize,
+        )
+        self.plot_projected_state(
+            contour=contour,
+            i=i,
+            p="e",
+            fig=fig,
+            ax=axs[1, 1],
+            max_alpha=max_alpha,
+            cbar=cbar,
+            normalize=normalize,
+        )
+        axs[0, 0].set_title(r"$\rho_{gg}$")
+        axs[0, 1].set_title(r"$\rho_{ge}$")
+        axs[1, 0].set_title(r"$\rho_{eg}$")
+        axs[1, 1].set_title(r"$\rho_{ee}$")
+        axs[0, 1].set_ylabel("")
+        axs[1, 1].set_ylabel("")
+        axs[0, 0].set_xlabel("")
+        axs[0, 1].set_xlabel("")
 
     # for the optimization, we will flatten the parameters
     # the will be, in order,
@@ -814,7 +1018,6 @@ class CD_grape:
     # TODO: Gauge degree of freedom
     def cost_function_analytic(self, parameters):
         betas, alphas, phis, thetas = self.unflatten_parameters(parameters)
-
         if self.unitary_optimization == "approximate":
             fid_grads = self.unitary_fid_and_grad_fid_approx
         elif self.unitary_optimization == "stochastic":
@@ -1007,6 +1210,24 @@ class CD_grape:
 
         return fid
 
+    def normalize_angles(self):
+        thetas = []
+        for theta in self.thetas:
+            while theta < -np.pi:
+                theta = theta + 2 * np.pi
+            while theta > np.pi:
+                theta = theta - 2 * np.pi
+            thetas.append(theta)
+        self.thetas = np.array(thetas)
+        phis = []
+        for phi in self.phis:
+            while phi < -np.pi:
+                phi = phi + 2 * np.pi
+            while phi > np.pi:
+                phi = phi - 2 * np.pi
+            phis.append(phi)
+        self.phis = np.array(phis)
+
     def save(self):
         datestr = datetime.now().strftime("%Y%m%d_%H_%M_%S")
         filestring = self.saving_directory + self.name + "_" + datestr
@@ -1042,7 +1263,7 @@ class CD_grape:
             f["max_alpha"],
             f["max_beta"],
             str(f["name"]),
-            f["circuits"],
+        circuits = f["circuits"] if ["circuits"] in f else []
         )
         print("loaded parameters from:" + filename_np)
         f.close()
@@ -1064,16 +1285,26 @@ class CD_grape:
         )
         self.print_info()
 
-    def print_info(self):
-        print("\n\n" + str(self.name))
-        print("N_blocks: " + repr(self.N_blocks))
-        print("betas: " + repr(self.betas))
-        print("alphas: " + repr(self.alphas))
-        print("phis: " + repr(self.phis))
-        print("thetas: " + repr(self.thetas))
-        f = self.unitary_fidelity() if self.unitary_optimization else self.fidelity()
-        print("Fidelity: " + repr(f))
-        print("\n")
+    def print_info(self, human=False):
+        if human:
+            with np.printoptions(precision=5, suppress=True):
+                print("\n\n" + str(self.name))
+                print("N_blocks:     " + str(self.N_blocks))
+                print("betas:        " + str(self.betas))
+                print("alphas:       " + str(self.alphas))
+                print("phis (deg):   " + str(self.phis * 180.0 / np.pi))
+                print("thetas (deg): " + str(self.thetas * 180.0 / np.pi))
+                print("Fidelity:     %.5f" % self.fidelity())
+                print("\n")
+        else:
+            print("\n\n" + str(self.name))
+            print("N_blocks: " + repr(self.N_blocks))
+            print("betas: " + repr(self.betas))
+            print("alphas: " + repr(self.alphas))
+            print("phis: " + repr(self.phis))
+            print("thetas: " + repr(self.thetas))
+            print("Fidelity: " + repr(self.fidelity()))
+            print("\n")
 
 
 # %%

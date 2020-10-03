@@ -14,11 +14,12 @@ class System:
     #for now will use the same sigma and chop for the displacement and qubit pulses
     #the sigma_cd and chop_cd will be for the gaussian displacement pulses during the conditional displacement
     def __init__(self, chi, Ec, alpha0, epsilon_m, sigma, chop, buffer_time =0,\
-                 ring_up_time = 8):
+                 ring_up_time = 8, kappa_cavity = 1/(250.0e3)):
         self.chi = chi
         self.Ec = Ec
         self.alpha0 = alpha0
         self.kerr = chi**2/(4*Ec)
+        self.kappa_cavity = kappa_cavity
         #sigma and chop for qubit pulse and displacements
     
         self.sigma = int(sigma)
@@ -53,9 +54,9 @@ class System:
 
     def simulate_pulse_trotter(self, epsilon, Omega, psi0, use_kerr = False,\
                                use_chi_prime = False, use_kappa = False, dt=1, pad=20,
-                               stark_shift = True):
-        epsilon = np.pad(epsilon, 20)
-        Omega = np.pad(Omega, 20)
+                               stark_shift = True, return_all_psis = False):
+        #epsilon = np.pad(epsilon, 20)
+        #Omega = np.pad(Omega, 20)
         alphas = alpha_from_epsilon(epsilon)
         N = psi0.dims[0][0]
         N2 = psi0.dims[0][1]
@@ -77,33 +78,38 @@ class System:
             #chip = self.chi_prime
         #else:
         chip = 0
-        #if use_kappa:
-            #kappa = self.kappa_cavity
-        #else:   
-        kappa = 0
+        if use_kappa:
+            kappa = self.kappa_cavity
+        else:   
+            kappa = 0
         if stark_shift:
             ss = 1.0
         else:
             ss = 0.0
 
-        ts = np.arange(len(Omega))*dt
         H_array = []
         #TODO: make H construction parallel
-        for i in tqdm(range(len(Omega)), desc="constructing H"):
+        for i in tqdm(range(len(Omega)), desc="constructing H        "):
             alpha = alphas[i]
             O = Omega[i]
-            H_array.append(-chi_qs*a.dag()*a*q.dag()*q -chi_qs*(alpha*a.dag() + np.conj(alpha)*a)*q.dag()*q+ - ss*chi_qs * np.abs(alpha)**2*q.dag()*q\
+            H_array.append(-(chi_qs/2.0)*a.dag()*a*(2*q.dag()*q - 1.0) -(chi_qs/2.0)*(alpha*a.dag() + np.conj(alpha)*a)*(2*q.dag()*q-1.0)+\
+                         - ss*(chi_qs/2.0) * np.abs(alpha)**2*(2*q.dag()*q-1.0)\
                         - 1j*(kappa/2.0)*alpha*(a.dag() - a) + \
                         -kerr * (a.dag() + np.conj(alpha))**2 * (a + alpha)**2 + \
                     -chip*(a.dag()+np.conj(alpha))**2 * (a + alpha)**2 * q.dag() * q + \
                 - (self.Ec/2.0)*q.dag()**2 * q**2 + np.real(O)*(q+q.dag()) +  np.imag(O)*1j*(q.dag() - q))
 
         psi = psi0
+        psis = []
         for H in tqdm(H_array, desc='trotterized simulation'):
             U = (-1j*H*dt).expm()
             psi = U*psi
+            if return_all_psis:
+                psis.append(psi)
         #finally, move psi to displaced frame
         D = qt.tensor(qt.displace(N,alphas[-1]),qt.identity(N2))
+        if return_all_psis:
+            return psis
         return  D*psi
 
 
