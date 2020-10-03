@@ -86,7 +86,7 @@ def calc_num_gradient(dx, betas=None, alphas=None, phis=None, thetas=None):
 
 # %% \del_{alpha_r_k} F
 k = 1
-dx = 1e-5
+dx = 1e-7
 beta_r_k = np.abs(cd_grape_obj.betas[k])
 beta_theta_k = np.angle(cd_grape_obj.betas[k])
 beta_new = np.copy(cd_grape_obj.betas)
