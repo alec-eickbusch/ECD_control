@@ -38,14 +38,14 @@ cd_grape_obj_init = CD_grape_init(initial_state=initial_state, target_state=targ
 cd_grape_obj_init.binary_initialize()
 
 #%% 
-cd_grape_obj = CD_grape(cd_grape_init_obj=cd_grape_obj_init, N_blocks=max_N,\
-                    name=name, term_fid=term_fid,\
+cd_grape_obj = CD_grape(cd_grape_init_obj=cd_grape_obj_init, N_blocks=max_N,
+                    name=name, term_fid=term_fid,
                     max_alpha = max_alpha, max_beta=max_beta,
                     saving_directory=saving_directory,
                     basinhopping_kwargs={'T':0.1},
                     save_all_minima = True,
                     use_displacements=True, analytic=True)
-
+cd_grape_obj.fidelity()
 #%% We can plot the initial and target states (qubit traced out)
 plt.figure(figsize=(5,5), dpi=200)
 cd_grape_obj.plot_initial_state()

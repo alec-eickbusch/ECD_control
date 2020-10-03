@@ -105,31 +105,31 @@ class CD_grape_init(CD_grape):
 
         # TODO: make balanced
         self.ind_order = [x.val for x in bt.build(list(range(self.max_N))).inorder]
-        # [3, 1, 4, 0, 5, 2, 6] corresponds to psi_f U_3 U_1 U_4 U_0 U_5 U_2 U_6 psi_i,
+        # [3, 1, 4, 0, 5, 2, 6] corresponds to psi_f U_6 U_2 U_5 U_0 U_4 U_1 U_3 psi_i,
         # where each j index in U_j reprents the order in which the blocks were added in to the greedy optimization
         # i.e.
         # psi_f U_0 psi_i,
-        # psi_f U_1 U_0 psi_i,
-        # psi_f U_1 U_0 U_2 psi_i,
-        # psi_f U_1 U_4 U_0 U_2 psi_i, => optimizing U_4, and psi_f' U_4 psi_i'is the state transfer problem
+        # psi_f U_0 U_1 psi_i,
+        # psi_f U_2 U_0 U_1 psi_i,
+        # psi_f U_2 U_0 U_4 U_1 psi_i, => optimizing U_4, and psi_f' U_4 psi_i'is the state transfer problem
         # ordering can be set arbitrarily, doesn't have to correspond to a binary tree
 
     def binary_initialize(self):
         self.reset_init()
-        for n in range(self.max_N):  # TODO adapt for Unitary initialization
+        for n in range(self.max_N):
             ind = self.ind_order.index(n)
-            inds_i = self.ind_order[ind + 1 :]
-            inds_f = self.ind_order[:ind]
+            inds_i = self.ind_order[:ind]
+            inds_f = self.ind_order[ind + 1 :]
             U_i = self.I
             U_f = self.I
-            for index in inds_i[::-1]:
+            for index in inds_i:
                 if index in self.Ucs:
                     U_i = self.Ucs[index] * U_i
             for index in inds_f:
                 if index in self.Ucs:
-                    U_f = self.Ucs[index].dag() * U_f
+                    U_f = self.Ucs[index] * U_f
             self.initial_state = U_i * self.initial_state_original
-            self.target_state = U_f * self.target_state_original
+            self.target_state = U_f.dag() * self.target_state_original
             self.randomize(alpha_scale=0.2, beta_scale=3)
             self.optimize()
             self.print_info()
@@ -149,7 +149,7 @@ class CD_grape_init(CD_grape):
         self.thetas_full = []
         self.phis_full = []
 
-        for i in self.ind_order[::-1]:  # TODO adapt for Unitary initialization
+        for i in self.ind_order:  # TODO adapt for Unitary initialization
             if i in self.params["betas"] and i < include_N:
                 self.betas_full.append(self.params["betas"][i])
                 self.alphas_full.append(self.params["alphas"][i])
