@@ -102,7 +102,17 @@ class CD_grape_init(CD_grape):
         self.fids_reached = {}
         self.Ucs = {}  # key: index representing order unitary was added in, val: U
         self.params = {"betas": {}, "alphas": {}, "phis": {}, "thetas": {}}
+
+        # TODO: make balanced
         self.ind_order = [x.val for x in bt.build(list(range(self.max_N))).inorder]
+        # [3, 1, 4, 0, 5, 2, 6] corresponds to psi_f U_3 U_1 U_4 U_0 U_5 U_2 U_6 psi_i,
+        # where each j index in U_j reprents the order in which the blocks were added in to the greedy optimization
+        # i.e.
+        # psi_f U_0 psi_i,
+        # psi_f U_1 U_0 psi_i,
+        # psi_f U_1 U_0 U_2 psi_i,
+        # psi_f U_1 U_4 U_0 U_2 psi_i, => optimizing U_4, and psi_f' U_4 psi_i'is the state transfer problem
+        # ordering can be set arbitrarily, doesn't have to correspond to a binary tree
 
     def binary_initialize(self):
         self.reset_init()
