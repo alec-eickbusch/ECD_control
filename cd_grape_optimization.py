@@ -130,11 +130,11 @@ class CD_grape:
         name="CD_grape",
         term_fid_intermediate=0.97,
         term_fid=0.999,
-        beta_r_step_size=2,
-        beta_theta_step_size=2 * np.pi,
-        alpha_r_step_size=1,
-        alpha_theta_step_size=2 * np.pi,
-        phi_step_size=2 * np.pi,
+        beta_r_step_size=1,
+        beta_theta_step_size=np.pi,
+        alpha_r_step_size=0.5,
+        alpha_theta_step_size=np.pi,
+        phi_step_size=np.pi,
         theta_step_size=np.pi,
         analytic=True,
         beta_penalty_multiplier=0,
@@ -358,7 +358,7 @@ class CD_grape:
         r = np.abs(beta)
         return (
             (0.5 / r)
-            * (self.sz * (beta * self.a.dag() - np.conj(beta) * self.a))
+            * (-self.sz * (beta * self.a.dag() - np.conj(beta) * self.a))
             * self.CD(beta)
         )
 
@@ -366,7 +366,7 @@ class CD_grape:
         r = np.abs(beta)
         return (
             (0.5j)
-            * (self.sz * (beta * self.a.dag() + np.conj(beta) * self.a) - r ** 2 / 2)
+            * (-self.sz * (beta * self.a.dag() + np.conj(beta) * self.a) - r ** 2 / 2)
             * self.CD(beta)
         )
 
