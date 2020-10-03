@@ -672,7 +672,7 @@ class CD_grape:
             dtheta += dtheta_i
         approx_fid = np.abs(1.0 / num_states * approx_overlap) ** 2
         scaling_factor = (
-            (2.0 / D) * overlap * (1 / num_states) * self.unitary_learning_rate
+            (2.0 / D) * np.conj(overlap) * (1 / num_states) * self.unitary_learning_rate
         )
         dbeta_r = np.real(scaling_factor * dbeta_r)
         dbeta_theta = np.real(scaling_factor * dbeta_theta)
