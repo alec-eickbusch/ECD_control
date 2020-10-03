@@ -97,9 +97,6 @@ def fastest_disp_trapezoid(alpha, epsilon_m=2*np.pi*1e-3*400, ring_up_time=8, in
 
 def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3*0.03, buffer_time=0,\
               sigma_q=6, chop_q=4, ring_up_time = 8, qubit_pi_pulse = None):
-    phase_space_angle = np.arcsin(np.abs(beta/4.0)/alpha0)
-    #alpha_displace_back_1 = np.sqrt(alpha0**2 - (np.abs(beta)/4.0)**2)
-    alpha_displace_back_ = np.sqrt(alpha0**2 - (np.abs(beta)/4.0)**2)
     def beta_bare(alpha0): #calculate the beta from just the displacement part of the CD
         epsilon_bare = np.concatenate([
         fastest_disp_trapezoid(alpha0, epsilon_m=epsilon_m, ring_up_time=ring_up_time),

@@ -20,15 +20,16 @@ except:
 
 #%%
 # TODO: Handle cases when phi, theta outside range.
-# todo:
 # custom step-taking class for basinhopping optimization.
 # TODO: make the step sizes changeable
 class MyTakeStep(object):
     def __init__(self, cd_grape_obj, stepsize=1):
         self.stepsize = stepsize
         self.N_blocks = cd_grape_obj.N_blocks
-        self.beta_step_size = cd_grape_obj.beta_step_size
-        self.alpha_step_size = cd_grape_obj.alpha_step_size
+        self.beta_r_step_size = cd_grape_obj.beta_r_step_size
+        self.beta_theta_step_size = cd_grape_obj.beta_theta_step_size
+        self.alpha_r_step_size = cd_grape_obj.alpha_r_step_size
+        self.alpha_theta_step_size = cd_grape_obj.alpha_theta_step_size
         self.phi_step_size = cd_grape_obj.phi_step_size
         self.theta_step_size = cd_grape_obj.theta_step_size
         self.use_displacements = cd_grape_obj.use_displacements
@@ -38,20 +39,30 @@ class MyTakeStep(object):
         step_array = np.concatenate(
             [
                 np.random.uniform(
-                    -s * self.beta_step_size, s * self.beta_step_size, 2 * self.N_blocks
-                ),  # betas
+                    -s * self.beta_r_step_size, s * self.beta_r_step_size, self.N_blocks
+                ),  # betas_r
                 np.random.uniform(
-                    -s * self.alpha_step_size,
-                    s * self.alpha_step_size,
-                    2 * self.N_blocks + 2,
-                ),  # alphas
+                    -s * self.beta_theta_step_size,
+                    s * self.beta_theta_step_size,
+                    self.N_blocks,
+                ),  # betas_theta
                 np.random.uniform(
-                    -s * self.phi_step_size, s * self.phi_step_size, self.N_blocks + 1
+                    -s * self.alpha_r_step_size,
+                    s * self.alpha_r_step_size,
+                    self.N_blocks,
+                ),  # alphas_r
+                np.random.uniform(
+                    -s * self.alpha_theta_step_size,
+                    s * self.alpha_theta_step_size,
+                    self.N_blocks,
+                ),  # alphas_theta
+                np.random.uniform(
+                    -s * self.phi_step_size, s * self.phi_step_size, self.N_blocks
                 ),  # phis
                 np.random.uniform(
                     -s * self.theta_step_size,
                     s * self.theta_step_size,
-                    self.N_blocks + 1,
+                    self.N_blocks,
                 ),  # thetas
             ]
         )
@@ -64,22 +75,28 @@ class MyBounds(object):
         self.max_beta = cd_grape_obj.max_beta
         self.max_alpha = cd_grape_obj.max_alpha
         self.N_blocks = cd_grape_obj.N_blocks
+        self.no_CD_end = cd_grape_obj.no_CD_end
 
     def __call__(self, **kwargs):
         x = kwargs["x_new"]
-        beta_min_constraint = bool(np.all(x[: 2 * self.N_blocks] >= -self.max_beta))
-        beta_max_constraint = bool(np.all(x[: 2 * self.N_blocks] <= self.max_beta))
-        alpha_min_constraint = bool(
-            np.all(x[2 * self.N_blocks : (4 * self.N_blocks + 2)] >= -self.max_alpha)
+        beta_r_min_constraint = bool(np.all(x[: self.N_blocks] >= -self.max_beta))
+        beta_r_max_constraint = bool(np.all(x[: self.N_blocks] <= self.max_beta))
+        if self.no_CD_end:
+            beta_r_max_constraint = bool(
+                np.all(x[self.N_blocks - 1 : self.N_blocks] <= 0)
+            )
+        alpha_r_min_constraint = bool(
+            np.all(x[2 * self.N_blocks : (3 * self.N_blocks)] >= -self.max_alpha)
         )
-        alpha_max_constraint = bool(
-            np.all(x[2 * self.N_blocks : (4 * self.N_blocks + 2)] <= self.max_alpha)
+        alpha_r_max_constraint = bool(
+            np.all(x[2 * self.N_blocks : (3 * self.N_blocks)] <= self.max_alpha)
         )
+
         return (
-            beta_min_constraint
-            and beta_max_constraint
-            and alpha_min_constraint
-            and alpha_max_constraint
+            beta_r_min_constraint
+            and beta_r_max_constraint
+            and alpha_r_min_constraint
+            and alpha_r_max_constraint
         )
 
 
@@ -97,7 +114,12 @@ class CD_grape:
         self,
         initial_state=None,
         target_state=None,
+        target_unitary=None,
         N_blocks=1,
+        unitary_optimization=False,
+        unitary_initial_states=None,
+        unitary_final_states=None,
+        unitary_learning_rate=1,
         betas=None,
         alphas=None,
         phis=None,
@@ -108,21 +130,69 @@ class CD_grape:
         name="CD_grape",
         term_fid_intermediate=0.97,
         term_fid=0.999,
-        beta_step_size=2,
-        alpha_step_size=1,
-        phi_step_size=2 * np.pi,
+        beta_r_step_size=1,
+        beta_theta_step_size=np.pi,
+        alpha_r_step_size=0.5,
+        alpha_theta_step_size=np.pi,
+        phi_step_size=np.pi,
         theta_step_size=np.pi,
         analytic=True,
-        beta_penalty_multiplier=5e-5,
+        beta_penalty_multiplier=0,
         minimizer_options={},
         basinhopping_kwargs={},
         save_all_minima=False,
         use_displacements=True,
+        no_CD_end=True,
         circuits=[],
+        N=None,
+        N2=None,
+        cd_grape_init_obj=None,
     ):
+        if cd_grape_init_obj is not None:
+            N = cd_grape_init_obj.N
+            N2 = cd_grape_init_obj.N2
+            no_CD_end = cd_grape_init_obj.no_CD_end if no_CD_end is None else no_CD_end
+            cd_grape_init_obj.concat_controls(N_blocks)  # take the first N_blocks
+            betas = cd_grape_init_obj.betas_full if betas is None else betas
+            alphas = cd_grape_init_obj.alphas_full if alphas is None else alphas
+            phis = cd_grape_init_obj.phis_full if phis is None else phis
+            thetas = cd_grape_init_obj.thetas_full if thetas is None else thetas
+
+            # presumably the same prob to optimize over as in the initialization..
+            initial_state = (
+                cd_grape_init_obj.initial_state_original
+                if initial_state is None
+                else initial_state
+            )
+            target_state = (
+                cd_grape_init_obj.target_state_original
+                if target_state is None
+                else target_state
+            )
+            target_unitary = (
+                cd_grape_init_obj.target_unitary_original
+                if target_unitary is None
+                else target_unitary
+            )
+
+            unitary_initial_states = (
+                cd_grape_init_obj.unitary_initial_states
+                if unitary_initial_states is None
+                else unitary_initial_states
+            )
+            unitary_final_states = (
+                cd_grape_init_obj.unitary_final_states
+                if unitary_final_states is None
+                else unitary_final_states
+            )
 
         self.initial_state = initial_state
         self.target_state = target_state
+        self.target_unitary = target_unitary
+        self.unitary_optimization = unitary_optimization
+        self.unitary_initial_states = unitary_initial_states
+        self.unitary_final_states = unitary_final_states
+        self.unitary_learning_rate = unitary_learning_rate
         self.N_blocks = N_blocks
         self.betas = (
             np.array(betas, dtype=np.complex128)
@@ -132,17 +202,17 @@ class CD_grape:
         self.alphas = (
             np.array(alphas, dtype=np.complex128)
             if alphas is not None
-            else np.zeros(N_blocks + 1, dtype=np.complex128)
+            else np.zeros(N_blocks, dtype=np.complex128)
         )
         self.phis = (
             np.array(phis, dtype=np.float64)
             if phis is not None
-            else np.zeros(N_blocks + 1, dtype=np.float64)
+            else np.zeros(N_blocks, dtype=np.float64)
         )
         self.thetas = (
             np.array(thetas, dtype=np.float64)
             if thetas is not None
-            else np.zeros(N_blocks + 1, dtype=np.float64)
+            else np.zeros(N_blocks, dtype=np.float64)
         )
 
         self.max_alpha = max_alpha
@@ -151,8 +221,10 @@ class CD_grape:
         self.name = name
         self.term_fid_intermediate = term_fid_intermediate
         self.term_fid = term_fid
-        self.beta_step_size = beta_step_size
-        self.alpha_step_size = alpha_step_size
+        self.beta_r_step_size = beta_r_step_size
+        self.beta_theta_step_size = beta_theta_step_size
+        self.alpha_r_step_size = alpha_r_step_size
+        self.alpha_theta_step_size = alpha_theta_step_size
         self.phi_step_size = phi_step_size
         self.theta_step_size = theta_step_size
         self.analytic = analytic
@@ -177,33 +249,49 @@ class CD_grape:
         self.save_all_minima = save_all_minima
         self.circuits = list(circuits)
         self.use_displacements = use_displacements
+        self.no_CD_end = no_CD_end
 
         if self.initial_state is not None:
             self.N = self.initial_state.dims[0][0]
             self.N2 = self.initial_state.dims[0][1]
-            self.a = qt.tensor(qt.destroy(self.N), qt.identity(self.N2))
-            self.q = qt.tensor(qt.identity(self.N), qt.destroy(self.N2))
-            self.sz = 1 - 2 * self.q.dag() * self.q
-            self.sx = self.q + self.q.dag()
-            self.sy = 1j * (self.q.dag() - self.q)
-            self.n = self.a.dag() * self.a
+        elif self.target_state is not None:
+            self.N = self.target_state.dims[0][0]
+            self.N2 = self.target_state.dims[0][1]
+        else:
+            self.N = N
+            self.N2 = N2
+
+        self.init_operators(self.N, self.N2)
+
+    def init_operators(self, N, N2):
+        self.N = N
+        self.N2 = N2
+        self.I = qt.tensor(qt.identity(self.N), qt.identity(self.N2))
+        self.a = qt.tensor(qt.destroy(self.N), qt.identity(self.N2))
+        self.q = qt.tensor(qt.identity(self.N), qt.destroy(self.N2))
+        self.sz = 1 - 2 * self.q.dag() * self.q
+        self.sx = self.q + self.q.dag()
+        self.sy = 1j * (self.q.dag() - self.q)
+        self.n = self.a.dag() * self.a
 
     def randomize(self, beta_scale=None, alpha_scale=None):
         beta_scale = self.max_beta if beta_scale is None else beta_scale
         alpha_scale = self.max_alpha if alpha_scale is None else alpha_scale
         ang_beta = np.random.uniform(-np.pi, np.pi, self.N_blocks)
-        rho_beta = np.random.uniform(-beta_scale, beta_scale, self.N_blocks)
-        ang_alpha = np.random.uniform(-np.pi, np.pi, self.N_blocks + 1)
-        rho_alpha = np.random.uniform(-alpha_scale, alpha_scale, self.N_blocks + 1)
-        phis = np.random.uniform(-np.pi, np.pi, self.N_blocks + 1)
-        thetas = np.random.uniform(0, np.pi, self.N_blocks + 1)
+        rho_beta = np.random.uniform(0, beta_scale, self.N_blocks)
+        ang_alpha = np.random.uniform(-np.pi, np.pi, self.N_blocks)
+        rho_alpha = np.random.uniform(0, alpha_scale, self.N_blocks)
+        phis = np.random.uniform(-np.pi, np.pi, self.N_blocks)
+        thetas = np.random.uniform(0, np.pi, self.N_blocks)
         self.betas = np.array(np.exp(1j * ang_beta) * rho_beta, dtype=np.complex128)
+        if self.no_CD_end:
+            self.betas[-1] = 0.0 + 1j * 0.0
         if self.use_displacements:
             self.alphas = np.array(
                 np.exp(1j * ang_alpha) * rho_alpha, dtype=np.complex128
             )
         else:
-            self.alphas = np.zeros(self.N_blocks + 1, dtype=np.complex128)
+            self.alphas = np.zeros(self.N_blocks, dtype=np.complex128)
         self.phis = np.array(phis, dtype=np.float64)
         self.thetas = np.array(thetas, dtype=np.float64)
 
@@ -252,30 +340,33 @@ class CD_grape:
             np.cos(phi) * self.sx + np.sin(phi) * self.sy
         ) * np.sin(theta / 2.0)
 
-    # derivative multipliers
-    # todo: optimization with derivatives
-    def dalphar_dD(self, alpha):
-        return (self.a.dag() - self.a - (np.conj(alpha) - alpha) / 2.0) * self.D(alpha)
-
-    def dalphai_dD(self, alpha):
+    def dalpha_r_dD(self, alpha):
+        r = np.abs(alpha)
         return (
-            1j
-            * (self.a.dag() + self.a - (np.conj(alpha) + alpha) / 2.0)
+            (1.0 / r) * (alpha * self.a.dag() - np.conj(alpha) * self.a) * self.D(alpha)
+        )
+
+    def dalpha_theta_dD(self, alpha):
+        r = np.abs(alpha)
+        return (
+            1.0j
+            * (alpha * self.a.dag() + np.conj(alpha) * self.a - r ** 2)
             * self.D(alpha)
         )
 
-    def dbetar_dCD(self, beta):
+    def dbeta_r_dCD(self, beta):
+        r = np.abs(beta)
         return (
-            0.5
-            * (-self.sz * (self.a.dag() - self.a) - ((np.conj(beta) - beta) / 4.0))
+            (0.5 / r)
+            * (-self.sz * (beta * self.a.dag() - np.conj(beta) * self.a))
             * self.CD(beta)
         )
 
-    def dbetai_dCD(self, beta):
+    def dbeta_theta_dCD(self, beta):
+        r = np.abs(beta)
         return (
-            1j
-            * 0.5
-            * (-self.sz * (self.a.dag() + self.a) - ((np.conj(beta) + beta) / 4.0))
+            (0.5j)
+            * (-self.sz * (beta * self.a.dag() + np.conj(beta) * self.a) - r ** 2 / 2)
             * self.CD(beta)
         )
 
@@ -300,40 +391,40 @@ class CD_grape:
         alphas = self.alphas if alphas is None else alphas
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
-        if i == self.N_blocks:
-            beta = 0
-        else:
-            beta = betas[i]
-        return self.U_block(beta, alphas[i], phis[i], thetas[i])
+        return self.U_block(betas[i], alphas[i], phis[i], thetas[i])
 
-    def U_tot(self, betas, alphas, phis, thetas):
-        U = qt.tensor(qt.identity(self.N), qt.identity(self.N2))
-        for i in range(self.N_blocks + 1):
-            U = self.U_i_block(i, betas, alphas, phis, thetas) * U
-        return U
-
-    # TODO: work out optimization with the derivatives, include block # N_blocks + 1
-    def forward_states(self, betas=None, alphas=None, phis=None, thetas=None):
+    def U_tot(self, betas=None, alphas=None, phis=None, thetas=None):
         betas = self.betas if betas is None else betas
         alphas = self.alphas if alphas is None else alphas
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
-        psi_fwd = [self.initial_state]
+        U = self.I
+        for i in range(self.N_blocks):
+            U = self.U_i_block(i, betas, alphas, phis, thetas) * U
+        return U
+
+    def forward_states(
+        self, betas=None, alphas=None, phis=None, thetas=None, initial_state=None
+    ):
+        betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+        initial_state = (
+            initial_state if initial_state is not None else self.initial_state
+        )
+        psi_fwd = [initial_state]
         # blocks
         for i in range(self.N_blocks):
             psi_fwd.append(self.R(phis[i], thetas[i]) * psi_fwd[-1])
             psi_fwd.append(self.D(alphas[i]) * psi_fwd[-1])
             psi_fwd.append(self.CD(betas[i]) * psi_fwd[-1])
-        # final rotation and displacement
-        psi_fwd.append(self.R(phis[-1], thetas[-1]) * psi_fwd[-1])
-        psi_fwd.append(self.D(alphas[-1]) * psi_fwd[-1])
         return psi_fwd
 
-    def reverse_states(self, betas, alphas, phis, thetas):
-        psi_bwd = [self.target_state.dag()]
-        # final rotation and displacement
-        psi_bwd.append(psi_bwd[-1] * self.D(alphas[-1]))
-        psi_bwd.append(psi_bwd[-1] * self.R(phis[-1], thetas[-1]))
+    def reverse_states(self, betas, alphas, phis, thetas, target_state=None):
+        target_state = target_state if target_state is not None else self.target_state
+        target_state = qt.Qobj(target_state)
+        psi_bwd = [target_state.dag()]
         # blocks
         for i in np.arange(self.N_blocks)[::-1]:
             psi_bwd.append(psi_bwd[-1] * self.CD(betas[i]))
@@ -341,21 +432,39 @@ class CD_grape:
             psi_bwd.append(psi_bwd[-1] * self.R(phis[i], thetas[i]))
         return psi_bwd
 
-    # TODO: Modify for aux params
-    def fid_and_grad_fid(self, betas, alphas, phis, thetas):
-        psi_fwd = self.forward_states(betas, alphas, phis, thetas)
-        psi_bwd = self.reverse_states(betas, alphas, phis, thetas)
-        overlap = (psi_bwd[0] * psi_fwd[-1]).full()[0][0]  # might be complex
-        fid = np.abs(overlap) ** 2
+    def fid_and_grad_fid(
+        self,
+        betas=None,
+        alphas=None,
+        phis=None,
+        thetas=None,
+        initial_state=None,
+        target_state=None,
+        unitary_fid=False,
+    ):
+        betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+        initial_state = (
+            initial_state if initial_state is not None else self.initial_state
+        )
+        target_state = target_state if target_state is not None else self.target_state
+        psi_fwd = self.forward_states(
+            betas, alphas, phis, thetas, initial_state=initial_state
+        )
+        psi_bwd = self.reverse_states(
+            betas, alphas, phis, thetas, target_state=target_state
+        )
 
-        dbetar = np.zeros(self.N_blocks, dtype=np.complex128)
-        dbetai = np.zeros(self.N_blocks, dtype=np.complex128)
-        dalphar = np.zeros(self.N_blocks + 1, dtype=np.complex128)
-        dalphai = np.zeros(self.N_blocks + 1, dtype=np.complex128)
-        dphi = np.zeros(self.N_blocks + 1, dtype=np.complex128)
-        dtheta = np.zeros(self.N_blocks + 1, dtype=np.complex128)
+        dbeta_r = np.zeros(self.N_blocks, dtype=np.complex128)
+        dbeta_theta = np.zeros(self.N_blocks, dtype=np.complex128)
+        dalpha_r = np.zeros(self.N_blocks, dtype=np.complex128)
+        dalpha_theta = np.zeros(self.N_blocks, dtype=np.complex128)
+        dphi = np.zeros(self.N_blocks, dtype=np.complex128)
+        dtheta = np.zeros(self.N_blocks, dtype=np.complex128)
 
-        for i in range(self.N_blocks + 1):
+        for i in range(self.N_blocks):
             for j in [1, 2, 3]:
                 k = 3 * i + j
                 if j == 1:
@@ -369,61 +478,72 @@ class CD_grape:
                         * self.dtheta_dR(phis[i], thetas[i])
                         * psi_fwd[k - 1]
                     ).full()[0][0]
-                if j == 2:
-                    dalphar[i] = (
-                        psi_bwd[-(k + 1)] * self.dalphar_dD(alphas[i]) * psi_fwd[k - 1]
+                if j == 2 and self.use_displacements:
+                    dalpha_r[i] = (
+                        psi_bwd[-(k + 1)] * self.dalpha_r_dD(alphas[i]) * psi_fwd[k - 1]
                     ).full()[0][0]
-                    dalphai[i] = (
-                        psi_bwd[-(k + 1)] * self.dalphai_dD(alphas[i]) * psi_fwd[k - 1]
+                    dalpha_theta[i] = (
+                        psi_bwd[-(k + 1)]
+                        * self.dalpha_theta_dD(alphas[i])
+                        * psi_fwd[k - 1]
                     ).full()[0][0]
-                if j == 3 and i < self.N_blocks:
-                    dbetar[i] = (
-                        psi_bwd[-(k + 1)] * self.dbetar_dCD(betas[i]) * psi_fwd[k - 1]
+                if j == 3:
+                    dbeta_r[i] = (
+                        psi_bwd[-(k + 1)] * self.dbeta_r_dCD(betas[i]) * psi_fwd[k - 1]
                     ).full()[0][0]
-                    dbetai[i] = (
-                        psi_bwd[-(k + 1)] * self.dbetai_dCD(betas[i]) * psi_fwd[k - 1]
+                    dbeta_theta[i] = (
+                        psi_bwd[-(k + 1)]
+                        * self.dbeta_theta_dCD(betas[i])
+                        * psi_fwd[k - 1]
                     ).full()[0][0]
 
-        dbetar = (
-            2 * np.abs(overlap) * np.real(overlap * np.conj(dbetar)) / np.abs(overlap)
+        # TODO: move this after unitary_fid, after testing
+        overlap = (psi_bwd[0] * psi_fwd[-1]).full()[0][0]
+
+        if unitary_fid:
+            return overlap, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta
+
+        fid = np.abs(overlap) ** 2
+
+        dbeta_r = (
+            2 * np.abs(overlap) * np.real(overlap * np.conj(dbeta_r)) / np.abs(overlap)
         )
-        dbetai = (
-            2 * np.abs(overlap) * np.real(overlap * np.conj(dbetai)) / np.abs(overlap)
+
+        dbeta_theta = (
+            2
+            * np.abs(overlap)
+            * np.real(overlap * np.conj(dbeta_theta))
+            / np.abs(overlap)
         )
-        if self.use_displacements:  # if not they are left at 0
-            dalphar = (
-                2
-                * np.abs(overlap)
-                * np.real(overlap * np.conj(dalphar))
-                / np.abs(overlap)
-            )
-            dalphai = (
-                2
-                * np.abs(overlap)
-                * np.real(overlap * np.conj(dalphai))
-                / np.abs(overlap)
-            )
-        else:
-            dalphar = np.zeros(len(dalphar), dtype=np.float64)
-            dalphai = np.zeros(len(dalphar), dtype=np.float64)
+
+        dalpha_r = (
+            2 * np.abs(overlap) * np.real(overlap * np.conj(dalpha_r)) / np.abs(overlap)
+        )
+        dalpha_theta = (
+            2
+            * np.abs(overlap)
+            * np.real(overlap * np.conj(dalpha_theta))
+            / np.abs(overlap)
+        )
         dphi = 2 * np.abs(overlap) * np.real(overlap * np.conj(dphi)) / np.abs(overlap)
         dtheta = (
             2 * np.abs(overlap) * np.real(overlap * np.conj(dtheta)) / np.abs(overlap)
         )
 
-        return fid, dbetar, dbetai, dalphar, dalphai, dphi, dtheta
+        return fid, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta
 
-    def final_state(self, betas=None, alphas=None, phis=None, thetas=None):
+    def final_state(
+        self, betas=None, alphas=None, phis=None, thetas=None, initial_state=None
+    ):
         betas = self.betas if betas is None else betas
         alphas = self.alphas if alphas is None else alphas
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
-        psi = self.initial_state
-        for i in range(self.N_blocks + 1):
+        psi = initial_state if initial_state is not None else self.initial_state
+        for i in range(self.N_blocks):
             psi = self.R(phis[i], thetas[i]) * psi
             psi = self.D(alphas[i]) * psi
-            if i < self.N_blocks:
-                psi = self.CD(betas[i]) * psi
+            psi = self.CD(betas[i]) * psi
         return psi
 
     def fidelity(self, betas=None, alphas=None, phis=None, thetas=None):
@@ -436,7 +556,225 @@ class CD_grape:
         ).full()[0][0]
         return np.abs(overlap) ** 2
 
-    # i is state after each operation. Set i = 0 for initial state, i = -1 for final state
+    def unitary_forward_states(self, betas, alphas, phis, thetas):
+        U_fwd = [self.I]
+        # blocks
+        for i in range(self.N_blocks):
+            U_fwd.append(self.R(phis[i], thetas[i]) * U_fwd[-1])
+            U_fwd.append(self.D(alphas[i]) * U_fwd[-1])
+            U_fwd.append(self.CD(betas[i]) * U_fwd[-1])
+        return U_fwd
+
+    def unitary_reverse_states(self, betas, alphas, phis, thetas):
+        U_bwd = [self.target_unitary.dag()]
+        # blocks
+        for i in np.arange(self.N_blocks)[::-1]:
+            U_bwd.append(U_bwd[-1] * self.CD(betas[i]))
+            U_bwd.append(U_bwd[-1] * self.D(alphas[i]))
+            U_bwd.append(U_bwd[-1] * self.R(phis[i], thetas[i]))
+        return U_bwd
+
+    def unitary_fid_and_grad_fid_stochastic(
+        self,
+        unitary_initial_states=None,
+        unitary_final_states=None,
+        betas=None,
+        alphas=None,
+        phis=None,
+        thetas=None,
+        testing=False,
+    ):  # stochastic gradient descent
+        unitary_initial_states = (
+            self.unitary_initial_states
+            if unitary_initial_states is None
+            else unitary_initial_states
+        )
+        unitary_final_states = (
+            self.unitary_final_states
+            if unitary_final_states is None
+            else unitary_final_states
+        )
+
+        i = np.random.randint(len(unitary_initial_states))
+        unitary_initial_state = [unitary_initial_states[i]]
+        unitary_final_state = [unitary_final_states[i]]
+        return self.unitary_fid_and_grad_fid_approx(
+            unitary_initial_states=unitary_initial_state,
+            unitary_final_states=unitary_final_state,
+            betas=betas,
+            alphas=alphas,
+            phis=phis,
+            thetas=thetas,
+            testing=testing,
+        )
+
+    def unitary_fid_and_grad_fid_approx(
+        self,
+        unitary_initial_states=None,
+        unitary_final_states=None,
+        betas=None,
+        alphas=None,
+        phis=None,
+        thetas=None,
+        testing=False,
+    ):
+        unitary_initial_states = (
+            self.unitary_initial_states
+            if unitary_initial_states is None
+            else unitary_initial_states
+        )
+        # unitary_final_states = (
+        #     self.unitary_final_states
+        #     if unitary_final_states is None
+        #     else unitary_final_states
+        # )
+
+        betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+
+        U_circuit = self.U_tot(betas, alphas, phis, thetas)
+        D = self.N * self.N2
+        overlap = (self.target_unitary.dag() * U_circuit).tr()
+        fid = np.abs((1 / D) * overlap) ** 2
+
+        num_states = len(unitary_initial_states)
+        approx_overlap, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta = (
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        )
+
+        for i in range(num_states):
+            initial_state = unitary_initial_states[i]
+            target_state = (
+                unitary_final_states[i]
+                if unitary_final_states is not None
+                else self.target_unitary * initial_state
+            )  # if the initial state is an eigenstate of target_unitary, the target_state = eigenvalue*initial_state
+            (
+                approx_overlap_i,
+                dbeta_r_i,
+                dbeta_theta_i,
+                dalpha_r_i,
+                dalpha_theta_i,
+                dphi_i,
+                dtheta_i,
+            ) = self.fid_and_grad_fid(
+                initial_state=initial_state, target_state=target_state, unitary_fid=True
+            )
+            approx_overlap += approx_overlap_i
+            dbeta_r += dbeta_r_i
+            dbeta_theta += dbeta_theta_i
+            dalpha_r += dalpha_r_i
+            dalpha_theta += dalpha_theta_i
+            dphi += dphi_i
+            dtheta += dtheta_i
+        approx_fid = np.abs(1.0 / num_states * approx_overlap) ** 2
+        scaling_factor = (
+            (2.0 / D) * np.conj(overlap) * (1 / num_states) * self.unitary_learning_rate
+        )
+        dbeta_r = np.real(scaling_factor * dbeta_r)
+        dbeta_theta = np.real(scaling_factor * dbeta_theta)
+        dalpha_r = np.real(scaling_factor * dalpha_r)
+        dalpha_theta = np.real(scaling_factor * dalpha_theta)
+        dphi = np.real(scaling_factor * dphi)
+        dtheta = np.real(scaling_factor * dtheta)
+        if testing:
+            return (
+                fid,
+                approx_fid,
+                dbeta_r,
+                dbeta_theta,
+                dalpha_r,
+                dalpha_theta,
+                dphi,
+                dtheta,
+            )
+        return fid, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta
+
+    def unitary_fid_and_grad_fid(self, betas=None, alphas=None, phis=None, thetas=None):
+        betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+
+        U_fwd = self.unitary_forward_states(betas, alphas, phis, thetas)
+        U_bwd = self.unitary_reverse_states(betas, alphas, phis, thetas)
+
+        D = self.N * self.N2
+        overlap = (U_bwd[0] * U_fwd[-1]).tr()
+        fid = np.abs((1 / D) * overlap) ** 2
+
+        dbeta_r = np.zeros(self.N_blocks, dtype=np.complex128)
+        dbeta_theta = np.zeros(self.N_blocks, dtype=np.complex128)
+        dalpha_r = np.zeros(self.N_blocks, dtype=np.complex128)
+        dalpha_theta = np.zeros(self.N_blocks, dtype=np.complex128)
+        dphi = np.zeros(self.N_blocks, dtype=np.complex128)
+        dtheta = np.zeros(self.N_blocks, dtype=np.complex128)
+
+        for i in range(self.N_blocks):
+            for j in [1, 2, 3]:
+                k = 3 * i + j
+                if j == 1:
+                    dphi[i] = (
+                        U_fwd[k - 1]
+                        * U_bwd[-(k + 1)]
+                        * self.dphi_dR(phis[i], thetas[i])
+                    ).tr()
+                    dtheta[i] = (
+                        U_fwd[k - 1]
+                        * U_bwd[-(k + 1)]
+                        * self.dtheta_dR(phis[i], thetas[i])
+                    ).tr()
+                if j == 2:
+                    dalpha_r[i] = (
+                        U_fwd[k - 1] * U_bwd[-(k + 1)] * self.dalpha_r_dD(alphas[i])
+                    ).tr()
+                    dalpha_theta[i] = (
+                        U_fwd[k - 1] * U_bwd[-(k + 1)] * self.dalpha_theta_dD(alphas[i])
+                    ).tr()
+                if j == 3:
+                    dbeta_r[i] = (
+                        U_fwd[k - 1] * U_bwd[-(k + 1)] * self.dbeta_r_dCD(betas[i])
+                    ).tr()
+                    dbeta_theta[i] = (
+                        U_fwd[k - 1] * U_bwd[-(k + 1)] * self.dbeta_theta_dCD(betas[i])
+                    ).tr()
+
+        scalar = 2.0 / (D ** 2) * np.conj(overlap)
+        dbeta_r = np.real(scalar * dbeta_r)
+        dbeta_theta = np.real(scalar * dbeta_theta)
+
+        if self.use_displacements:  # if not they are left at 0
+            dalpha_r = np.real(scalar * dalpha_r)
+            dalpha_theta = np.real(scalar * dalpha_theta)
+        else:
+            dalpha_r = np.zeros(len(dalpha_r), dtype=np.float64)
+            dalpha_theta = np.zeros(len(dalpha_theta), dtype=np.float64)
+
+        dphi = np.real(scalar * dphi)
+        dtheta = np.real(scalar * dtheta)
+
+        return fid, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta
+
+    def unitary_fidelity(self, betas=None, alphas=None, phis=None, thetas=None):
+        betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+        U_circuit = self.U_tot(betas, alphas, phis, thetas)
+        D = self.N * self.N2
+        overlap = (self.target_unitary.dag() * U_circuit).tr()
+        return np.abs((1 / D) * overlap) ** 2
+
+        # i is state after each operation. Set i = 0 for initial state, i = -1 for final state
+
     def plot_state(self, i=0, contour=True, fig=None, ax=None, max_alpha=6, cbar=True):
         state = self.forward_states()[i]
         plot_wigner(
@@ -644,15 +982,17 @@ class CD_grape:
 
     # for the optimization, we will flatten the parameters
     # the will be, in order,
-    # [betas_r, betas_i, alphas_r, alphas_i,  phis, thetas]
+    # [betas_r, betas_theta, alphas_r, alphas_theta,  phis, thetas]
     def cost_function(self, parameters):
         betas, alphas, phis, thetas = self.unflatten_parameters(parameters)
         # TODO: later, implement more sophisticated saving and real time information.
-        f = self.fidelity(betas, alphas, phis, thetas)
+        if self.unitary_optimization:
+            f = self.unitary_fidelity(betas, alphas, phis, thetas)
+        else:
+            f = self.fidelity(betas, alphas, phis, thetas)
         if self.bpm > 0:
-            beta_penalty = self.bpm * (
-                np.sum(np.abs(betas_r)) + np.sum(np.abs(betas_i))
-            )
+            betas_r = np.abs(betas)
+            beta_penalty = self.bpm * np.sum(betas_r)
             print("\rfid: %.4f beta penalty: %.4f" % (f, beta_penalty), end="")
         else:
             print("\rfid: %.4f" % f, end="")
@@ -677,23 +1017,38 @@ class CD_grape:
     # TODO: Gauge degree of freedom
     def cost_function_analytic(self, parameters):
         betas, alphas, phis, thetas = self.unflatten_parameters(parameters)
-        f, dbetar, dbetai, dalphar, dalphai, dphi, dtheta = self.fid_and_grad_fid(
-            betas, alphas, phis, thetas
+        if self.unitary_optimization == "approximate":
+            fid_grads = self.unitary_fid_and_grad_fid_approx
+        elif self.unitary_optimization == "stochastic":
+            fid_grads = self.unitary_fid_and_grad_fid_stochastic
+        elif self.unitary_optimization:
+            fid_grads = self.unitary_fid_and_grad_fid
+        else:
+            fid_grads = self.fid_and_grad_fid
+        (
+            f,
+            dbeta_r,
+            dbeta_theta,
+            dalpha_r,
+            dalpha_theta,
+            dphi,
+            dtheta,
+        ) = fid_grads(betas, alphas, phis, thetas)
+        gradf = np.concatenate(
+            [dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta]
         )
-        gradf = np.concatenate([dbetar, dbetai, dalphar, dalphai, dphi, dtheta])
         # todo: instead, optimize |beta| and phase(beta). Same for alpha
         if self.bpm > 0:
-            betas_r = np.real(betas)
-            betas_i = np.imag(betas)
-            beta_penalty = self.bpm * (
-                np.sum(np.abs(betas_r)) + np.sum(np.abs(betas_i))
-            )
-            grad_beta_penalty = self.bpm * np.concatenate(
-                [
-                    betas_r / np.abs(betas_r),
-                    betas_i / np.abs(betas_i),
-                    np.zeros(4 * self.N_blocks + 4),
-                ]
+            betas_r = np.abs(betas)
+            beta_penalty = self.bpm * np.sum(betas_r)
+            grad_beta_penalty = (
+                self.bpm
+                * np.concatenate(  # todo: fix gradient of beta penalty, maybe use soft relu penalty for acceptable range of beta?
+                    [
+                        -1.0 * betas_r / np.abs(betas_r),
+                        np.zeros(5 * self.N_blocks),
+                    ]
+                )
             )
             print("\rfid: %.4f beta penalty: %.4f" % (f, beta_penalty), end="")
         else:
@@ -727,10 +1082,10 @@ class CD_grape:
         return np.array(
             np.concatenate(
                 [
-                    np.real(self.betas),
-                    np.imag(self.betas),
-                    np.real(self.alphas),
-                    np.imag(self.alphas),
+                    np.abs(self.betas),
+                    np.angle(self.betas),
+                    np.abs(self.alphas),
+                    np.angle(self.alphas),
                     self.phis,
                     self.thetas,
                 ]
@@ -740,26 +1095,26 @@ class CD_grape:
 
     def unflatten_parameters(self, parameters):
         betas_r = parameters[0 : self.N_blocks]
-        betas_i = parameters[self.N_blocks : 2 * self.N_blocks]
-        alphas_r = parameters[2 * self.N_blocks : (3 * self.N_blocks + 1)]
-        alphas_i = parameters[(3 * self.N_blocks + 1) : (4 * self.N_blocks + 2)]
-        phis = parameters[(4 * self.N_blocks + 2) : (5 * self.N_blocks + 3)]
-        thetas = parameters[(5 * self.N_blocks + 3) :]
-        alphas = alphas_r + 1j * alphas_i
-        betas = betas_r + 1j * betas_i
+        betas_theta = parameters[self.N_blocks : 2 * self.N_blocks]
+        alphas_r = parameters[2 * self.N_blocks : (3 * self.N_blocks)]
+        alphas_theta = parameters[(3 * self.N_blocks) : (4 * self.N_blocks)]
+        phis = parameters[(4 * self.N_blocks) : (5 * self.N_blocks)]
+        thetas = parameters[(5 * self.N_blocks) :]
+        alphas = alphas_r * np.exp(1j * alphas_theta)
+        betas = betas_r * np.exp(1j * betas_theta)
         return betas, alphas, phis, thetas
 
     def optimize(self):
         init_params = self.flatten_parameters()
         bounds = np.concatenate(
             [
-                [(-self.max_beta, self.max_beta) for _ in range(2 * self.N_blocks)],
-                [
-                    (-self.max_alpha, self.max_alpha)
-                    for _ in range(2 * self.N_blocks + 2)
-                ],
-                [(-np.inf, np.inf) for _ in range(self.N_blocks + 1)],
-                [(-np.inf, np.inf) for _ in range(self.N_blocks + 1)],
+                [(0, self.max_beta) for _ in range(self.N_blocks - 1)]
+                + [(0, 0 if self.no_CD_end else self.max_beta)],
+                [(-np.inf, np.inf) for _ in range(self.N_blocks)],
+                [(0, self.max_alpha) for _ in range(self.N_blocks)],
+                [(-np.inf, np.inf) for _ in range(self.N_blocks)],
+                [(-np.inf, np.inf) for _ in range(self.N_blocks)],
+                [(-np.inf, np.inf) for _ in range(self.N_blocks)],
             ]
         )
         cost_function = (
@@ -768,12 +1123,9 @@ class CD_grape:
 
         def callback_fun(x, f, accepted):
             if self.save_all_minima:
-                betas, alphas, phis, thetas = self.unflatten_parameters(x)
-                betas_r = np.real(betas)
-                betas_i = np.imag(betas)
-                beta_penalty = self.bpm * (
-                    np.sum(np.abs(betas_r)) + np.sum(np.abs(betas_i))
-                )
+                betas, _, _, _ = self.unflatten_parameters(x)
+                betas_r = np.abs(betas)
+                beta_penalty = self.bpm * np.sum(betas_r)
                 fid = (
                     -f + beta_penalty
                 )  # easiest is to just add back the penalty to get fidelity
@@ -790,7 +1142,7 @@ class CD_grape:
             print("\n\nStarting optimization.\n\n")
             minimizer_kwargs = {
                 "method": "L-BFGS-B",
-                "jac": True,
+                "jac": self.analytic,
                 "bounds": bounds,
                 "options": self.minimizer_options,
             }
@@ -799,7 +1151,6 @@ class CD_grape:
             self.basinhopping_num = 0
             self.best_fn = 0
             # self.bpm = 0
-            # self.tf = self.term_fid_intermediate
             self.tf = self.term_fid
             # don't use beta penalty in the first round
             # The first round of optimization: Basinhopping
@@ -820,13 +1171,19 @@ class CD_grape:
                 callback=callback_fun,
                 **basinhopping_kwargs
             )
-        except OptFinishedException as e:
+        except OptFinishedException:
             print("\n\ndesired intermediate fidelity reached.\n\n")
-            fid = self.fidelity()
+            if self.unitary_optimization:
+                fid = self.unitary_fidelity()
+            else:
+                fid = self.fidelity()
             print("Best fidelity found: " + str(fid))
         else:
             print("\n\nFirst optimization failed to reach desired fidelity.\n\n")
-            fid = self.fidelity()
+            if self.unitary_optimization:
+                fid = self.unitary_fidelity()
+            else:
+                fid = self.fidelity()
             print("Best fidelity found: " + str(fid))
         """
         try:
@@ -938,14 +1295,14 @@ class CD_grape:
 
     def print_info(self, human=False):
         if human:
-            with np.printoptions(precision=2, suppress=True):
+            with np.printoptions(precision=5, suppress=True):
                 print("\n\n" + str(self.name))
                 print("N_blocks:     " + str(self.N_blocks))
                 print("betas:        " + str(self.betas))
                 print("alphas:       " + str(self.alphas))
                 print("phis (deg):   " + str(self.phis * 180.0 / np.pi))
                 print("thetas (deg): " + str(self.thetas * 180.0 / np.pi))
-                print("Fidelity:     %.4f" % self.fidelity())
+                print("Fidelity:     %.5f" % self.fidelity())
                 print("\n")
         else:
             print("\n\n" + str(self.name))

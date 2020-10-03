@@ -2,8 +2,9 @@
 %load_ext autoreload
 %autoreload 2
 import sys
-sys.path.append("../../")
+sys.path.append("../../../")
 from CD_GRAPE.cd_grape_optimization import CD_grape
+from CD_GRAPE.cd_grape_initializer import CD_grape_init
 from CD_GRAPE.helper_functions import plot_pulse, plot_wigner
 from CD_GRAPE.analysis import System, CD_grape_analysis
 import numpy as np
@@ -15,21 +16,36 @@ N2 = 2 #qubit hilbert space
 alpha = 2 + 1j #cat alpha
 N_blocks = 5
 initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
-target_state = qt.tensor((qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit(),\
-                          qt.basis(N2,0))
+# target_state = qt.tensor((qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit(),\
+                        #   qt.basis(N2,0))
+
+target_state = qt.tensor(qt.basis(N,5),qt.basis(N2,0))
 term_fid = 0.99
 #max alpha and beta are the maximum values of alpha and beta for optimization
-max_alpha = 5
-max_beta = 20
-name = "Cat creation"
+max_alpha = 6
+max_beta = 8
+name = "Fock 5 creation"
 saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_grape_parameters\\"
-cd_grape_obj = CD_grape(initial_state, target_state, N_blocks,\
+max_N = 7
+cd_grape_obj_init = CD_grape_init(initial_state=initial_state, target_state=target_state, max_N=max_N,\
                     name=name, term_fid=term_fid,\
                     max_alpha = max_alpha, max_beta=max_beta,
                     saving_directory=saving_directory,
                     basinhopping_kwargs={'T':0.1},
                     save_all_minima = True,
                     use_displacements=True, analytic=True)
+#%% 
+cd_grape_obj_init.binary_initialize()
+
+#%% 
+cd_grape_obj = CD_grape(cd_grape_init_obj=cd_grape_obj_init, N_blocks=max_N,
+                    name=name, term_fid=term_fid,
+                    max_alpha = max_alpha, max_beta=max_beta,
+                    saving_directory=saving_directory,
+                    basinhopping_kwargs={'T':0.1},
+                    save_all_minima = True,
+                    use_displacements=True, analytic=True)
+cd_grape_obj.fidelity()
 #%% We can plot the initial and target states (qubit traced out)
 plt.figure(figsize=(5,5), dpi=200)
 cd_grape_obj.plot_initial_state()
@@ -39,7 +55,7 @@ cd_grape_obj.plot_target_state()
 plt.title("target state")
 #%% Doing the optimization
 #The alpha and beta scale are scales for the random initialization.
-cd_grape_obj.randomize(alpha_scale=0.2, beta_scale=1)
+# cd_grape_obj.randomize(alpha_scale=0.2, beta_scale=1)
 print("Randomized parameters:")
 cd_grape_obj.print_info()
 cd_grape_obj.optimize()
