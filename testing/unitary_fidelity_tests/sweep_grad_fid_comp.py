@@ -188,14 +188,14 @@ plt.savefig('data/NumericalGradientComparison_log.png')
 
 fig = plt.figure(figsize=(12,8))
 plt.xlabel("Number of States")
-plt.ylabel("Percent Difference from Numerical Fidelity")        
+plt.ylabel("Percent Difference from Analytic Fidelity")        
 plt.scatter(data['N'], data['approx_fock_fid'], marker='o', color='g',label="Fock States")
 plt.scatter(data['N'], data['approx_random_fid'], color='b', label="Random States")
 plt.scatter(data['N'], data['approx_eig_fid'], marker='.', color='r', label="Eigenstates")
 plt.legend()
-plt.savefig('data/NumericalFidelityComparison.png')
+plt.savefig('data/AnalyticFidelityComparison.png')
 plt.yscale('log')
-plt.savefig('data/NumericalFidelityComparison_log.png')
+plt.savefig('data/AnalyticFidelityComparison_log.png')
 
 plt.show()
 
