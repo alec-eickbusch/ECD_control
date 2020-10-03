@@ -1294,6 +1294,7 @@ class CD_grape:
         self.print_info()
 
     def print_info(self, human=False):
+        f = self.unitary_fidelity() if self.unitary_optimization else self.fidelity()
         if human:
             with np.printoptions(precision=5, suppress=True):
                 print("\n\n" + str(self.name))
@@ -1302,7 +1303,7 @@ class CD_grape:
                 print("alphas:       " + str(self.alphas))
                 print("phis (deg):   " + str(self.phis * 180.0 / np.pi))
                 print("thetas (deg): " + str(self.thetas * 180.0 / np.pi))
-                print("Fidelity:     %.5f" % self.fidelity())
+                print("Fidelity:     %.5f" % f)
                 print("\n")
         else:
             print("\n\n" + str(self.name))
@@ -1311,7 +1312,7 @@ class CD_grape:
             print("alphas: " + repr(self.alphas))
             print("phis: " + repr(self.phis))
             print("thetas: " + repr(self.thetas))
-            print("Fidelity: " + repr(self.fidelity()))
+            print("Fidelity: " + repr(f))
             print("\n")
 
 
