@@ -48,13 +48,13 @@ class CD_grape_init(CD_grape):
         N2=None,
     ):
         if "niter" not in basinhopping_kwargs:
-            basinhopping_kwargs["niter"] = 5
+            basinhopping_kwargs["niter"] = 1
         # note: ftol is relative percent difference in fidelity before optimization stops
         if "ftol" not in minimizer_options:
-            minimizer_options["ftol"] = 1e-7  # lower than usual
+            minimizer_options["ftol"] = 1e-8  # lower than usual
         # gtol is like the maximum gradient before optimization stops.
         if "gtol" not in minimizer_options:
-            minimizer_options["gtol"] = 1e-7  # lower than usual
+            minimizer_options["gtol"] = 1e-8  # lower than usual
 
         CD_grape.__init__(
             self,
@@ -62,7 +62,7 @@ class CD_grape_init(CD_grape):
             target_state=target_state,
             target_unitary=target_unitary,
             N_blocks=1,
-            unitary_optimization=False,
+            unitary_optimization=unitary_optimization,
             unitary_initial_states=unitary_initial_states,
             unitary_final_states=unitary_final_states,
             unitary_learning_rate=unitary_learning_rate,
@@ -96,6 +96,7 @@ class CD_grape_init(CD_grape):
         self.max_N = max_N
         self.initial_state_original = self.initial_state
         self.target_state_original = self.target_state
+        self.target_unitary_original = self.target_unitary
         self.reset_init()
 
     def reset_init(self):
@@ -105,13 +106,13 @@ class CD_grape_init(CD_grape):
 
         # TODO: make balanced
         self.ind_order = [x.val for x in bt.build(list(range(self.max_N))).inorder]
-        # [3, 1, 4, 0, 5, 2, 6] corresponds to psi_f U_6 U_2 U_5 U_0 U_4 U_1 U_3 psi_i,
+        # [3, 1, 4, 0, 5, 2, 6] corresponds to psi_f.dag() U_6 U_2 U_5 U_0 U_4 U_1 U_3 psi_i,
         # where each j index in U_j reprents the order in which the blocks were added in to the greedy optimization
         # i.e.
-        # psi_f U_0 psi_i,
-        # psi_f U_0 U_1 psi_i,
-        # psi_f U_2 U_0 U_1 psi_i,
-        # psi_f U_2 U_0 U_4 U_1 psi_i, => optimizing U_4, and psi_f' U_4 psi_i'is the state transfer problem
+        # psi_f.dag() U_0 psi_i,
+        # psi_f.dag() U_0 U_1 psi_i,
+        # psi_f.dag() U_2 U_0 U_1 psi_i,
+        # psi_f.dag() U_2 U_0 U_4 U_1 psi_i, => optimizing U_4, and psi_f'.dag() U_4 psi_i'is the state transfer problem
         # ordering can be set arbitrarily, doesn't have to correspond to a binary tree
 
     def binary_initialize(self):
@@ -128,6 +129,8 @@ class CD_grape_init(CD_grape):
             for index in inds_f:
                 if index in self.Ucs:
                     U_f = self.Ucs[index] * U_f
+
+            # (psi_f.dag() U_f) U_n (U_i psi_i) => psi_f' = U_f.dag() * psi_f
             self.initial_state = U_i * self.initial_state_original
             self.target_state = U_f.dag() * self.target_state_original
             self.randomize(alpha_scale=0.2, beta_scale=3)
@@ -140,7 +143,37 @@ class CD_grape_init(CD_grape):
             self.params["thetas"][n] = self.thetas[0]
             self.fids_reached[n] = self.fidelity()
             self.Ucs[n] = self.U_tot()
-            self.N_reached = n + 1
+            self.N_reached = n + 1  # number of blocks optimized using binaryinit
+
+    def binary_initialize_unitary(self):
+        self.reset_init()
+        for n in range(self.max_N):
+            ind = self.ind_order.index(n)
+            inds_i = self.ind_order[:ind]
+            inds_f = self.ind_order[ind + 1 :]
+            U_i = self.I
+            U_f = self.I
+            for index in inds_i:
+                if index in self.Ucs:
+                    U_i = self.Ucs[index] * U_i
+            for index in inds_f:
+                if index in self.Ucs:
+                    U_f = self.Ucs[index] * U_f
+
+            # Tr[U_t.dag() U_f U_n U_i] = Tr[(U_i U_t.dag() U_f) U_n]
+            # => U_t' = U_f.dag() U_t U_i.dag()
+            self.target_unitary = U_f.dag() * self.target_unitary_original * U_i.dag()
+            self.randomize(alpha_scale=0.2, beta_scale=3)
+            self.optimize()
+            self.print_info()
+            # TODO add some stop condition if max fid isn't reached
+            self.params["betas"][n] = self.betas[0]
+            self.params["alphas"][n] = self.alphas[0]
+            self.params["phis"][n] = self.phis[0]
+            self.params["thetas"][n] = self.thetas[0]
+            self.fids_reached[n] = self.unitary_fidelity()
+            self.Ucs[n] = self.U_tot()
+            self.N_reached = n + 1  # number of blocks optimized using binaryinit
 
     def concat_controls(self, include_N=None):
         include_N = include_N if include_N is not None else self.N_reached
