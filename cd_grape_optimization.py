@@ -742,7 +742,7 @@ class CD_grape:
                         U_fwd[k - 1] * U_bwd[-(k + 1)] * self.dbeta_theta_dCD(betas[i])
                     ).tr()
 
-        scalar = 2.0 / D ** 2 * overlap * self.unitary_learning_rate
+        scalar = 2.0 / (D ** 2) * np.conj(overlap)
         dbeta_r = np.real(scalar * dbeta_r)
         dbeta_theta = np.real(scalar * dbeta_theta)
 
