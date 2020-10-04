@@ -2,7 +2,7 @@
 %load_ext autoreload
 %autoreload 2
 import sys
-sys.path.append("../../")
+sys.path.append("../../../")
 from CD_GRAPE.cd_grape_optimization import CD_grape
 from CD_GRAPE.helper_functions import plot_pulse, plot_wigner
 from CD_GRAPE.analysis import System, CD_grape_analysis
@@ -10,46 +10,46 @@ import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 #%%
-N = 30 #cavity hilbert space 
+N = 20 #cavity hilbert space 
 N2 = 2 #qubit hilbert space
-alpha = 2 + 1j #cat alpha
-N_blocks = 2
-initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
-target_state = qt.tensor((qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit(),\
-                          qt.basis(N2,0))
+N_blocks = 1
 term_fid = 0.99
 #max alpha and beta are the maximum values of alpha and beta for optimization
-max_alpha = 5
+max_alpha = 4
 max_beta = 20
-name = "Cat creation"
+name = "unitary testing"
 saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_grape_parameters\\"
-cd_grape_obj = CD_grape(initial_state, target_state, N_blocks=N_blocks,\
-                    name=name, term_fid=term_fid,\
+#TODO: can we control the step size in the local optimizations?
+#TODO: Are there few enough parameters we can do more of a global search? 
+# Just sweep each parameter over its range?
+cd_grape_obj = CD_grape(N_blocks = N_blocks, unitary_optimization=True, no_CD_end=False,
+                    name=name, term_fid=term_fid, analytic=False,\
                     max_alpha = max_alpha, max_beta=max_beta,
+                    beta_r_step_size=0.5, alpha_r_step_size=0.2,
                     saving_directory=saving_directory,
-                    basinhopping_kwargs={'T':0.1},
-                    save_all_minima = True,
-                    use_displacements=True, analytic=True,
-                    no_CD_end=True)
-#%% We can plot the initial and target states (qubit traced out)
-plt.figure(figsize=(5,5), dpi=200)
-cd_grape_obj.plot_state(i=0)
-plt.title("initial state")
-plt.figure(figsize=(5, 5), dpi=200)
-cd_grape_obj.plot_target_state()
-plt.title("target state")
+                    use_displacements=True, N = N, N2=N2,
+                    beta_penalty_multiplier=0,
+                    minimizer_options = {'gtol': 1e-4, 'ftol':1e-4}, basinhopping_kwargs={'niter':1000, 'T':0.01})
+#%%
+beta = 2.0
+cd_grape_obj.target_unitary = cd_grape_obj.CD(beta)
+# parity = (1j*np.pi*cd_grape_obj.a.dag()*cd_grape_obj.a*cd_grape_obj.sz).expm()
+# cd_grape_obj.target_unitary = parity
+n = N*N2//3
+unitary_eigvals = np.array(cd_grape_obj.target_unitary.eigenstates()[0])[:n]
+cd_grape_obj.unitary_initial_states = cd_grape_obj.target_unitary.eigenstates()[1][:n]
+cd_grape_obj.unitary_final_states = cd_grape_obj.unitary_initial_states*unitary_eigvals
+cd_grape_obj.unitary_learning_rate = 1
 #%% Doing the optimization
 #The alpha and beta scale are scales for the random initialization.
-#cd_grape_obj.randomize(alpha_scale=0.2, beta_scale=1)
+cd_grape_obj.randomize(alpha_scale=0.2, beta_scale=3)
+#cd_grape_obj.betas = [-2.0]
 print("Randomized parameters:")
 cd_grape_obj.print_info()
 cd_grape_obj.optimize()
 print("after optimization:")
 cd_grape_obj.print_info()
-#%% plotting the final state
-plt.figure(figsize=(5, 5), dpi=200)
-cd_grape_obj.plot_final_state()
-plt.title("final state")
+
 #%% Now, we can convert these parameters to a pulse we can run on the experiment
 #first, creating a system object
 epsilon_m = 2*np.pi*1e-3*300.0  # maximum displacement rate
