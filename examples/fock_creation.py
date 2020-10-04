@@ -15,7 +15,7 @@ N2 = 2 #qubit hilbert space
 fock = 1 #fock state to create
 N_blocks = 4
 initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
-target_state = qt.tensor(qt.displace(N,1.0)*qt.basis(N, fock), qt.basis(N2, 0))
+target_state = qt.tensor(qt.basis(N, fock), qt.basis(N2, 0))
 term_fid = 0.99
 #max alpha and beta are the maximum values of alpha and beta for optimization
 max_alpha = 5
@@ -25,7 +25,7 @@ saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_grape_parameters\\"
 cd_grape_obj = CD_grape(initial_state, target_state, N_blocks=N_blocks,\
                     name='Fock creation', term_fid=term_fid,\
                     max_alpha = max_alpha, max_beta=max_beta,
-                    saving_directory=saving_directory)
+                    saving_directory=saving_directory, use_displacements=False)
 #%% We can plot the initial and target states (qubit traced out)
 plt.figure(figsize=(5,5), dpi=200)
 cd_grape_obj.plot_state(i=0)
