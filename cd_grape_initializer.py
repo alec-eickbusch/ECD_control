@@ -48,7 +48,7 @@ class CD_grape_init(CD_grape):
         N2=None,
     ):
         if "niter" not in basinhopping_kwargs:
-            basinhopping_kwargs["niter"] = 1
+            basinhopping_kwargs["niter"] = 10
         # note: ftol is relative percent difference in fidelity before optimization stops
         if "ftol" not in minimizer_options:
             minimizer_options["ftol"] = 1e-8  # lower than usual
