@@ -121,7 +121,7 @@ def fastest_CD(beta, alpha0 = 60, epsilon_m = 2*np.pi*1e-3*400, chi=2*np.pi*1e-3
     fastest_disp_trapezoid(-1*alpha0, epsilon_m=epsilon_m, ring_up_time=ring_up_time),
     np.zeros(zero_time),
     fastest_disp_trapezoid(alpha0, epsilon_m=epsilon_m, ring_up_time=ring_up_time)])
-
+    #note: above, displacement back is shorter than initial displacement
 
     alpha = alpha_from_epsilon(np.pad(epsilon,40,mode='constant'))
     beta2 = chi*np.sum(np.abs(alpha))
