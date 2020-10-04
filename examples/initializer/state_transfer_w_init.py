@@ -19,12 +19,12 @@ initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
 # target_state = qt.tensor((qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit(),\
                         #   qt.basis(N2,0))
 
-target_state = qt.tensor(qt.basis(N,5),qt.basis(N2,0))
+target_state = qt.tensor(qt.basis(N,1),qt.basis(N2,0))
 term_fid = 0.99
 #max alpha and beta are the maximum values of alpha and beta for optimization
 max_alpha = 6
 max_beta = 8
-name = "Fock 5 creation"
+name = "Fock 1 creation"
 saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_grape_parameters\\"
 max_N = 7
 cd_grape_obj_init = CD_grape_init(initial_state=initial_state, target_state=target_state, max_N=max_N,\
