@@ -24,6 +24,7 @@ except:
 # TODO: make the step sizes changeable
 class MyTakeStep(object):
     def __init__(self, cd_grape_obj, stepsize=1):
+        self.cd_grape_obj = cd_grape_obj
         self.stepsize = stepsize
         self.N_blocks = cd_grape_obj.N_blocks
         self.beta_r_step_size = cd_grape_obj.beta_r_step_size
@@ -68,7 +69,9 @@ class MyTakeStep(object):
                 ),  # thetas
             ]
         )
-        return x + step_array
+        # todo: could make normalize angles a helper function.
+        x = x + step_array
+        return x
 
 
 # custom basinhopping bounds for constrained global optimization
@@ -238,10 +241,10 @@ class CD_grape:
             self.minimizer_options["maxiter"] = 1e3
         # note: ftol is relative percent difference in fidelity before optimization stops
         if "ftol" not in self.minimizer_options:
-            self.minimizer_options["ftol"] = 1e-6
+            self.minimizer_options["ftol"] = 1e-8
         # gtol is like the maximum gradient before optimization stops.
         if "gtol" not in self.minimizer_options:
-            self.minimizer_options["gtol"] = 1e-6
+            self.minimizer_options["gtol"] = 1e-8
 
         if "niter" not in self.basinhopping_kwargs:
             self.basinhopping_kwargs["niter"] = 50
@@ -1191,18 +1194,20 @@ class CD_grape:
             )
         except OptFinishedException:
             print("\n\ndesired intermediate fidelity reached.\n\n")
-            if self.unitary_optimization:
-                fid = self.unitary_fidelity()
-            else:
-                fid = self.fidelity()
-            print("Best fidelity found: " + str(fid))
+            # if self.unitary_optimization:
+            #    fid = self.unitary_fidelity()
+            # else:
+            #    fid = self.fidelity()
+            # print("Best fidelity found: " + str(fid))
         else:
             print("\n\nFirst optimization failed to reach desired fidelity.\n\n")
-            if self.unitary_optimization:
-                fid = self.unitary_fidelity()
-            else:
-                fid = self.fidelity()
-            print("Best fidelity found: " + str(fid))
+            # if self.unitary_optimization:
+            #    fid = self.unitary_fidelity()
+            # else:
+            #    fid = self.fidelity()
+            # print("Best fidelity found: " + str(fid))
+        self.normalize_angles()
+        self.print_info(human=True)
         """
         try:
             print("Second optimization round:")
@@ -1236,23 +1241,36 @@ class CD_grape:
 
         return fid
 
-    def normalize_angles(self):
-        thetas = []
-        for theta in self.thetas:
+    # when parameters is specificed, normalize_angles is being used
+    # during the optimization. In this case, it normalizes the parameters
+    # and returns the parameters without updating self.
+    # if parameters not specified, just normalize self's angles.
+    # todo: make faster with numpy...
+    def normalize_angles(self, phis=None, thetas=None):
+        do_return = phis is not None
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+        thetas_new = []
+        for theta in thetas:
             while theta < -np.pi:
                 theta = theta + 2 * np.pi
             while theta > np.pi:
                 theta = theta - 2 * np.pi
-            thetas.append(theta)
-        self.thetas = np.array(thetas)
-        phis = []
-        for phi in self.phis:
+            thetas_new.append(theta)
+        thetas = np.array(thetas_new)
+        phis_new = []
+        for phi in phis:
             while phi < -np.pi:
                 phi = phi + 2 * np.pi
             while phi > np.pi:
                 phi = phi - 2 * np.pi
-            phis.append(phi)
-        self.phis = np.array(phis)
+            phis_new.append(phi)
+        phis = np.array(phis_new)
+        if do_return:
+            return phis, thetas
+        else:
+            self.thetas = thetas
+            self.phis = phis
 
     def save(self):
         datestr = datetime.now().strftime("%Y%m%d_%H_%M_%S")
@@ -1311,12 +1329,17 @@ class CD_grape:
         )
         self.print_info()
 
-    def print_info(self, betas=None, alphas=None, phis=None, thetas=None, human=False):
+    def print_info(self, betas=None, alphas=None, phis=None, thetas=None, human=True):
         betas = self.betas if betas is None else betas
         alphas = self.alphas if alphas is None else alphas
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
-        f = self.unitary_fidelity() if self.unitary_optimization else self.fidelity()
+        phis, thetas = self.normalize_angles(phis, thetas)
+        f = (
+            self.unitary_fidelity(betas, alphas, phis, thetas)
+            if self.unitary_optimization
+            else self.fidelity(betas, alphas, phis, thetas)
+        )
         if human:
             with np.printoptions(precision=5, suppress=True):
                 print("\n\n" + str(self.name))
