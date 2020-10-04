@@ -1201,13 +1201,9 @@ class CD_grape:
             # print("Best fidelity found: " + str(fid))
         else:
             print("\n\nFirst optimization failed to reach desired fidelity.\n\n")
-            # if self.unitary_optimization:
-            #    fid = self.unitary_fidelity()
-            # else:
-            #    fid = self.fidelity()
-            # print("Best fidelity found: " + str(fid))
         self.normalize_angles()
         self.print_info(human=True)
+
         """
         try:
             print("Second optimization round:")
@@ -1238,8 +1234,6 @@ class CD_grape:
             fid = self.fidelity()
             print('Best fidelity found: ' + str(fid))
         """
-
-        return fid
 
     # when parameters is specificed, normalize_angles is being used
     # during the optimization. In this case, it normalizes the parameters
