@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 N = 20 #cavity hilbert space 
 N2 = 2 #qubit hilbert space
 fock = 1 #fock state to create
-N_blocks = 4
+N_blocks = 2
 initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
 target_state = qt.tensor(qt.basis(N, fock), qt.basis(N2, 0))
 term_fid = 0.99
@@ -25,7 +25,8 @@ saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_grape_parameters\\"
 cd_grape_obj = CD_grape(initial_state, target_state, N_blocks=N_blocks,\
                     name='Fock creation', term_fid=term_fid,\
                     max_alpha = max_alpha, max_beta=max_beta,
-                    saving_directory=saving_directory, use_displacements=False)
+                    saving_directory=saving_directory, use_displacements=False,
+                    no_CD_end=True)
 #%% We can plot the initial and target states (qubit traced out)
 plt.figure(figsize=(5,5), dpi=200)
 cd_grape_obj.plot_state(i=0)
@@ -35,7 +36,7 @@ cd_grape_obj.plot_target_state()
 plt.title("target state")
 #%% Doing the optimization
 #The alpha and beta scale are scales for the random initialization.
-cd_grape_obj.randomize(alpha_scale=1, beta_scale=2)
+#cd_grape_obj.randomize(alpha_scale=1, beta_scale=2)
 print("Randomized parameters:")
 cd_grape_obj.print_info()
 #%%

@@ -28,7 +28,9 @@ class MyTakeStep(object):
         self.N_blocks = cd_grape_obj.N_blocks
         self.beta_r_step_size = cd_grape_obj.beta_r_step_size
         self.beta_theta_step_size = cd_grape_obj.beta_theta_step_size
-        self.alpha_r_step_size = cd_grape_obj.alpha_r_step_size
+        self.alpha_r_step_size = (
+            cd_grape_obj.alpha_r_step_size if cd_grape_obj.use_displacements else 0.0
+        )
         self.alpha_theta_step_size = cd_grape_obj.alpha_theta_step_size
         self.phi_step_size = cd_grape_obj.phi_step_size
         self.theta_step_size = cd_grape_obj.theta_step_size
@@ -215,7 +217,7 @@ class CD_grape:
             else np.zeros(N_blocks, dtype=np.float64)
         )
 
-        self.max_alpha = max_alpha
+        self.max_alpha = max_alpha if use_displacements else 0.0
         self.max_beta = max_beta
         self.saving_directory = saving_directory
         self.name = name
@@ -296,6 +298,8 @@ class CD_grape:
         self.thetas = np.array(thetas, dtype=np.float64)
 
     def D(self, alpha):
+        if np.abs(alpha) == 0:
+            return qt.tensor(qt.identity(self.N), qt.identity(self.N2))
         return (alpha * self.a.dag() - np.conj(alpha) * self.a).expm()
 
     def D2(self, alpha):
@@ -323,7 +327,7 @@ class CD_grape:
         return qt.tensor(D, qt.identity(self.N2))
 
     def CD(self, beta):
-        if beta == 0:
+        if np.abs(beta) == 0:
             return qt.tensor(qt.identity(self.N), qt.identity(self.N2))
         # return self.R(0,np.pi)*((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
         # temp removing pi pulse from CD for analytic opt testing
@@ -335,6 +339,8 @@ class CD_grape:
 
     # TODO: is it faster with non-exponential form?
     def R(self, phi, theta):
+        if theta == 0:
+            return qt.tensor(qt.identity(self.N), qt.identity(self.N2))
         # return (-1j*(theta/2.0)*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)).expm()
         return np.cos(theta / 2.0) - 1j * (
             np.cos(phi) * self.sx + np.sin(phi) * self.sy
@@ -499,6 +505,16 @@ class CD_grape:
 
         # TODO: move this after unitary_fid, after testing
         overlap = (psi_bwd[0] * psi_fwd[-1]).full()[0][0]
+        if overlap == 0:
+            return (
+                0,
+                np.zeros(self.N_blocks, dtype=np.float64),
+                np.zeros(self.N_blocks, dtype=np.float64),
+                np.zeros(self.N_blocks, dtype=np.float64),
+                np.zeros(self.N_blocks, dtype=np.float64),
+                np.zeros(self.N_blocks, dtype=np.float64),
+                np.zeros(self.N_blocks, dtype=np.float64),
+            )
 
         if unitary_fid:
             return overlap, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta
@@ -1122,6 +1138,8 @@ class CD_grape:
         )
 
         def callback_fun(x, f, accepted):
+            betas, alphas, phis, thetas = self.unflatten_parameters(x)
+            self.print_info(betas, alphas, phis, thetas, human=True)
             if self.save_all_minima:
                 betas, _, _, _ = self.unflatten_parameters(x)
                 betas_r = np.abs(betas)
@@ -1293,25 +1311,29 @@ class CD_grape:
         )
         self.print_info()
 
-    def print_info(self, human=False):
+    def print_info(self, betas=None, alphas=None, phis=None, thetas=None, human=False):
+        betas = self.betas if betas is None else betas
+        alphas = self.alphas if alphas is None else alphas
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
         f = self.unitary_fidelity() if self.unitary_optimization else self.fidelity()
         if human:
             with np.printoptions(precision=5, suppress=True):
                 print("\n\n" + str(self.name))
                 print("N_blocks:     " + str(self.N_blocks))
-                print("betas:        " + str(self.betas))
-                print("alphas:       " + str(self.alphas))
-                print("phis (deg):   " + str(self.phis * 180.0 / np.pi))
-                print("thetas (deg): " + str(self.thetas * 180.0 / np.pi))
+                print("betas:        " + str(betas))
+                print("alphas:       " + str(alphas))
+                print("phis (deg):   " + str(phis * 180.0 / np.pi))
+                print("thetas (deg): " + str(thetas * 180.0 / np.pi))
                 print("Fidelity:     %.5f" % f)
                 print("\n")
         else:
             print("\n\n" + str(self.name))
             print("N_blocks: " + repr(self.N_blocks))
-            print("betas: " + repr(self.betas))
-            print("alphas: " + repr(self.alphas))
-            print("phis: " + repr(self.phis))
-            print("thetas: " + repr(self.thetas))
+            print("betas: " + repr(betas))
+            print("alphas: " + repr(alphas))
+            print("phis: " + repr(phis))
+            print("thetas: " + repr(thetas))
             print("Fidelity: " + repr(f))
             print("\n")
 
