@@ -1,9 +1,9 @@
 #%%
 import numpy as np
 import qutip as qt
-from CD_GRAPE.cd_grape_optimization import *
-from CD_GRAPE.basic_pulses import fastest_CD, rotate, disp_gaussian
-from CD_GRAPE.helper_functions import plot_pulse, alpha_from_epsilon
+from CD_control.CD_control_optimization import *
+from CD_control.basic_pulses import fastest_CD, rotate, disp_gaussian
+from CD_control.helper_functions import plot_pulse, alpha_from_epsilon
 import matplotlib.pyplot as plt
 plt.rcParams.update({'font.size': 16, 'pdf.fonttype': 42, 'ps.fonttype': 42})
 from tqdm import tqdm
@@ -113,22 +113,22 @@ class System:
         return  D*psi
 
 
-class CD_grape_analysis:
+class CD_control_analysis:
 
-    def __init__(self, cd_grape_object, system):
-        self.cd_grape_object = cd_grape_object
+    def __init__(self, CD_control_object, system):
+        self.CD_control_object = CD_control_object
         self.system = system
 
     #a block is defined by a rotation and displacement pulse, followed by a CD pulse.
     #for now pulse block will end with buffer time zeros.
     def pulse_block(self, i):
-        if i == self.cd_grape_object.N_blocks:
+        if i == self.CD_control_object.N_blocks:
             beta = 0
         else:
-            beta = self.cd_grape_object.betas[i]
-        alpha = self.cd_grape_object.alphas[i]    
-        phi = self.cd_grape_object.phis[i]
-        theta = self.cd_grape_object.thetas[i]
+            beta = self.CD_control_object.betas[i]
+        alpha = self.CD_control_object.alphas[i]    
+        phi = self.CD_control_object.phis[i]
+        theta = self.CD_control_object.thetas[i]
        
         if theta>0 or np.abs(alpha) > 0:
             epsilon_D, Omega_R = self.system.rotate_displace_pulse(alpha, phi, theta)
@@ -160,8 +160,8 @@ class CD_grape_analysis:
         
         #Now, pad with trailing zeros only if there is another pulse coming
         #TODO: update this with new block rules.
-        if i < self.cd_grape_object.N_blocks:
-            if not (i == self.cd_grape_object.N_blocks -1 and self.cd_grape_object.thetas[-1] == 0):
+        if i < self.CD_control_object.N_blocks:
+            if not (i == self.CD_control_object.N_blocks -1 and self.CD_control_object.thetas[-1] == 0):
                 epsilon = np.pad(epsilon, (0, self.system.buffer_time), mode='constant')
                 Omega = np.pad(Omega, (0, self.system.buffer_time), mode='constant')
         
@@ -170,7 +170,7 @@ class CD_grape_analysis:
     def composite_pulse(self):
         e = []
         O = []
-        for i in range(self.cd_grape_object.N_blocks):
+        for i in range(self.CD_control_object.N_blocks):
             epsilon, Omega = self.pulse_block(i)
             e.append(epsilon)
             O.append(Omega)
@@ -182,8 +182,8 @@ class CD_grape_analysis:
 
 #%% Testing
 if __name__ == '__main__':
-    saving_directory = "C:\\Users\\Alec Eickbusch\\CD_grape_data\\"
-    savefile = "C:\\Users\\Alec Eickbusch\\CD_grape_data\\cat_2_20200904_11_38_18"
+    saving_directory = "C:\\Users\\Alec Eickbusch\\CD_control_data\\"
+    savefile = "C:\\Users\\Alec Eickbusch\\CD_control_data\\cat_2_20200904_11_38_18"
     N = 60
     N2 = 2
     alpha0 = 60
@@ -219,11 +219,11 @@ if __name__ == '__main__':
     #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
     #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
     #target_state = qt.tensor(qt.coherent(N,1j), qt.basis(N2, 1))
-    #a = CD_grape(init_state, target_state, N_blocks, max_alpha=4, max_beta = 4, term_fid= 0.99)
+    #a = CD_control(init_state, target_state, N_blocks, max_alpha=4, max_beta = 4, term_fid= 0.99)
     #a.randomize(alpha_scale=1, beta_scale = 1.5)
     #a.optimize()
     #a.save()
-    a = CD_grape()
+    a = CD_control()
     a.load(savefile)
     if 1:
         #a.plot_initial_state()
@@ -232,7 +232,7 @@ if __name__ == '__main__':
         #a.plot_target_state()
     print(a.fidelity())
     
-    analysis = CD_grape_analysis(a,sys)
+    analysis = CD_control_analysis(a,sys)
     e,O = analysis.composite_pulse()
     alphas = alpha_from_epsilon(e)
     plt.figure(figsize=(10, 6), dpi=200)

@@ -3,7 +3,7 @@
 #%%
 import numpy as np
 from init_script import *
-from cd_grape.basic_pulses import fastest_CD
+from CD_control.basic_pulses import fastest_CD
 import matplotlib.pyplot as plt
 from fpga_lib.entities.pulses import gaussian_wave, gaussian_deriv_wave
 #%% It's not so easy to get the waves from the FPGA code so I'll just hard code here
@@ -151,8 +151,8 @@ class CD_FPGA_System:
         return epsilon, Omega
 #%% Testing
 if __name__ == '__main__':
-    saving_directory = "C:\\Users\\Alec Eickbusch\\CD_grape_data\\"
-    savefile = "C:\\Users\\Alec Eickbusch\\CD_grape_data\\cat_2_20200904_11_38_18"
+    saving_directory = "C:\\Users\\Alec Eickbusch\\CD_control_data\\"
+    savefile = "C:\\Users\\Alec Eickbusch\\CD_control_data\\cat_2_20200904_11_38_18"
     N = 60
     N2 = 2
     alpha0 = 60
@@ -188,11 +188,11 @@ if __name__ == '__main__':
     #target_state = qt.tensor(qt.basis(N,2),qt.basis(N2,0))
     #target_state = qt.tensor((qt.coherent(N,np.sqrt(2)) + qt.coherent(N,-np.sqrt(2))).unit(),qt.basis(N2,0))
     #target_state = qt.tensor(qt.coherent(N,1j), qt.basis(N2, 1))
-    #a = CD_grape(init_state, target_state, N_blocks, max_alpha=4, max_beta = 4, term_fid= 0.99)
+    #a = CD_control(init_state, target_state, N_blocks, max_alpha=4, max_beta = 4, term_fid= 0.99)
     #a.randomize(alpha_scale=1, beta_scale = 1.5)
     #a.optimize()
     #a.save()
-    a = CD_grape()
+    a = CD_control()
     a.load(savefile)
     if 1:
         #a.plot_initial_state()
@@ -201,7 +201,7 @@ if __name__ == '__main__':
         #a.plot_target_state()
     print(a.fidelity())
     
-    analysis = CD_grape_analysis(a,sys)
+    analysis = CD_control_analysis(a,sys)
     e,O = analysis.composite_pulse()
     alphas = alpha_from_epsilon(e)
     plt.figure(figsize=(10, 6), dpi=200)
@@ -261,7 +261,7 @@ if __name__ == '__main__':
         plt.ylabel('drive amplitude (MHz)')
         plt.xlabel('t (ns)')
         plt.legend()
-    savefile = "Z:\\Data\\Tennessee2020\\20200318_cooldown\\CD_grape\\optimization_tests_20200903\\fock 1_N_blocks_4_20200903_22_01_52.npz"
+    savefile = "Z:\\Data\\Tennessee2020\\20200318_cooldown\\CD_control\\optimization_tests_20200903\\fock 1_N_blocks_4_20200903_22_01_52.npz"
     chi = 2*np.pi*1e-3*0.03
     alpha0=60
     epsilon_m = 2*np.pi*1e-3*250

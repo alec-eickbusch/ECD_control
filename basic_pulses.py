@@ -7,7 +7,7 @@ Created on Tue Nov  5 14:18:08 2019
 """
 
 import numpy as np
-from CD_GRAPE.helper_functions import alpha_from_epsilon, plot_pulse
+from CD_control.helper_functions import alpha_from_epsilon, plot_pulse
 #%%
 def gaussian_wave(sigma, chop=4):
     ts = np.linspace(-chop/2*sigma, chop/2*sigma, chop*sigma)

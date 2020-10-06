@@ -7,7 +7,7 @@
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
-from CD_GRAPE.helper_functions import plot_wigner
+from CD_control.helper_functions import plot_wigner
 from scipy.optimize import minimize, basinhopping
 import scipy.optimize
 from datetime import datetime
@@ -23,19 +23,19 @@ except:
 # custom step-taking class for basinhopping optimization.
 # TODO: make the step sizes changeable
 class MyTakeStep(object):
-    def __init__(self, cd_grape_obj, stepsize=1):
-        self.cd_grape_obj = cd_grape_obj
+    def __init__(self, CD_control_obj, stepsize=1):
+        self.CD_control_obj = CD_control_obj
         self.stepsize = stepsize
-        self.N_blocks = cd_grape_obj.N_blocks
-        self.beta_r_step_size = cd_grape_obj.beta_r_step_size
-        self.beta_theta_step_size = cd_grape_obj.beta_theta_step_size
+        self.N_blocks = CD_control_obj.N_blocks
+        self.beta_r_step_size = CD_control_obj.beta_r_step_size
+        self.beta_theta_step_size = CD_control_obj.beta_theta_step_size
         self.alpha_r_step_size = (
-            cd_grape_obj.alpha_r_step_size if cd_grape_obj.use_displacements else 0.0
+            CD_control_obj.alpha_r_step_size if CD_control_obj.use_displacements else 0.0
         )
-        self.alpha_theta_step_size = cd_grape_obj.alpha_theta_step_size
-        self.phi_step_size = cd_grape_obj.phi_step_size
-        self.theta_step_size = cd_grape_obj.theta_step_size
-        self.use_displacements = cd_grape_obj.use_displacements
+        self.alpha_theta_step_size = CD_control_obj.alpha_theta_step_size
+        self.phi_step_size = CD_control_obj.phi_step_size
+        self.theta_step_size = CD_control_obj.theta_step_size
+        self.use_displacements = CD_control_obj.use_displacements
 
     def __call__(self, x):
         s = self.stepsize
@@ -76,11 +76,11 @@ class MyTakeStep(object):
 
 # custom basinhopping bounds for constrained global optimization
 class MyBounds(object):
-    def __init__(self, cd_grape_obj):
-        self.max_beta = cd_grape_obj.max_beta
-        self.max_alpha = cd_grape_obj.max_alpha
-        self.N_blocks = cd_grape_obj.N_blocks
-        self.no_CD_end = cd_grape_obj.no_CD_end
+    def __init__(self, CD_control_obj):
+        self.max_beta = CD_control_obj.max_beta
+        self.max_alpha = CD_control_obj.max_alpha
+        self.N_blocks = CD_control_obj.N_blocks
+        self.no_CD_end = CD_control_obj.no_CD_end
 
     def __call__(self, **kwargs):
         x = kwargs["x_new"]
@@ -106,13 +106,13 @@ class MyBounds(object):
 
 
 class OptFinishedException(Exception):
-    def __init__(self, msg, CD_grape_obj):
+    def __init__(self, msg, CD_control_obj):
         super(OptFinishedException, self).__init__(msg)
-        # CD_grape_obj.save()
+        # CD_control_obj.save()
         # can save data here...
 
 
-class CD_grape:
+class CD_control:
 
     # a block is defined as the unitary: CD(beta)D(alpha)R_phi(theta)
     def __init__(
@@ -132,7 +132,7 @@ class CD_grape:
         max_alpha=5,
         max_beta=5,
         saving_directory=None,
-        name="CD_grape",
+        name="CD_control",
         term_fid_intermediate=0.97,
         term_fid=0.999,
         beta_r_step_size=1,
@@ -151,42 +151,42 @@ class CD_grape:
         circuits=[],
         N=None,
         N2=None,
-        cd_grape_init_obj=None,
+        CD_control_init_obj=None,
     ):
-        if cd_grape_init_obj is not None:
-            N = cd_grape_init_obj.N
-            N2 = cd_grape_init_obj.N2
-            no_CD_end = cd_grape_init_obj.no_CD_end if no_CD_end is None else no_CD_end
-            cd_grape_init_obj.concat_controls(N_blocks)  # take the first N_blocks
-            betas = cd_grape_init_obj.betas_full if betas is None else betas
-            alphas = cd_grape_init_obj.alphas_full if alphas is None else alphas
-            phis = cd_grape_init_obj.phis_full if phis is None else phis
-            thetas = cd_grape_init_obj.thetas_full if thetas is None else thetas
+        if CD_control_init_obj is not None:
+            N = CD_control_init_obj.N
+            N2 = CD_control_init_obj.N2
+            no_CD_end = CD_control_init_obj.no_CD_end if no_CD_end is None else no_CD_end
+            CD_control_init_obj.concat_controls(N_blocks)  # take the first N_blocks
+            betas = CD_control_init_obj.betas_full if betas is None else betas
+            alphas = CD_control_init_obj.alphas_full if alphas is None else alphas
+            phis = CD_control_init_obj.phis_full if phis is None else phis
+            thetas = CD_control_init_obj.thetas_full if thetas is None else thetas
 
             # presumably the same prob to optimize over as in the initialization..
             initial_state = (
-                cd_grape_init_obj.initial_state_original
+                CD_control_init_obj.initial_state_original
                 if initial_state is None
                 else initial_state
             )
             target_state = (
-                cd_grape_init_obj.target_state_original
+                CD_control_init_obj.target_state_original
                 if target_state is None
                 else target_state
             )
             target_unitary = (
-                cd_grape_init_obj.target_unitary_original
+                CD_control_init_obj.target_unitary_original
                 if target_unitary is None
                 else target_unitary
             )
 
             unitary_initial_states = (
-                cd_grape_init_obj.unitary_initial_states
+                CD_control_init_obj.unitary_initial_states
                 if unitary_initial_states is None
                 else unitary_initial_states
             )
             unitary_final_states = (
-                cd_grape_init_obj.unitary_final_states
+                CD_control_init_obj.unitary_final_states
                 if unitary_final_states is None
                 else unitary_final_states
             )
