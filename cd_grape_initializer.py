@@ -1,13 +1,13 @@
-from CD_GRAPE.cd_grape_optimization import *
-from CD_GRAPE.basic_pulses import *
-from CD_GRAPE.helper_functions import *
+from CD_control.CD_control_optimization import *
+from CD_control.basic_pulses import *
+from CD_control.helper_functions import *
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 import binarytree as bt
 
 
-class CD_grape_init(CD_grape):
+class CD_control_init(CD_control):
 
     # a block is defined as the unitary: CD(beta)D(alpha)R_phi(theta)
     def __init__(
@@ -27,7 +27,7 @@ class CD_grape_init(CD_grape):
         max_alpha=5,
         max_beta=5,
         saving_directory=None,
-        name="CD_grape",
+        name="CD_control",
         term_fid_intermediate=0.97,
         term_fid=0.999,
         beta_r_step_size=2,
@@ -58,7 +58,7 @@ class CD_grape_init(CD_grape):
             minimizer_options["gtol"] = 1e-8  # lower than usual
         self.init_order = init_order
 
-        CD_grape.__init__(
+        CD_control.__init__(
             self,
             initial_state=initial_state,
             target_state=target_state,

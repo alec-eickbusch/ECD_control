@@ -1,10 +1,10 @@
 #%%
 %load_ext autoreload
 %autoreload 2
-from CD_GRAPE.cd_grape_optimization import CD_grape
-from CD_GRAPE.helper_functions import plot_pulse, plot_wigner
-from CD_GRAPE.analysis import System, CD_grape_analysis
-from CD_GRAPE.corrections import *
+from CD_control.CD_control_optimization import CD_control
+from CD_control.helper_functions import plot_pulse, plot_wigner
+from CD_control.analysis import System, CD_control_analysis
+from CD_control.corrections import *
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
@@ -20,34 +20,34 @@ target_state = (qt.tensor(qt.coherent(N, beta/2.0), qt.basis(N2, 1)) +\
 #note above that the |e> state will shift the cavity right, and the |g> state
 #will shift the cavity left. this is due to the pi pulse during the CD
 #which flips the qubit polarity.
-cd_grape_obj = CD_grape(initial_state, target_state, N_blocks, name='Conditional Displacement')
+CD_control_obj = CD_control(initial_state, target_state, N_blocks, name='Conditional Displacement')
 #%% We can plot the initial and target states (qubit traced out)
 plt.figure(figsize=(5,5), dpi=200)
-cd_grape_obj.plot_initial_state()
+CD_control_obj.plot_initial_state()
 plt.title("initial state")
 plt.figure(figsize=(5, 5), dpi=200)
-cd_grape_obj.plot_target_state()
+CD_control_obj.plot_target_state()
 plt.title("target state")
 #%% First, we trivially get to the target state with a single conditional displacement
-cd_grape_obj.alphas = [0,0]
-cd_grape_obj.betas = [beta]
-cd_grape_obj.phis = [0,0]
-cd_grape_obj.thetas = [0,0]
-cd_grape_obj.print_info()
+CD_control_obj.alphas = [0,0]
+CD_control_obj.betas = [beta]
+CD_control_obj.phis = [0,0]
+CD_control_obj.thetas = [0,0]
+CD_control_obj.print_info()
 #%% And we can plot the final cavity state with these parameters
 plt.figure(figsize=(5, 5), dpi=200)
-cd_grape_obj.plot_final_state()
+CD_control_obj.plot_final_state()
 plt.title("final state")
 #%% Testing the corrections
 alpha = 0.25 - 0.1j
 angle = np.pi/12.0
-r = (1j*angle*cd_grape_obj.a.dag()*cd_grape_obj.a).expm()
-d = cd_grape_obj.D(alpha)
-state2 = d*r*cd_grape_obj.final_state()
+r = (1j*angle*CD_control_obj.a.dag()*CD_control_obj.a).expm()
+d = CD_control_obj.D(alpha)
+state2 = d*r*CD_control_obj.final_state()
 plot_wigner(state2)
 plt.title('distorted state')
 # %%
-c = OptimalCorrections(distorted_state=state2, target_state=cd_grape_obj.target_state,\
+c = OptimalCorrections(distorted_state=state2, target_state=CD_control_obj.target_state,\
      d_alpha = 0.5, d_theta = np.pi/4.0)
 #%%
 c.grid_search(pts = 21)

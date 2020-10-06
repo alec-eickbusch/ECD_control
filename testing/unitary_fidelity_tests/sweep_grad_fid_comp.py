@@ -4,9 +4,9 @@
 import sys
 sys.path.append("../../../")
 import importlib
-from CD_GRAPE.cd_grape_optimization import *
-from CD_GRAPE.basic_pulses import *
-from CD_GRAPE.helper_functions import *
+from CD_control.CD_control_optimization import *
+from CD_control.basic_pulses import *
+from CD_control.helper_functions import *
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
@@ -22,11 +22,11 @@ term_fid = 0.99
 max_alpha = 1
 max_beta = 4
 name = "unitary testing"
-saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_grape_parameters\\"
+saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_control_parameters\\"
 #TODO: can we control the step size in the local optimizations?
 #TODO: Are there few enough parameters we can do more of a global search? 
 # Just sweep each parameter over its range?
-cd_grape_obj = CD_grape(N_blocks = N_blocks, unitary_optimization=True,
+CD_control_obj = CD_control(N_blocks = N_blocks, unitary_optimization=True,
                     name=name, term_fid=term_fid, analytic=False,\
                     max_alpha = max_alpha, max_beta=max_beta,
                     beta_r_step_size=0.5, alpha_r_step_size=0.2,
@@ -35,15 +35,15 @@ cd_grape_obj = CD_grape(N_blocks = N_blocks, unitary_optimization=True,
                     beta_penalty_multiplier=0,
                     minimizer_options = {'gtol': 1e-4, 'ftol':1e-4}, basinhopping_kwargs={'niter':1000, 'T':0.01})
 # %% Setup Target
-cd_grape_obj.randomize(alpha_scale=0.2, beta_scale=3)
-U_targ = cd_grape_obj.U_tot()*qt.tensor(qt.rand_unitary(N, density=.01),qt.rand_unitary(N2, density=.01))
-cd_grape_obj.target_unitary = U_targ
+CD_control_obj.randomize(alpha_scale=0.2, beta_scale=3)
+U_targ = CD_control_obj.U_tot()*qt.tensor(qt.rand_unitary(N, density=.01),qt.rand_unitary(N2, density=.01))
+CD_control_obj.target_unitary = U_targ
 
 #%% Check Fidelity < 1
-print(cd_grape_obj.unitary_fidelity())
-# %% Setup cd_grape_obj_new
-cd_grape_obj_new = CD_grape(betas=cd_grape_obj.betas,alphas=cd_grape_obj.alphas,phis=cd_grape_obj.phis,
-                    thetas=cd_grape_obj.thetas,N_blocks = N_blocks, unitary_optimization=True, target_unitary=U_targ,
+print(CD_control_obj.unitary_fidelity())
+# %% Setup CD_control_obj_new
+CD_control_obj_new = CD_control(betas=CD_control_obj.betas,alphas=CD_control_obj.alphas,phis=CD_control_obj.phis,
+                    thetas=CD_control_obj.thetas,N_blocks = N_blocks, unitary_optimization=True, target_unitary=U_targ,
                     name=name, term_fid=term_fid, analytic=False,\
                     max_alpha = max_alpha, max_beta=max_beta,
                     beta_r_step_size=0.5, alpha_r_step_size=0.2,
@@ -53,40 +53,40 @@ cd_grape_obj_new = CD_grape(betas=cd_grape_obj.betas,alphas=cd_grape_obj.alphas,
                     minimizer_options = {'gtol': 1e-4, 'ftol':1e-4}, basinhopping_kwargs={'niter':1000, 'T':0.01})
 
 # %%
-print(cd_grape_obj.unitary_fidelity())
-print(cd_grape_obj_new.unitary_fidelity())
+print(CD_control_obj.unitary_fidelity())
+print(CD_control_obj_new.unitary_fidelity())
 # %% num grad func
 def calc_num_gradient(dx, betas=None, alphas=None, phis=None, thetas=None):
     if betas is not None:
-        cd_grape_obj_new.betas = betas
+        CD_control_obj_new.betas = betas
     if alphas is not None:
-        cd_grape_obj_new.alphas = alphas
+        CD_control_obj_new.alphas = alphas
     if phis is not None:
-        cd_grape_obj_new.phis = phis
+        CD_control_obj_new.phis = phis
     if thetas is not None:
-        cd_grape_obj_new.thetas = thetas
-    diff = cd_grape_obj_new.unitary_fidelity() - cd_grape_obj.unitary_fidelity()
+        CD_control_obj_new.thetas = thetas
+    diff = CD_control_obj_new.unitary_fidelity() - CD_control_obj.unitary_fidelity()
     num_gradient = (diff)/(dx)
     # Reset
-    cd_grape_obj_new.betas = cd_grape_obj.betas
-    cd_grape_obj_new.alphas = cd_grape_obj.alphas
-    cd_grape_obj_new.phis = cd_grape_obj.phis
-    cd_grape_obj_new.thetas = cd_grape_obj.thetas
+    CD_control_obj_new.betas = CD_control_obj.betas
+    CD_control_obj_new.alphas = CD_control_obj.alphas
+    CD_control_obj_new.phis = CD_control_obj.phis
+    CD_control_obj_new.thetas = CD_control_obj.thetas
     return num_gradient, diff
 
 k = 2
 dx = 1e-7
-beta_r_k = np.abs(cd_grape_obj.betas[k])
-beta_theta_k = np.angle(cd_grape_obj.betas[k])
-beta_new = np.copy(cd_grape_obj.betas)
+beta_r_k = np.abs(CD_control_obj.betas[k])
+beta_theta_k = np.angle(CD_control_obj.betas[k])
+beta_new = np.copy(CD_control_obj.betas)
 beta_new[k] = (beta_r_k + dx)*np.exp(1j*beta_theta_k)
 num_gradient, diff = calc_num_gradient(dx, betas=beta_new)
-analytic_fid = cd_grape_obj.unitary_fidelity()
+analytic_fid = CD_control_obj.unitary_fidelity()
 print(diff)
 print(num_gradient)
 
 # %% Analytic Unitary Fidelity
-fid, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta = cd_grape_obj.unitary_fid_and_grad_fid()
+fid, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta = CD_control_obj.unitary_fid_and_grad_fid()
 analytic_grad = dbeta_r[k]
 print("Precentage Diff: " + str((dbeta_r[k] - num_gradient)/num_gradient*100) + "%")
 
@@ -114,7 +114,7 @@ def approx_grad_fid_fock(D, printing=False):
     for i in range(N*N2):
         unitary_initial_states.append(qt.tensor(qt.basis(N,i%N), qt.basis(N2,i//N)))
     unitary_initial_states = random.sample(unitary_initial_states,D)
-    fid, afid, adbeta_r, adbeta_theta, adalpha_r, adalpha_theta, adphi, adtheta = cd_grape_obj.unitary_fid_and_grad_fid_approx(unitary_initial_states=unitary_initial_states, testing=True)
+    fid, afid, adbeta_r, adbeta_theta, adalpha_r, adalpha_theta, adphi, adtheta = CD_control_obj.unitary_fid_and_grad_fid_approx(unitary_initial_states=unitary_initial_states, testing=True)
     
     percent_diff_fid = np.abs((afid - analytic_fid)/analytic_fid*100)
     percent_diff_grad = np.abs((adbeta_r[k] - num_gradient)/num_gradient*100)
@@ -130,11 +130,11 @@ def approx_grad_fid_fock(D, printing=False):
 
 # %% Approx Unitary Fidelity (with eigenstates)
 def approx_grad_fid_eig(D, printing=False):
-    unitary_eigvals = np.array(cd_grape_obj.target_unitary.eigenstates()[0])[:D]
-    unitary_initial_states = cd_grape_obj.target_unitary.eigenstates()[1][:D]
+    unitary_eigvals = np.array(CD_control_obj.target_unitary.eigenstates()[0])[:D]
+    unitary_initial_states = CD_control_obj.target_unitary.eigenstates()[1][:D]
     unitary_final_states = unitary_initial_states*unitary_eigvals
 
-    fid, afid, adbeta_r, adbeta_theta, adalpha_r, adalpha_theta, adphi, adtheta = cd_grape_obj.unitary_fid_and_grad_fid_approx(unitary_initial_states=unitary_initial_states,unitary_final_states=unitary_final_states, testing=True)
+    fid, afid, adbeta_r, adbeta_theta, adalpha_r, adalpha_theta, adphi, adtheta = CD_control_obj.unitary_fid_and_grad_fid_approx(unitary_initial_states=unitary_initial_states,unitary_final_states=unitary_final_states, testing=True)
 
     percent_diff_fid = np.abs((afid - analytic_fid)/analytic_fid*100)
     percent_diff_grad = np.abs((adbeta_r[k] - num_gradient)/num_gradient*100)
@@ -154,7 +154,7 @@ def approx_grad_fid_random(D, printing=False):
     unitary_initial_states = []
     for i in range(D):
         unitary_initial_states.append(qt.tensor(qt.rand_ket_haar(N=N), qt.rand_ket_haar(N=N2)))
-    fid, afid, adbeta_r, adbeta_theta, adalpha_r, adalpha_theta, adphi, adtheta = cd_grape_obj.unitary_fid_and_grad_fid_approx(unitary_initial_states=unitary_initial_states, testing=True)
+    fid, afid, adbeta_r, adbeta_theta, adalpha_r, adalpha_theta, adphi, adtheta = CD_control_obj.unitary_fid_and_grad_fid_approx(unitary_initial_states=unitary_initial_states, testing=True)
 
     percent_diff_fid = np.abs((afid - analytic_fid)/analytic_fid*100)
     percent_diff_grad = np.abs((adbeta_r[k] - num_gradient)/num_gradient*100)

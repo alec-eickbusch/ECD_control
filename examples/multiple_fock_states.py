@@ -1,9 +1,9 @@
 #%%
 %load_ext autoreload
 %autoreload 2
-from CD_GRAPE.cd_grape_optimization import CD_grape
-from CD_GRAPE.helper_functions import plot_pulse, plot_wigner
-from CD_GRAPE.analysis import System, CD_grape_analysis
+from CD_control.CD_control_optimization import CD_control
+from CD_control.helper_functions import plot_pulse, plot_wigner
+from CD_control.analysis import System, CD_control_analysis
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
@@ -22,8 +22,8 @@ max_beta = 8
 alpha_scale = 0.5
 beta_scale = 2
 #all else will use default parameters in CD grape
-saving_directory = "Z:\\Data\\Tennessee2020\\20200915_cooldown\\fock_state_CD_grape_optimizations\\"
-cd_grape_obj = CD_grape(initial_state=initial_state, term_fid=term_fid,
+saving_directory = "Z:\\Data\\Tennessee2020\\20200915_cooldown\\fock_state_CD_control_optimizations\\"
+CD_control_obj = CD_control(initial_state=initial_state, term_fid=term_fid,
                         max_alpha=max_alpha, max_beta=max_beta,
                         saving_directory=saving_directory,
                         basinhopping_kwargs={'niter': niter},
@@ -39,17 +39,17 @@ for fock in target_fock_values:
     sucessful = False
     N_blocks = 1
     target_state = qt.tensor(qt.basis(N, fock), qt.basis(N2, 0))
-    cd_grape_obj.target_state = target_state
+    CD_control_obj.target_state = target_state
     best_fid = 0
     while (not sucessful) and (N_blocks <= max_N_blocks):
         name = 'fock %d N_blocks %d' % (fock, N_blocks)
         print("\n\n" + name + "\n\n")
-        cd_grape_obj.N_blocks = N_blocks
-        cd_grape_obj.name = name
-        cd_grape_obj.randomize(alpha_scale=alpha_scale, beta_scale=beta_scale)
-        cd_grape_obj.optimize()
-        savefile_list[fock].append(cd_grape_obj.save())
-        fid = cd_grape_obj.fidelity()
+        CD_control_obj.N_blocks = N_blocks
+        CD_control_obj.name = name
+        CD_control_obj.randomize(alpha_scale=alpha_scale, beta_scale=beta_scale)
+        CD_control_obj.optimize()
+        savefile_list[fock].append(CD_control_obj.save())
+        fid = CD_control_obj.fidelity()
         fidelities[fock].append(fid)
         N_blocks_used[fock].append(N_blocks)
         sucessful = (fid >= term_fid)
