@@ -223,9 +223,6 @@ class CD_control:
             if thetas is not None
             else np.zeros(N_blocks, dtype=np.float64)
         )
-
-        self.initial_state = initial_state
-        self.final_state = final_state
         self.max_alpha = max_alpha if use_displacements else 0.0
         self.max_beta = max_beta
         self.saving_directory = saving_directory
@@ -342,7 +339,7 @@ class CD_control:
         # temp removing pi pulse from CD for analytic opt testing
         # return ((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
         zz = qt.tensor(qt.ket2dm(qt.basis(self.N_qb, 0)), qt.identity(self.N_cav))
-        zz = qt.tensor(qt.ket2dm(qt.basis(self.N_qb, 1)), qt.identity(self.N_cav))
+        oo = qt.tensor(qt.ket2dm(qt.basis(self.N_qb, 1)), qt.identity(self.N_cav))
         # return self.R(0, np.pi) * (self.D(beta / 2.0) * zz + self.D(-beta / 2.0) * oo)
         # includes pi rotation
 
