@@ -139,6 +139,24 @@ class CD_control_tf:
 
         return blocks
 
+    # TODO: use tf.einsum to quickly do these contractions
+    #@tf.function
+    def state_overlap(self, Bs, Phis, Thetas):
+        # U = tf.eye(2, 2, dtype=tf.complex64)
+        bs = self.construct_block_operators(Bs, Phis, Thetas)
+        psi = self.initial_state
+        for U in tf.reverse(bs, axis=[0]):
+            psi = U @ psi
+        psi_target_dag = tf.linalg.adjoint(self.target_state)
+        overlap = psi_target_dag @ psi
+        return overlap
+
+    #@tf.function
+    def state_fidelity(self, Bs, Phis, Thetas):
+        overlap = self.state_overlap(Bs, Phis, Thetas)
+        fid = tf.cast(overlap * tf.math.conj(overlap), dtype=tf.float32)
+        return fid
+
     def randomize(self, beta_scale=None, alpha_scale=None):
         beta_scale = self.max_beta if beta_scale is None else beta_scale
         alpha_scale = self.max_alpha if alpha_scale is None else alpha_scale
