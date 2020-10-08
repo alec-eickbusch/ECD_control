@@ -14,9 +14,8 @@ N = 30 #cavity hilbert space
 N2 = 2 #qubit hilbert space
 alpha = 2 + 1j #cat alpha
 N_blocks = 2
-initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
-target_state = qt.tensor((qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit(),\
-                          qt.basis(N2,0))
+initial_state = qt.tensor(qt.basis(N2,0),qt.basis(N,0))
+target_state = qt.tensor(qt.basis(N2,0), (qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit())
 term_fid = 0.99
 #max alpha and beta are the maximum values of alpha and beta for optimization
 max_alpha = 5
