@@ -8,7 +8,7 @@ import numpy as np
 import tensorflow as tf
 
 #%%
-from CD_control.tf_quantum import qt2tf
+import CD_control.tf_quantum as tfq
 import matplotlib.pyplot as plt
 from CD_control.helper_functions import plot_wigner
 import qutip as qt
@@ -70,11 +70,47 @@ class CD_control_tf:
         self.beta_penalty_multiplier = beta_penalty_multiplier
         self.use_displacements = use_displacements
         self.no_CD_end = no_CD_end
+        
 
         # todo: handle case when initial state is a tf object.
-        self.N = self.initial_state.dims[0][0]
-        self.N2 = self.initial_state.dims[0][1]
-        self.init_operators(self.N, self.N2)
+        self.N = self.initial_state.shape[0]
+        self.a = tfq.destroy(self.N)
+        self.adag = tfq.create(self.N)
+        self.q = tfq.position(self.N)
+        self.p = tfq.momentum(self.N)
+        self.n = tfq.num(self.N)
+
+    @tf.function
+    def construct_displacement_operators(Bs):
+
+        # Reshape amplitudes for broadcast against diagonals
+        amplitude = tf.cast(tf.reshape(Bs, [Bs.shape[0], 1]), dtype=c64)
+
+        # Take real/imag of amplitude for the commutator part of the expansion
+        re_a = tf.cast(tf.math.real(amplitude), dtype=c64)
+        im_a = tf.cast(tf.math.imag(amplitude), dtype=c64)
+
+        # Exponentiate diagonal matrices
+        expm_q = tf.linalg.diag(tf.math.exp(1j * im_a * self._eig_q))
+        expm_p = tf.linalg.diag(tf.math.exp(-1j * re_a * self._eig_p))
+        expm_c = tf.linalg.diag(tf.math.exp(-0.5 * re_a * im_a * self._qp_comm))
+
+        # Apply Baker-Campbell-Hausdorff
+        return tf.cast(
+            self._U_q
+            @ expm_q
+            @ tf.linalg.adjoint(self._U_q)
+            @ self._U_p
+            @ expm_p
+            @ tf.linalg.adjoint(self._U_p)
+            @ expm_c,
+            dtype=c64,
+        )
+
+    @tf.function
+    def conditional_displacement_operators(Bs):
+
+
 
     def init_operators(self, N, N2):
         self.N = N
