@@ -151,8 +151,8 @@ class CD_control:
         use_displacements=True,
         no_CD_end=True,
         circuits=[],
-        N=None,
-        N2=None,
+        N_cav=None,
+        N_qb=None,
         CD_control_init_obj=None,
     ):
         if CD_control_init_obj is not None:
@@ -224,6 +224,8 @@ class CD_control:
             else np.zeros(N_blocks, dtype=np.float64)
         )
 
+        self.initial_state = initial_state
+        self.final_state = final_state
         self.max_alpha = max_alpha if use_displacements else 0.0
         self.max_beta = max_beta
         self.saving_directory = saving_directory
