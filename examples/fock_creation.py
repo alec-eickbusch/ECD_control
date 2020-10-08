@@ -1,6 +1,6 @@
 #%%
-#%load_ext autoreload
-#%autoreload 2
+%load_ext autoreload
+%autoreload 2
 # import sys
 # sys.path.append("../../")
 from CD_control.CD_control_optimization import CD_control
@@ -24,8 +24,8 @@ max_beta = 6
 name = "Fock creation"
 saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_control_parameters\\"
 CD_control_obj = CD_control(
-    initial_state,
-    target_state,
+    initial_state = initial_state,
+    target_state = target_state,
     N_blocks=N_blocks,
     name="Fock creation",
     term_fid=term_fid,
