@@ -28,6 +28,8 @@ obj = CD_control(initial_state=psi_i, target_state=psi_t, N_blocks=N_blocks,\
                     use_displacements=False, analytic=True,
                     no_CD_end=False, betas=betas)
 #%%
+obj_tf.optimize(10)
+#%%
 d_tf = (obj_tf.construct_displacement_operators(obj_tf.Bs)).numpy()
 #%%
 d = np.array([obj.D(obj.betas[i]/2.0).ptrace(1).full()/2.0 for i in range(N_blocks)])
