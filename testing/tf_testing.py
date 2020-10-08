@@ -8,10 +8,10 @@ import numpy as np
 import tensorflow as tf
 #%%
 N = 80
-psi_i = qt.tensor(qt.basis(N, 0), qt.basis(2, 0))
-psi_t = qt.tensor(qt.basis(N, 1), qt.basis(2, 0))
+psi_i = qt.tensor(qt.basis(2, 0), qt.basis(N, 0))
+psi_t = qt.tensor(qt.basis(2, 0), qt.basis(N, 1))
 #%%
-N_blocks = 10
+N_blocks = 4
 betas = np.array([
     np.random.uniform(low=-3.0,high=3.0) + 1j*np.random.uniform(low=-3.0,high=3.0)
     for _ in range(N_blocks)]
@@ -30,7 +30,7 @@ obj = CD_control(initial_state=psi_i, target_state=psi_t, N_blocks=N_blocks,\
 #%%
 d_tf = (obj_tf.construct_displacement_operators(obj_tf.Bs)).numpy()
 #%%
-d = np.array([obj.D(obj.betas[i]/2.0).ptrace(0).full()/2.0 for i in range(N_blocks)])
+d = np.array([obj.D(obj.betas[i]/2.0).ptrace(1).full()/2.0 for i in range(N_blocks)])
 
 #%%
 cut = 50

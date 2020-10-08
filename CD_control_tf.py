@@ -72,12 +72,12 @@ class CD_control_tf:
         self.no_CD_end = no_CD_end
 
         # todo: handle case when initial state is a tf object.
-        self.N = initial_state.dims[0][0]
-        self.a = tfq.destroy(self.N)
-        self.adag = tfq.create(self.N)
-        self.q = tfq.position(self.N)
-        self.p = tfq.momentum(self.N)
-        self.n = tfq.num(self.N)
+        self.N_cav = initial_state.dims[0][1]
+        self.a = tfq.destroy(self.N_cav)
+        self.adag = tfq.create(self.N_cav)
+        self.q = tfq.position(self.N_cav)
+        self.p = tfq.momentum(self.N_cav)
+        self.n = tfq.num(self.N_cav)
 
         # Pre-diagonalize
         (self._eig_q, self._U_q) = tf.linalg.eigh(self.q)
@@ -139,20 +139,6 @@ class CD_control_tf:
 
         return blocks
 
-    # @tf.function
-    # def conditional_displacement_operators(Bs):
-
-    def init_operators(self, N, N2):
-        self.N = N
-        self.N2 = N2
-        self.I = qt.tensor(qt.identity(self.N), qt.identity(self.N2))
-        self.a = qt.tensor(qt.destroy(self.N), qt.identity(self.N2))
-        self.q = qt.tensor(qt.identity(self.N), qt.destroy(self.N2))
-        self.sz = 1 - 2 * self.q.dag() * self.q
-        self.sx = self.q + self.q.dag()
-        self.sy = 1j * (self.q.dag() - self.q)
-        self.n = self.a.dag() * self.a
-
     def randomize(self, beta_scale=None, alpha_scale=None):
         beta_scale = self.max_beta if beta_scale is None else beta_scale
         alpha_scale = self.max_alpha if alpha_scale is None else alpha_scale
@@ -173,97 +159,6 @@ class CD_control_tf:
             self.alphas = np.zeros(self.N_blocks, dtype=np.complex128)
         self.phis = np.array(phis, dtype=np.float64)
         self.thetas = np.array(thetas, dtype=np.float64)
-
-    def D(self, alpha):
-        if np.abs(alpha) == 0:
-            return qt.tensor(qt.identity(self.N), qt.identity(self.N2))
-        return (alpha * self.a.dag() - np.conj(alpha) * self.a).expm()
-
-    def D2(self, alpha):
-        dim = self.N
-        x_mat = np.zeros((self.N, self.N), dtype=np.complex128)
-        for m in range(self.N):
-            x_mat[m, m] = genlaguerre(m, 0)(np.abs(alpha) ** 2)
-            for n in range(0, m):  # scan over lower triangle, n < m
-                x_mn = (
-                    np.sqrt(factorial(n) / factorial(m))
-                    * (alpha) ** (m - n)
-                    * genlaguerre(n, m - n)(np.abs(alpha) ** 2)
-                )
-                x_mat[m, n] = x_mn
-
-            for n in range(m + 1, dim):  # scan over upper triangle, m < n
-                x_mn = (
-                    np.sqrt(factorial(m) / factorial(n))
-                    * (-np.conj(alpha)) ** (n - m)
-                    * genlaguerre(m, n - m)(np.abs(alpha) ** 2)
-                )
-                x_mat[m, n] = x_mn
-        x_mat = x_mat * np.exp(-np.abs(alpha) ** 2 / 2.0)
-        D = qt.Qobj(x_mat)
-        return qt.tensor(D, qt.identity(self.N2))
-
-    def CD(self, beta):
-        if np.abs(beta) == 0:
-            return qt.tensor(qt.identity(self.N), qt.identity(self.N2))
-        # return self.R(0,np.pi)*((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
-        # temp removing pi pulse from CD for analytic opt testing
-        # return ((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
-        zz = qt.tensor(qt.identity(self.N), qt.ket2dm(qt.basis(self.N2, 0)))
-        oo = qt.tensor(qt.identity(self.N), qt.ket2dm(qt.basis(self.N2, 1)))
-        return self.R(0, np.pi) * (self.D(beta / 2.0) * zz + self.D(-beta / 2.0) * oo)
-        # includes pi rotation
-
-    # TODO: is it faster with non-exponential form?
-    def R(self, phi, theta):
-        if theta == 0:
-            return qt.tensor(qt.identity(self.N), qt.identity(self.N2))
-        # return (-1j*(theta/2.0)*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)).expm()
-        return np.cos(theta / 2.0) - 1j * (
-            np.cos(phi) * self.sx + np.sin(phi) * self.sy
-        ) * np.sin(theta / 2.0)
-
-    def dalpha_r_dD(self, alpha):
-        r = np.abs(alpha)
-        return (
-            (1.0 / r) * (alpha * self.a.dag() - np.conj(alpha) * self.a) * self.D(alpha)
-        )
-
-    def dalpha_theta_dD(self, alpha):
-        r = np.abs(alpha)
-        return (
-            1.0j
-            * (alpha * self.a.dag() + np.conj(alpha) * self.a - r ** 2)
-            * self.D(alpha)
-        )
-
-    def dbeta_r_dCD(self, beta):
-        r = np.abs(beta)
-        return (
-            (0.5 / r)
-            * (-self.sz * (beta * self.a.dag() - np.conj(beta) * self.a))
-            * self.CD(beta)
-        )
-
-    def dbeta_theta_dCD(self, beta):
-        r = np.abs(beta)
-        return (
-            (0.5j)
-            * (-self.sz * (beta * self.a.dag() + np.conj(beta) * self.a) - r ** 2 / 2)
-            * self.CD(beta)
-        )
-
-    def dtheta_dR(self, phi, theta):
-        # return (-1j/2.0)*(self.sx*np.cos(phi) + self.sy*np.sin(phi))*self.R(phi, theta)
-        return -0.5 * (
-            np.sin(theta / 2.0)
-            + 1j * (np.cos(phi) * self.sx + np.sin(phi) * self.sy) * np.cos(theta / 2.0)
-        )
-
-    def dphi_dR(self, phi, theta):
-        return (
-            1j * (np.sin(phi) * self.sx - np.cos(phi) * self.sy) * np.sin(theta / 2.0)
-        )
 
     def U_block(self, beta, alpha, phi, theta):
         U = self.CD(beta) * self.D(alpha) * self.R(phi, theta)
