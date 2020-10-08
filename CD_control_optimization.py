@@ -30,7 +30,9 @@ class MyTakeStep(object):
         self.beta_r_step_size = CD_control_obj.beta_r_step_size
         self.beta_theta_step_size = CD_control_obj.beta_theta_step_size
         self.alpha_r_step_size = (
-            CD_control_obj.alpha_r_step_size if CD_control_obj.use_displacements else 0.0
+            CD_control_obj.alpha_r_step_size
+            if CD_control_obj.use_displacements
+            else 0.0
         )
         self.alpha_theta_step_size = CD_control_obj.alpha_theta_step_size
         self.phi_step_size = CD_control_obj.phi_step_size
@@ -149,14 +151,16 @@ class CD_control:
         use_displacements=True,
         no_CD_end=True,
         circuits=[],
-        N=None,
-        N2=None,
+        N_cav=None,
+        N_qb=None,
         CD_control_init_obj=None,
     ):
         if CD_control_init_obj is not None:
             N = CD_control_init_obj.N
             N2 = CD_control_init_obj.N2
-            no_CD_end = CD_control_init_obj.no_CD_end if no_CD_end is None else no_CD_end
+            no_CD_end = (
+                CD_control_init_obj.no_CD_end if no_CD_end is None else no_CD_end
+            )
             CD_control_init_obj.concat_controls(N_blocks)  # take the first N_blocks
             betas = CD_control_init_obj.betas_full if betas is None else betas
             alphas = CD_control_init_obj.alphas_full if alphas is None else alphas
@@ -220,6 +224,8 @@ class CD_control:
             else np.zeros(N_blocks, dtype=np.float64)
         )
 
+        self.initial_state = initial_state
+        self.final_state = final_state
         self.max_alpha = max_alpha if use_displacements else 0.0
         self.max_beta = max_beta
         self.saving_directory = saving_directory
@@ -257,23 +263,23 @@ class CD_control:
         self.no_CD_end = no_CD_end
 
         if self.initial_state is not None:
-            self.N = self.initial_state.dims[0][0]
-            self.N2 = self.initial_state.dims[0][1]
+            self.N_cav = self.initial_state.dims[0][1]
+            self.N_qb = self.initial_state.dims[0][0]
         elif self.target_state is not None:
-            self.N = self.target_state.dims[0][0]
-            self.N2 = self.target_state.dims[0][1]
+            self.N_cav = self.target_state.dims[0][1]
+            self.N_qb = self.target_state.dims[0][0]
         else:
-            self.N = N
-            self.N2 = N2
+            self.N_cav = N
+            self.N_qb = N2
 
-        self.init_operators(self.N, self.N2)
+        self.init_operators(self.N_cav, self.N_qb)
 
-    def init_operators(self, N, N2):
-        self.N = N
-        self.N2 = N2
-        self.I = qt.tensor(qt.identity(self.N), qt.identity(self.N2))
-        self.a = qt.tensor(qt.destroy(self.N), qt.identity(self.N2))
-        self.q = qt.tensor(qt.identity(self.N), qt.destroy(self.N2))
+    def init_operators(self, N_cav, N_qb):
+        self.N_cav = N_cav
+        self.N_qb = N_qb
+        self.I = qt.tensor(qt.identity(self.N_qb), qt.identity(self.N_cav))
+        self.a = qt.tensor(qt.identity(self.N_qb), qt.destroy(self.N_cav))
+        self.q = qt.tensor(qt.destroy(self.N_qb), qt.identity(self.N_cav))
         self.sz = 1 - 2 * self.q.dag() * self.q
         self.sx = self.q + self.q.dag()
         self.sy = 1j * (self.q.dag() - self.q)
@@ -302,13 +308,13 @@ class CD_control:
 
     def D(self, alpha):
         if np.abs(alpha) == 0:
-            return qt.tensor(qt.identity(self.N), qt.identity(self.N2))
+            return qt.tensor(qt.identity(self.N_qb), qt.identity(self.N_cav))
         return (alpha * self.a.dag() - np.conj(alpha) * self.a).expm()
 
     def D2(self, alpha):
-        dim = self.N
-        x_mat = np.zeros((self.N, self.N), dtype=np.complex128)
-        for m in range(self.N):
+        dim = self.N_cav
+        x_mat = np.zeros((self.N_cav, self.N_cav), dtype=np.complex128)
+        for m in range(self.N_cav):
             x_mat[m, m] = genlaguerre(m, 0)(np.abs(alpha) ** 2)
             for n in range(0, m):  # scan over lower triangle, n < m
                 x_mn = (
@@ -327,23 +333,26 @@ class CD_control:
                 x_mat[m, n] = x_mn
         x_mat = x_mat * np.exp(-np.abs(alpha) ** 2 / 2.0)
         D = qt.Qobj(x_mat)
-        return qt.tensor(D, qt.identity(self.N2))
+        return qt.tensor(qt.identity(self.N_qb), D)
 
     def CD(self, beta):
         if np.abs(beta) == 0:
-            return qt.tensor(qt.identity(self.N), qt.identity(self.N2))
+            return qt.tensor(qt.identity(self.N_qb), qt.identity(self.N_cav))
         # return self.R(0,np.pi)*((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
         # temp removing pi pulse from CD for analytic opt testing
         # return ((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
-        zz = qt.tensor(qt.identity(self.N), qt.ket2dm(qt.basis(self.N2, 0)))
-        oo = qt.tensor(qt.identity(self.N), qt.ket2dm(qt.basis(self.N2, 1)))
-        return self.R(0, np.pi) * (self.D(beta / 2.0) * zz + self.D(-beta / 2.0) * oo)
+        zz = qt.tensor(qt.ket2dm(qt.basis(self.N_qb, 0)), qt.identity(self.N_cav))
+        zz = qt.tensor(qt.ket2dm(qt.basis(self.N_qb, 1)), qt.identity(self.N_cav))
+        # return self.R(0, np.pi) * (self.D(beta / 2.0) * zz + self.D(-beta / 2.0) * oo)
         # includes pi rotation
+
+        # alec 10/8/2020: Removing pi rotation to compare with tensorflow version.
+        return self.D(beta / 2.0) * zz + self.D(-beta / 2.0) * oo
 
     # TODO: is it faster with non-exponential form?
     def R(self, phi, theta):
         if theta == 0:
-            return qt.tensor(qt.identity(self.N), qt.identity(self.N2))
+            return qt.tensor(qt.identity(self.N_qb), qt.identity(self.N_cav))
         # return (-1j*(theta/2.0)*(np.cos(phi)*self.sx + np.sin(phi)*self.sy)).expm()
         return np.cos(theta / 2.0) - 1j * (
             np.cos(phi) * self.sx + np.sin(phi) * self.sy
@@ -367,7 +376,7 @@ class CD_control:
         r = np.abs(beta)
         return (
             (0.5 / r)
-            * (-self.sz * (beta * self.a.dag() - np.conj(beta) * self.a))
+            * (self.sz * (beta * self.a.dag() - np.conj(beta) * self.a))
             * self.CD(beta)
         )
 
@@ -375,7 +384,7 @@ class CD_control:
         r = np.abs(beta)
         return (
             (0.5j)
-            * (-self.sz * (beta * self.a.dag() + np.conj(beta) * self.a) - r ** 2 / 2)
+            * (self.sz * (beta * self.a.dag() + np.conj(beta) * self.a) - r ** 2 / 2)
             * self.CD(beta)
         )
 
@@ -654,7 +663,7 @@ class CD_control:
         thetas = self.thetas if thetas is None else thetas
 
         U_circuit = self.U_tot(betas, alphas, phis, thetas)
-        D = self.N * self.N2
+        D = self.N_cav * self.N_qb
         overlap = (self.target_unitary.dag() * U_circuit).tr()
         fid = np.abs((1 / D) * overlap) ** 2
 
@@ -726,7 +735,7 @@ class CD_control:
         U_fwd = self.unitary_forward_states(betas, alphas, phis, thetas)
         U_bwd = self.unitary_reverse_states(betas, alphas, phis, thetas)
 
-        D = self.N * self.N2
+        D = self.N_cav * self.N_qb
         overlap = (U_bwd[0] * U_fwd[-1]).tr()
         fid = np.abs((1 / D) * overlap) ** 2
 
@@ -788,7 +797,7 @@ class CD_control:
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
         U_circuit = self.U_tot(betas, alphas, phis, thetas)
-        D = self.N * self.N2
+        D = self.N_cav * self.N_qb
         overlap = (self.target_unitary.dag() * U_circuit).tr()
         return np.abs((1 / D) * overlap) ** 2
 
@@ -826,50 +835,50 @@ class CD_control:
         state = self.forward_states()[i]
         rho = qt.ket2dm(state)
         if p == "g":
-            ket = qt.tensor(qt.identity(self.N), qt.basis(self.N2, 0))
+            ket = qt.tensor(qt.basis(self.N_qb, 0), qt.identity(self.N_cav))
             rho_proj = ket.dag() * rho * ket
         elif p == "e":
-            ket = qt.tensor(qt.identity(self.N), qt.basis(self.N2, 1))
+            ket = qt.tensor(qt.basis(self.N_qb, 1), qt.identity(self.N_cav))
             rho_proj = ket.dag() * rho * ket
         elif p == "+":
             ket = qt.tensor(
-                qt.identity(self.N),
-                (qt.basis(self.N2, 0) + qt.basis(self.N2, 1)) / np.sqrt(2.0),
+                (qt.basis(self.N_qb, 0) + qt.basis(self.N_qb, 1)) / np.sqrt(2.0),
+                qt.identity(self.N_cav),
             )
             rho_proj = ket.dag() * rho * ket
         elif p == "-":
             ket = qt.tensor(
-                qt.identity(self.N),
-                (qt.basis(self.N2, 0) - qt.basis(self.N2, 1)) / np.sqrt(2.0),
+                (qt.basis(self.N_qb, 0) - qt.basis(self.N_qb, 1)) / np.sqrt(2.0),
+                qt.identity(self.N_cav),
             )
             rho_proj = ket.dag() * rho * ket
         elif p == "+-":
             ketp = qt.tensor(
-                qt.identity(self.N),
-                (qt.basis(self.N2, 0) - qt.basis(self.N2, 1)) / np.sqrt(2.0),
+                (qt.basis(self.N_qb, 0) - qt.basis(self.N_qb, 1)) / np.sqrt(2.0),
+                qt.identity(self.N_cav),
             )
             ketm = qt.tensor(
-                qt.identity(self.N),
-                (qt.basis(self.N2, 0) - qt.basis(self.N2, 1)) / np.sqrt(2.0),
+                (qt.basis(self.N_qb, 0) - qt.basis(self.N_qb, 1)) / np.sqrt(2.0),
+                qt.identity(self.N_cav),
             )
             rho_proj = ketp.dag() * rho * ketm
         elif p == "-+":
             ketm = qt.tensor(
-                qt.identity(self.N),
-                (qt.basis(self.N2, 0) - qt.basis(self.N2, 1)) / np.sqrt(2.0),
+                (qt.basis(self.N_qb, 0) - qt.basis(self.N_qb, 1)) / np.sqrt(2.0),
+                qt.identity(self.N_cav),
             )
             ketp = qt.tensor(
-                qt.identity(self.N),
-                (qt.basis(self.N2, 0) - qt.basis(self.N2, 1)) / np.sqrt(2.0),
+                (qt.basis(self.N_qb, 0) - qt.basis(self.N_qb, 1)) / np.sqrt(2.0),
+                qt.identity(self.N_cav),
             )
             rho_proj = ketm.dag() * rho * ketp
         elif p == "ge":
-            ketg = qt.tensor(qt.identity(self.N), qt.basis(self.N2, 0))
-            kete = qt.tensor(qt.identity(self.N), qt.basis(self.N2, 1))
+            ketg = qt.tensor(qt.basis(self.N_qb, 0), qt.identity(self.N_cav))
+            kete = qt.tensor(qt.basis(self.N_qb, 1), qt.identity(self.N_cav))
             rho_proj = ketg.dag() * rho * kete
         elif p == "eg":
-            ketg = qt.tensor(qt.identity(self.N), qt.basis(self.N2, 0))
-            kete = qt.tensor(qt.identity(self.N), qt.basis(self.N2, 1))
+            ketg = qt.tensor(qt.basis(self.N_qb, 0), qt.identity(self.N_cav))
+            kete = qt.tensor(qt.basis(self.N_qb, 1), qt.identity(self.N_cav))
             rho_proj = kete.dag() * rho * ketg
 
         if normalize:
