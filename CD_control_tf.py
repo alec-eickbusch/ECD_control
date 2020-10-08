@@ -24,10 +24,10 @@ class CD_control_tf:
         target_state=None,
         target_unitary=None,
         N_blocks=1,
-        betas=None,
+        Bs=None,
         alphas=None,
-        phis=None,
-        thetas=None,
+        Phis=None,
+        Thetas=None,
         max_alpha=5,
         max_beta=5,
         saving_directory=None,
@@ -38,12 +38,12 @@ class CD_control_tf:
         no_CD_end=True,
     ):
 
-        self.initial_state = qt2tf(initial_state)
-        self.target_state = qt2tf(target_state)
+        self.initial_state = tfq.qt2tf(initial_state)
+        self.target_state = tfq.qt2tf(target_state)
         self.N_blocks = N_blocks
-        self.betas = (
-            tf.Variable(betas, dtype=tf.complex64, trainable=True)
-            if betas is not None
+        self.Bs = (
+            tf.Variable(Bs, dtype=tf.complex64, trainable=True)
+            if Bs is not None
             else tf.Variable(tf.zeros(N_blocks, dtype=tf.complex64), trainable=True)
         )
         self.alphas = (
@@ -51,14 +51,14 @@ class CD_control_tf:
             if alphas is not None
             else tf.Variable(tf.zeros(N_blocks, dtype=tf.complex64), trainable=True)
         )
-        self.phis = (
-            tf.Variable(phis, dtype=tf.float32, trainable=True)
-            if phis is not None
+        self.Phis = (
+            tf.Variable(Phis, dtype=tf.float32, trainable=True)
+            if Phis is not None
             else tf.Variable(tf.zeros(N_blocks, dtype=tf.float32), trainable=True)
         )
-        self.thetas = (
-            tf.Variable(phis, dtype=tf.float32, trainable=True)
-            if phis is not None
+        self.Thetas = (
+            tf.Variable(Thetas, dtype=tf.float32, trainable=True)
+            if Thetas is not None
             else tf.Variable(tf.zeros(N_blocks, dtype=tf.float32), trainable=True)
         )
 
@@ -70,25 +70,34 @@ class CD_control_tf:
         self.beta_penalty_multiplier = beta_penalty_multiplier
         self.use_displacements = use_displacements
         self.no_CD_end = no_CD_end
-        
 
         # todo: handle case when initial state is a tf object.
-        self.N = self.initial_state.shape[0]
+        self.N = initial_state.dims[0][0]
         self.a = tfq.destroy(self.N)
         self.adag = tfq.create(self.N)
         self.q = tfq.position(self.N)
         self.p = tfq.momentum(self.N)
         self.n = tfq.num(self.N)
 
+        # Pre-diagonalize
+        (self._eig_q, self._U_q) = tf.linalg.eigh(self.q)
+        (self._eig_p, self._U_p) = tf.linalg.eigh(self.p)
+        (self._eig_n, self._U_n) = tf.linalg.eigh(self.n)
+
+        self._qp_comm = tf.linalg.diag_part(self.q @ self.p - self.p @ self.q)
+
     @tf.function
-    def construct_displacement_operators(Bs):
+    def construct_displacement_operators(self, Bs):
 
         # Reshape amplitudes for broadcast against diagonals
-        amplitude = tf.cast(tf.reshape(Bs, [Bs.shape[0], 1]), dtype=c64)
+        sqrt2 = tf.math.sqrt(tf.constant(2, dtype=tf.complex64))
+        amplitude = sqrt2 * tf.cast(
+            tf.reshape(Bs, [Bs.shape[0], 1]), dtype=tf.complex64
+        )
 
         # Take real/imag of amplitude for the commutator part of the expansion
-        re_a = tf.cast(tf.math.real(amplitude), dtype=c64)
-        im_a = tf.cast(tf.math.imag(amplitude), dtype=c64)
+        re_a = tf.cast(tf.math.real(amplitude), dtype=tf.complex64)
+        im_a = tf.cast(tf.math.imag(amplitude), dtype=tf.complex64)
 
         # Exponentiate diagonal matrices
         expm_q = tf.linalg.diag(tf.math.exp(1j * im_a * self._eig_q))
@@ -104,13 +113,34 @@ class CD_control_tf:
             @ expm_p
             @ tf.linalg.adjoint(self._U_p)
             @ expm_c,
-            dtype=c64,
+            dtype=tf.complex64,
         )
 
     @tf.function
-    def conditional_displacement_operators(Bs):
+    def construct_block_operators(self, Bs, Phis, Thetas):
 
+        ds = self.construct_displacement_operators(Bs)
+        ds_dag = tf.linalg.adjoint(ds)
+        Phis = tf.cast(tfq.matrix_flatten(Phis), dtype=tf.complex64)
+        Thetas = tf.cast(tfq.matrix_flatten(Thetas), dtype=tf.complex64)
 
+        exp = tf.math.exp(tf.constant(1j, dtype=tf.complex64) * Phis)
+        exp_dag = tf.linalg.adjoint(exp)
+        cos = tf.math.cos(Thetas)
+        sin = tf.math.sin(Thetas)
+
+        # constructing the blocks of the matrix
+        ul = cos * ds
+        ll = exp * sin * ds_dag
+        ur = tf.constant(-1, dtype=tf.complex64) * exp_dag * sin * ds
+        lr = cos * ds_dag
+
+        blocks = tf.concat([tf.concat([ul, ur], 2), tf.concat([ll, lr], 2)], 1)
+
+        return blocks
+
+    # @tf.function
+    # def conditional_displacement_operators(Bs):
 
     def init_operators(self, N, N2):
         self.N = N
@@ -888,9 +918,15 @@ class CD_control_tf:
             fid_grads = self.unitary_fid_and_grad_fid
         else:
             fid_grads = self.fid_and_grad_fid
-        (f, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta,) = fid_grads(
-            betas, alphas, phis, thetas
-        )
+        (
+            f,
+            dbeta_r,
+            dbeta_theta,
+            dalpha_r,
+            dalpha_theta,
+            dphi,
+            dtheta,
+        ) = fid_grads(betas, alphas, phis, thetas)
         gradf = np.concatenate(
             [dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta]
         )
@@ -901,7 +937,10 @@ class CD_control_tf:
             grad_beta_penalty = (
                 self.bpm
                 * np.concatenate(  # todo: fix gradient of beta penalty, maybe use soft relu penalty for acceptable range of beta?
-                    [-1.0 * betas_r / np.abs(betas_r), np.zeros(5 * self.N_blocks),]
+                    [
+                        -1.0 * betas_r / np.abs(betas_r),
+                        np.zeros(5 * self.N_blocks),
+                    ]
                 )
             )
             print("\rfid: %.4f beta penalty: %.4f" % (f, beta_penalty), end="")

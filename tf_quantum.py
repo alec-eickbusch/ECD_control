@@ -1,5 +1,5 @@
 #%%
-# Note: Most code here taken from Henry Liu and Vlad Sivak.
+# Code here is various things taken from Henry Liu and Vlad Sivak as well as some of my own additions
 # Keep up to date with their versions, and later just import from their
 # soon to come tf-quantum library.
 from distutils.version import LooseVersion
@@ -17,6 +17,19 @@ else:
 # todo: handle case when passed an already tf object.
 def qt2tf(qt_object, dtype=tf.complex64):
     return tf.constant(qt_object.full(), dtype=dtype)
+
+
+def matrix_flatten(tensor):
+    """Takes a tensor of arbitrary shape and returns a "flattened" vector of matrices.
+    This is useful to get the correct broadcasting shape for batch operations.
+    Args:
+        tensor (Tensor([x, y, ...])): A tensor with arbitrary shape
+    Returns:
+        Tensor([numx * numy * ..., 1, 1]): A "flattened" vector of matrices
+    """
+    tensor = tf.reshape(tensor, [-1])
+    tensor = tf.reshape(tensor, shape=[tensor.shape[0], 1, 1])
+    return tensor
 
 
 def identity(N, dtype=tf.complex64):
@@ -92,3 +105,6 @@ def momentum(N, dtype=tf.complex64):
     a_dag = create(N, dtype=tf.complex128)
     a = destroy(N, dtype=tf.complex128)
     return tf.cast(1j * (a_dag - a) / sqrt2, dtype=dtype)
+
+
+# %%
