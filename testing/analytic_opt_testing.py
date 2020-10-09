@@ -84,3 +84,4 @@ diff = der_num - der_ana
 diff = diff[:10, :10]  # they differ near the edges of the hilbert space
 #print(repr(diff))
 print(np.max(np.abs(diff)))
+# %%

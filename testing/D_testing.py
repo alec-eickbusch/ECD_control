@@ -1,4 +1,7 @@
 #%%
+import sys
+
+sys.path.append("../../")
 from CD_control.CD_control_optimization import *
 from CD_control.basic_pulses import *
 from CD_control.helper_functions import *
