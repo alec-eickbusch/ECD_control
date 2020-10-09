@@ -30,7 +30,9 @@ class MyTakeStep(object):
         self.beta_r_step_size = CD_control_obj.beta_r_step_size
         self.beta_theta_step_size = CD_control_obj.beta_theta_step_size
         self.alpha_r_step_size = (
-            CD_control_obj.alpha_r_step_size if CD_control_obj.use_displacements else 0.0
+            CD_control_obj.alpha_r_step_size
+            if CD_control_obj.use_displacements
+            else 0.0
         )
         self.alpha_theta_step_size = CD_control_obj.alpha_theta_step_size
         self.phi_step_size = CD_control_obj.phi_step_size
@@ -63,9 +65,7 @@ class MyTakeStep(object):
                     -s * self.phi_step_size, s * self.phi_step_size, self.N_blocks
                 ),  # phis
                 np.random.uniform(
-                    -s * self.theta_step_size,
-                    s * self.theta_step_size,
-                    self.N_blocks,
+                    -s * self.theta_step_size, s * self.theta_step_size, self.N_blocks,
                 ),  # thetas
             ]
         )
@@ -147,6 +147,7 @@ class CD_control:
         basinhopping_kwargs={},
         save_all_minima=False,
         use_displacements=True,
+        use_log=True,
         no_CD_end=True,
         circuits=[],
         N=None,
@@ -156,7 +157,9 @@ class CD_control:
         if CD_control_init_obj is not None:
             N = CD_control_init_obj.N
             N2 = CD_control_init_obj.N2
-            no_CD_end = CD_control_init_obj.no_CD_end if no_CD_end is None else no_CD_end
+            no_CD_end = (
+                CD_control_init_obj.no_CD_end if no_CD_end is None else no_CD_end
+            )
             CD_control_init_obj.concat_controls(N_blocks)  # take the first N_blocks
             betas = CD_control_init_obj.betas_full if betas is None else betas
             alphas = CD_control_init_obj.alphas_full if alphas is None else alphas
@@ -254,6 +257,7 @@ class CD_control:
         self.save_all_minima = save_all_minima
         self.circuits = list(circuits)
         self.use_displacements = use_displacements
+        self.use_log = use_log
         self.no_CD_end = no_CD_end
 
         if self.initial_state is not None:
@@ -1016,11 +1020,12 @@ class CD_control:
         else:
             print("\rfid: %.4f" % f, end="")
             beta_penalty = 0
-        fn = f - beta_penalty
+        fn = np.log(1 - f) if self.use_log else -f
+        fn_tot = fn + beta_penalty
         # TODO: Maybe we can have a bit worse f if we want lower betas.
         # I should save parameters when the cost function is the lowest, not the fidelity.
         # but do we stop when the cost function reaches the term? Or the fidelity?
-        if fn > self.best_fn:
+        if fn_tot < self.best_fn:
             self.best_fn = fn
             self.betas = betas
             self.alphas = alphas
@@ -1028,7 +1033,7 @@ class CD_control:
             self.thetas = thetas
         if self.tf is not None and f >= self.term_fid:
             raise OptFinishedException("Requested fidelity obtained", self)
-        return -fn
+        return fn_tot
 
     # TODO: include final rotation and displacement
     # TODO: Would it be easier for things instead to specify |beta| and angle(beta) instead of
@@ -1044,15 +1049,9 @@ class CD_control:
             fid_grads = self.unitary_fid_and_grad_fid
         else:
             fid_grads = self.fid_and_grad_fid
-        (
-            f,
-            dbeta_r,
-            dbeta_theta,
-            dalpha_r,
-            dalpha_theta,
-            dphi,
-            dtheta,
-        ) = fid_grads(betas, alphas, phis, thetas)
+        (f, dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta,) = fid_grads(
+            betas, alphas, phis, thetas
+        )
         gradf = np.concatenate(
             [dbeta_r, dbeta_theta, dalpha_r, dalpha_theta, dphi, dtheta]
         )
@@ -1063,10 +1062,7 @@ class CD_control:
             grad_beta_penalty = (
                 self.bpm
                 * np.concatenate(  # todo: fix gradient of beta penalty, maybe use soft relu penalty for acceptable range of beta?
-                    [
-                        -1.0 * betas_r / np.abs(betas_r),
-                        np.zeros(5 * self.N_blocks),
-                    ]
+                    [-1.0 * betas_r / np.abs(betas_r), np.zeros(5 * self.N_blocks),]
                 )
             )
             print("\rfid: %.4f beta penalty: %.4f" % (f, beta_penalty), end="")
@@ -1074,8 +1070,11 @@ class CD_control:
             print("\rfid: %.4f" % f, end="")
             beta_penalty = 0
             grad_beta_penalty = 0
-        fn = f - beta_penalty
-        if fn > self.best_fn:
+        fn = np.log(1 - f) if self.use_log else -f
+        fn_tot = fn + beta_penalty
+        gradf = -1.0 / (1 - f) * gradf if self.use_log else -gradf
+        gradf_tot = gradf + grad_beta_penalty
+        if fn < self.best_fn:
             self.best_fn = fn
             self.betas = betas
             self.alphas = alphas
@@ -1083,7 +1082,7 @@ class CD_control:
             self.thetas = thetas
         if self.tf is not None and f >= self.tf:
             raise OptFinishedException("Requested fidelity obtained", self)
-        return (-fn, -(gradf - grad_beta_penalty))
+        return (fn_tot, gradf_tot)
 
     # TODO: if I only care about the cavity state, I can optimize on the partial trace of the
     # cavity. Then, in the experiment, I can measure and reset the qubit.
@@ -1148,7 +1147,7 @@ class CD_control:
                 betas_r = np.abs(betas)
                 beta_penalty = self.bpm * np.sum(betas_r)
                 fid = (
-                    -f + beta_penalty
+                    1 - np.exp(f - beta_penalty) if self.use_log else -f + beta_penalty
                 )  # easiest is to just add back the penalty to get fidelity
                 self.circuits.append(np.concatenate([np.array([fid]), np.array(x)]))
             self.basinhopping_num += 1

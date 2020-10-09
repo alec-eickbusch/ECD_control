@@ -26,7 +26,7 @@ CD_control_obj = CD_control(initial_state, target_state, N_blocks=N_blocks,\
                     name='Fock creation', term_fid=term_fid,\
                     max_alpha = max_alpha, max_beta=max_beta,
                     saving_directory=saving_directory, use_displacements=False,
-                    no_CD_end=True)
+                    no_CD_end=True, use_log=True)
 #%% We can plot the initial and target states (qubit traced out)
 if 1:
     plt.figure(figsize=(5,5), dpi=200)
