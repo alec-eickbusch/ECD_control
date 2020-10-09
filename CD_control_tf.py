@@ -24,10 +24,10 @@ class CD_control_tf:
         target_state=None,
         target_unitary=None,
         N_blocks=1,
-        Bs=None,
+        betas=None,
         alphas=None,
-        Phis=None,
-        Thetas=None,
+        phis=None,
+        thetas=None,
         max_alpha=5,
         max_beta=5,
         saving_directory=None,
@@ -41,24 +41,34 @@ class CD_control_tf:
         self.initial_state = tfq.qt2tf(initial_state)
         self.target_state = tfq.qt2tf(target_state)
         self.N_blocks = N_blocks
-        self.Bs = (
-            tf.Variable(Bs, dtype=tf.complex64, trainable=True)
-            if Bs is not None
-            else tf.Variable(tf.zeros(N_blocks, dtype=tf.complex64), trainable=True)
-        )
-        self.alphas = (
-            tf.Variable(alphas, dtype=tf.complex64, trainable=True)
-            if alphas is not None
-            else tf.Variable(tf.zeros(N_blocks, dtype=tf.complex64), trainable=True)
-        )
-        self.Phis = (
-            tf.Variable(Phis, dtype=tf.float32, trainable=True)
-            if Phis is not None
+        self.betas_rho = (
+            tf.Variable(np.abs(np.array(betas)), dtype=tf.float32, trainable=True)
+            if betas is not None
             else tf.Variable(tf.zeros(N_blocks, dtype=tf.float32), trainable=True)
         )
-        self.Thetas = (
-            tf.Variable(Thetas, dtype=tf.float32, trainable=True)
-            if Thetas is not None
+        self.betas_angle = (
+            tf.Variable(np.angle(np.array(betas)), dtype=tf.float32, trainable=True)
+            if betas is not None
+            else tf.Variable(tf.zeros(N_blocks, dtype=tf.float32), trainable=True)
+        )
+        self.alphas_rho = (
+            tf.Variable(np.abs(np.array(alphas)), dtype=tf.float32, trainable=True)
+            if alphas is not None
+            else tf.Variable(tf.zeros(N_blocks, dtype=tf.float32), trainable=True)
+        )
+        self.alphas_angle = (
+            tf.Variable(np.angle(np.array(alphas)), dtype=tf.float32, trainable=True)
+            if alphas is not None
+            else tf.Variable(tf.zeros(N_blocks, dtype=tf.float32), trainable=True)
+        )
+        self.phis = (
+            tf.Variable(phis, dtype=tf.float32, trainable=True)
+            if phis is not None
+            else tf.Variable(tf.zeros(N_blocks, dtype=tf.float32), trainable=True)
+        )
+        self.thetas = (
+            tf.Variable(thetas, dtype=tf.float32, trainable=True)
+            if phis is not None
             else tf.Variable(tf.zeros(N_blocks, dtype=tf.float32), trainable=True)
         )
 
@@ -87,17 +97,20 @@ class CD_control_tf:
         self._qp_comm = tf.linalg.diag_part(self.q @ self.p - self.p @ self.q)
 
     @tf.function
-    def construct_displacement_operators(self, Bs):
+    def construct_displacement_operators(self, alphas_rho, alphas_angle):
 
         # Reshape amplitudes for broadcast against diagonals
-        sqrt2 = tf.math.sqrt(tf.constant(2, dtype=tf.complex64))
-        amplitude = sqrt2 * tf.cast(
-            tf.reshape(Bs, [Bs.shape[0], 1]), dtype=tf.complex64
+        sqrt2 = tf.math.sqrt(tf.constant(2, dtype=tf.float32))
+        cosines = tf.math.cos(alphas_angle)
+        sines = tf.math.sin(alphas_angle)
+        re_a = tf.cast(
+            tf.reshape(sqrt2 * alphas_rho * cosines, [alphas_rho.shape[0], 1]),
+            dtype=tf.complex64,
         )
-
-        # Take real/imag of amplitude for the commutator part of the expansion
-        re_a = tf.cast(tf.math.real(amplitude), dtype=tf.complex64)
-        im_a = tf.cast(tf.math.imag(amplitude), dtype=tf.complex64)
+        im_a = tf.cast(
+            tf.reshape(sqrt2 * alphas_rho * sines, [alphas_rho.shape[0], 1]),
+            dtype=tf.complex64,
+        )
 
         # Exponentiate diagonal matrices
         expm_q = tf.linalg.diag(tf.math.exp(1j * im_a * self._eig_q))
@@ -117,10 +130,16 @@ class CD_control_tf:
         )
 
     @tf.function
-    def construct_block_operators(self, Bs, Phis, Thetas):
+    def construct_block_operators(self, betas_rho, betas_angle, phis, thetas):
 
-        ds = self.construct_displacement_operators(Bs)
+        Bs_g_rho = betas_rho / tf.constant(2, dtype=tf.float32)
+        Bs_g_angle = betas_angle
+        ds = self.construct_displacement_operators(Bs_g_rho, Bs_g_angle)
         ds_dag = tf.linalg.adjoint(ds)
+        Phis = phis - tf.constant(np.pi, dtype=tf.float32) / tf.constant(
+            2, dtype=tf.float32
+        )
+        Thetas = thetas / tf.constant(2, dtype=tf.float32)
         Phis = tf.cast(tfq.matrix_flatten(Phis), dtype=tf.complex64)
         Thetas = tf.cast(tfq.matrix_flatten(Thetas), dtype=tf.complex64)
 
@@ -141,9 +160,9 @@ class CD_control_tf:
 
     # TODO: use tf.einsum to quickly do these contractions
     @tf.function
-    def state_overlap(self, Bs, Phis, Thetas):
+    def state_overlap(self, betas_rho, betas_angle, phis, thetas):
         # U = tf.eye(2, 2, dtype=tf.complex64)
-        bs = self.construct_block_operators(Bs, Phis, Thetas)
+        bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
         psi = self.initial_state
         for U in tf.reverse(bs, axis=[0]):
             psi = U @ psi
@@ -152,28 +171,36 @@ class CD_control_tf:
         return overlap
 
     @tf.function
-    def state_fidelity(self, Bs, Phis, Thetas):
-        overlap = self.state_overlap(Bs, Phis, Thetas)
+    def state_fidelity(self, betas_rho, betas_angle, phis, thetas):
+        overlap = self.state_overlap(betas_rho, betas_angle, phis, thetas)
         fid = tf.cast(overlap * tf.math.conj(overlap), dtype=tf.float32)
         return fid
 
-    def optimize(self, num_rounds):
-        optimizer = tf.optimizers.Adam(0.05)
-        variables = [self.Bs, self.Phis, self.Thetas]
+    def optimize(self, num_rounds, learning_rate=0.1, epoch_size=100, epochs=100):
+        optimizer = tf.optimizers.Adam(learning_rate)
+        variables = [self.betas_rho, self.betas_angle, self.phis, self.thetas]
 
         # todo: change to log
         @tf.function
         def loss_fun(fid):
-            minus = tf.constant(-1, dtype=tf.float32)
-            return minus * fid
+            # minus = tf.constant(-1, dtype=tf.float32)
+            return 1 - fid
 
-        for i in range(num_rounds):
-            with tf.GradientTape() as tape:
-                fid = self.state_fidelity(self.Bs, self.Phis, self.Thetas)
-                loss = loss_fun(fid)
-                dloss_dvar = tape.gradient(loss, variables)
-            optimizer.apply_gradients(zip(dloss_dvar, variables))
-            print("Loss: {}".format(loss.numpy()))
+        fid = self.state_fidelity(
+            self.betas_rho, self.betas_angle, self.phis, self.thetas
+        )
+        initial_loss = loss = loss_fun(fid)
+        print("Epoch: 0 Loss: {}".format(epoch, initial_loss))
+        for epoch in range(epochs + 1)[1:]:
+            for _ in range(epoch_size):
+                with tf.GradientTape() as tape:
+                    fid = self.state_fidelity(
+                        self.betas_rho, self.betas_angle, self.phis, self.thetas
+                    )
+                    loss = loss_fun(fid)
+                    dloss_dvar = tape.gradient(loss, variables)
+                optimizer.apply_gradients(zip(dloss_dvar, variables))
+            print("Epoch: {} Loss: {}".format(epoch, loss.numpy()))
 
     # TODO: update for tf
     def randomize(self, beta_scale=None, alpha_scale=None):
