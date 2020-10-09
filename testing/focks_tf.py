@@ -7,11 +7,36 @@ import qutip as qt
 import numpy as np
 import tensorflow as tf
 #%%
-N = 50
-psi_i = qt.tensor(qt.basis(2, 0), qt.basis(N, 0))
-psi_t = qt.tensor(qt.basis(2, 0), qt.basis(N, 1))
+N = 60
+focks = np.arange(1,4)
+max_N_blocks = 12
+term_fid = 0.99
 #%%
-N_blocks = 6
+psi_i = qt.tensor(qt.basis(2, 0), qt.basis(N, 0))
+fids = {}
+N_blocks_used = {}
+focks = np.arange(1,8)
+epochs = 10
+epoch_size = 100
+learning_rate = 0.01
+for fock in focks:
+    print("\n\n fock: %d\n\n" % fock)
+    fids[fock] = []
+    N_blocks_used[fock] = []
+    psi_t = qt.tensor(qt.basis(2, 0), qt.basis(N, fock))
+    for N_blocks in np.arange(1,max_N_blocks):
+        print("\nFock: %d N_blocks:%d\n" % (fock,N_blocks))
+        obj_tf = CD_control_tf(initial_state=psi_i, target_state=psi_t,
+                 N_blocks = N_blocks, term_fid=term_fid)
+        obj_tf.randomize(beta_scale = 0.25)
+        f = obj_tf.optimize(learning_rate = learning_rate, 
+        epoch_size=epoch_size, epochs=epochs)
+        fids[fock].append(f)
+        N_blocks_used[fock].append(N_blocks)
+        if f >= term_fid:
+            break
+#%%
+N_blocks = 12
 betas = np.array([
     np.random.uniform(low=-1,high=1) + 1j*np.random.uniform(low=-1,high=1)
     for _ in range(N_blocks)]
@@ -24,18 +49,14 @@ thetas = np.array([
 ])
 #%%
 obj_tf = CD_control_tf(initial_state=psi_i, target_state=psi_t,
-                 N_blocks = N_blocks)#,
-                # betas=betas,phis=phis, thetas=thetas, term_fid=0.99)
-obj_tf.print_info()
+                 N_blocks = N_blocks,
+                 betas=betas,phis=phis, thetas=thetas)
 #%%
 obj = CD_control(initial_state=psi_i, target_state=psi_t, N_blocks=N_blocks,
                     use_displacements=False, analytic=True,
                     no_CD_end=False, betas=betas, phis=phis, thetas=thetas)
 #%%
-obj_tf.randomize(beta_scale = 1.0)
-obj_tf.print_info()
-#%%
-obj_tf.optimize(learning_rate = 0.01, epoch_size=100, epochs=40)
+obj_tf.optimize(learning_rate = 0.01, epoch_size=100, epochs=100)
 #%%
 d_tf = (obj_tf.construct_displacement_operators(obj_tf.betas_rho, obj_tf.betas_angle)).numpy()
 #%%

@@ -176,7 +176,7 @@ class CD_control_tf:
         fid = tf.cast(overlap * tf.math.conj(overlap), dtype=tf.float32)
         return fid
 
-    def optimize(self, num_rounds, learning_rate=0.1, epoch_size=100, epochs=100):
+    def optimize(self, learning_rate=0.1, epoch_size=100, epochs=100):
         optimizer = tf.optimizers.Adam(learning_rate)
         variables = [self.betas_rho, self.betas_angle, self.phis, self.thetas]
 
@@ -184,13 +184,13 @@ class CD_control_tf:
         @tf.function
         def loss_fun(fid):
             # minus = tf.constant(-1, dtype=tf.float32)
-            return 1 - fid
+            return tf.math.log(1 - fid)
 
         fid = self.state_fidelity(
             self.betas_rho, self.betas_angle, self.phis, self.thetas
         )
         initial_loss = loss = loss_fun(fid)
-        print("Epoch: 0 Loss: {}".format(epoch, initial_loss))
+        print("Epoch: 0 Fidelity: {}".format(1 - np.exp(initial_loss.numpy())))
         for epoch in range(epochs + 1)[1:]:
             for _ in range(epoch_size):
                 with tf.GradientTape() as tape:
@@ -200,7 +200,14 @@ class CD_control_tf:
                     loss = loss_fun(fid)
                     dloss_dvar = tape.gradient(loss, variables)
                 optimizer.apply_gradients(zip(dloss_dvar, variables))
-            print("Epoch: {} Loss: {}".format(epoch, loss.numpy()))
+            fid = 1 - np.exp(loss.numpy())
+            print("Epoch: {} Fidelity: {}".format(epoch, fid))
+            if fid >= self.term_fid:
+                self.print_info()
+                return fid
+        self.print_info()
+        fid = 1 - np.exp(loss.numpy())
+        return fid
 
     # TODO: update for tf
     def randomize(self, beta_scale=None, alpha_scale=None):
@@ -211,18 +218,32 @@ class CD_control_tf:
         ang_alpha = np.random.uniform(-np.pi, np.pi, self.N_blocks)
         rho_alpha = np.random.uniform(0, alpha_scale, self.N_blocks)
         phis = np.random.uniform(-np.pi, np.pi, self.N_blocks)
-        thetas = np.random.uniform(0, np.pi, self.N_blocks)
-        self.betas = np.array(np.exp(1j * ang_beta) * rho_beta, dtype=np.complex128)
-        if self.no_CD_end:
-            self.betas[-1] = 0.0 + 1j * 0.0
-        if self.use_displacements:
-            self.alphas = np.array(
-                np.exp(1j * ang_alpha) * rho_alpha, dtype=np.complex128
-            )
-        else:
-            self.alphas = np.zeros(self.N_blocks, dtype=np.complex128)
-        self.phis = np.array(phis, dtype=np.float64)
-        self.thetas = np.array(thetas, dtype=np.float64)
+        thetas = np.random.uniform(-np.pi, np.pi, self.N_blocks)
+
+        self.betas_rho = tf.Variable(np.abs(rho_beta), dtype=tf.float32, trainable=True)
+        self.betas_angle = tf.Variable(
+            np.angle(ang_beta), dtype=tf.float32, trainable=True
+        )
+        self.alphas_rho = tf.Variable(
+            np.abs(rho_alpha), dtype=tf.float32, trainable=True
+        )
+        self.alphas_angle = tf.Variable(
+            np.angle(ang_alpha), dtype=tf.float32, trainable=True
+        )
+        self.phis = tf.Variable(phis, dtype=tf.float32, trainable=True)
+        self.thetas = tf.Variable(thetas, dtype=tf.float32, trainable=True)
+
+    def get_numpy_vars(self, betas_rho=None, betas_angle=None, phis=None, thetas=None):
+        betas_rho = self.betas_rho if betas_rho is None else betas_rho
+        betas_angle = self.betas_angle if betas_angle is None else betas_angle
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+
+        betas = betas_rho.numpy() * np.exp(1j * betas_angle.numpy())
+        phis = phis.numpy()
+        thetas = thetas.numpy()
+
+        return betas, phis, thetas
 
     # when parameters is specificed, normalize_angles is being used
     # during the optimization. In this case, it normalizes the parameters
@@ -312,23 +333,21 @@ class CD_control_tf:
         )
         self.print_info()
 
-    def print_info(self, betas=None, alphas=None, phis=None, thetas=None, human=True):
-        betas = self.betas if betas is None else betas
-        alphas = self.alphas if alphas is None else alphas
+    def print_info(
+        self, betas_rho=None, betas_angle=None, phis=None, thetas=None, human=True
+    ):
+        betas_rho = self.betas_rho if betas_rho is None else betas_rho
+        betas_angle = self.betas_angle if betas_angle is None else betas_angle
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
-        phis, thetas = self.normalize_angles(phis, thetas)
-        f = (
-            self.unitary_fidelity(betas, alphas, phis, thetas)
-            if self.unitary_optimization
-            else self.fidelity(betas, alphas, phis, thetas)
-        )
+        f = self.state_fidelity(betas_rho, betas_angle, phis, thetas)
+        betas, phis, thetas = self.get_numpy_vars(betas_rho, betas_angle, phis, thetas)
         if human:
             with np.printoptions(precision=5, suppress=True):
                 print("\n\n" + str(self.name))
                 print("N_blocks:     " + str(self.N_blocks))
                 print("betas:        " + str(betas))
-                print("alphas:       " + str(alphas))
+                # print("alphas:       " + str(alphas))
                 print("phis (deg):   " + str(phis * 180.0 / np.pi))
                 print("thetas (deg): " + str(thetas * 180.0 / np.pi))
                 print("Fidelity:     %.5f" % f)
@@ -337,7 +356,7 @@ class CD_control_tf:
             print("\n\n" + str(self.name))
             print("N_blocks: " + repr(self.N_blocks))
             print("betas: " + repr(betas))
-            print("alphas: " + repr(alphas))
+            # print("alphas: " + repr(alphas))
             print("phis: " + repr(phis))
             print("thetas: " + repr(thetas))
             print("Fidelity: " + repr(f))
