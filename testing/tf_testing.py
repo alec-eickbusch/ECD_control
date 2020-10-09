@@ -7,13 +7,13 @@ import qutip as qt
 import numpy as np
 import tensorflow as tf
 #%%
-N = 80
+N = 100
 psi_i = qt.tensor(qt.basis(2, 0), qt.basis(N, 0))
-psi_t = qt.tensor(qt.basis(2, 0), qt.basis(N, 1))
+psi_t = qt.tensor(qt.basis(2, 0), qt.basis(N, 4))
 #%%
-N_blocks = 4
+N_blocks = 8
 betas = np.array([
-    np.random.uniform(low=-2.0,high=2.0) + 1j*np.random.uniform(low=-2.0,high=2.0)
+    np.random.uniform(low=-3.0,high=3.0) + 1j*np.random.uniform(low=-3.0,high=3.0)
     for _ in range(N_blocks)]
     )
 phis = np.array([
@@ -23,31 +23,33 @@ thetas = np.array([
     np.random.uniform(low=-np.pi,high=np.pi) for _ in range(N_blocks)
 ])
 #%%
-obj_tf = CD_control_tf(initial_state=psi_i, target_state=psi_t, N_blocks = N_blocks, Bs=betas/2.0)
-obj = CD_control(initial_state=psi_i, target_state=psi_t, N_blocks=N_blocks,\
+obj_tf = CD_control_tf(initial_state=psi_i, target_state=psi_t, N_blocks = N_blocks, betas=betas,phis=phis, thetas=thetas)
+#%%
+obj = CD_control(initial_state=psi_i, target_state=psi_t, N_blocks=N_blocks,
                     use_displacements=False, analytic=True,
-                    no_CD_end=False, betas=betas)
+                    no_CD_end=False, betas=betas, phis=phis, thetas=thetas)
 #%%
-obj_tf.optimize(10)
+obj_tf.optimize(1000, learning_rate = 0.001)
 #%%
-d_tf = (obj_tf.construct_displacement_operators(obj_tf.Bs)).numpy()
+d_tf = (obj_tf.construct_displacement_operators(obj_tf.betas_rho, obj_tf.betas_angle)).numpy()
 #%%
-d = np.array([obj.D(obj.betas[i]/2.0).ptrace(1).full()/2.0 for i in range(N_blocks)])
+d = np.array([obj.D(obj.betas[i]).ptrace(1).full()/2.0 for i in range(N_blocks)])
 
 #%%
-cut = 30
+cut = 40
 print(np.max(np.abs((d_tf - d)[:,:cut,:cut])))
 # %%
-b_tf = obj_tf.construct_block_operators(Bs = obj_tf.Bs, Phis = obj_tf.Phis, Thetas=obj_tf.Thetas).numpy()
+b_tf = obj_tf.construct_block_operators(betas_rho = obj_tf.betas_rho, betas_angle=obj_tf.betas_angle,
+                                 phis = obj_tf.phis, thetas=obj_tf.thetas).numpy()
 #%%
 b = np.array([obj.U_i_block(i).full() for i in range(N_blocks)])
 #%%
-cut = 30
+cut = 50
 print(np.max(np.abs((b_tf - b)[:,:cut,:cut])))
 #%%
-overlap = obj_tf.state_overlap(obj_tf.Bs, obj_tf.Phis, obj_tf.Thetas)
+overlap = obj_tf.state_overlap(obj_tf.betas_rho, obj_tf.betas_angle, obj_tf.phis, obj_tf.thetas)
 #%%
-fid_tf = obj_tf.state_fidelity(obj_tf.Bs, obj_tf.Phis, obj_tf.Thetas)
+fid_tf = obj_tf.state_fidelity(obj_tf.betas_rho, obj_tf.betas_angle, obj_tf.phis, obj_tf.thetas)
 print(fid_tf)
 #%%
 fid = obj.fidelity()
