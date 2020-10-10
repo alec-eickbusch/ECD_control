@@ -7,11 +7,11 @@ import qutip as qt
 import numpy as np
 import tensorflow as tf
 #%%
-N = 50
+N = 100
 psi_i = qt.tensor(qt.basis(2, 0), qt.basis(N, 0))
-psi_t = qt.tensor(qt.basis(2, 0), qt.basis(N, 1))
+psi_t = qt.tensor(qt.basis(2, 0), qt.basis(N, 4))
 #%%
-N_blocks = 6
+N_blocks = 12
 betas = np.array([
     np.random.uniform(low=-1,high=1) + 1j*np.random.uniform(low=-1,high=1)
     for _ in range(N_blocks)]
@@ -24,7 +24,7 @@ thetas = np.array([
 ])
 #%%
 obj_tf = CD_control_tf(initial_state=psi_i, target_state=psi_t,
-                 N_blocks = N_blocks)#,
+                 N_blocks = N_blocks, term_fid=0.999)#,
                 # betas=betas,phis=phis, thetas=thetas, term_fid=0.99)
 obj_tf.print_info()
 #%%
@@ -35,7 +35,7 @@ obj = CD_control(initial_state=psi_i, target_state=psi_t, N_blocks=N_blocks,
 obj_tf.randomize(beta_scale = 1.0)
 obj_tf.print_info()
 #%%
-obj_tf.optimize(learning_rate = 0.01, epoch_size=100, epochs=40)
+obj_tf.optimize(learning_rate = 0.01, epoch_size=20, epochs=40)
 #%%
 d_tf = (obj_tf.construct_displacement_operators(obj_tf.betas_rho, obj_tf.betas_angle)).numpy()
 #%%

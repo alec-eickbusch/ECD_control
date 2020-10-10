@@ -6,19 +6,20 @@ from CD_control.CD_control_optimization import CD_control
 import qutip as qt
 import numpy as np
 import tensorflow as tf
+import matplotlib.pyplot as plt
 #%%
-N = 60
-focks = np.arange(1,4)
-max_N_blocks = 12
-term_fid = 0.99
+N = 150
+focks = np.arange(1,20)
+max_N_blocks = 80
+term_fid = 1-1e-4
 #%%
 psi_i = qt.tensor(qt.basis(2, 0), qt.basis(N, 0))
 fids = {}
 N_blocks_used = {}
-focks = np.arange(1,8)
-epochs = 10
-epoch_size = 100
-learning_rate = 0.01
+epochs = 30
+epoch_size = 200
+learning_rate = 0.005
+df_stop=1e-5
 for fock in focks:
     print("\n\n fock: %d\n\n" % fock)
     fids[fock] = []
@@ -28,13 +29,37 @@ for fock in focks:
         print("\nFock: %d N_blocks:%d\n" % (fock,N_blocks))
         obj_tf = CD_control_tf(initial_state=psi_i, target_state=psi_t,
                  N_blocks = N_blocks, term_fid=term_fid)
-        obj_tf.randomize(beta_scale = 0.25)
+        obj_tf.randomize(beta_scale = 0.25*fock)
         f = obj_tf.optimize(learning_rate = learning_rate, 
-        epoch_size=epoch_size, epochs=epochs)
+        epoch_size=epoch_size, epochs=epochs, df_stop = df_stop)
         fids[fock].append(f)
         N_blocks_used[fock].append(N_blocks)
         if f >= term_fid:
             break
+#%%
+focks_used = np.arange(1,8)
+fids_final = []
+#%%
+for fock in focks_used:
+    fids_final[fock] = np.squeeze(np.array(fids[fock]))
+#%%printing the data
+print("\n Fids: \n")
+print(fids)
+print("\n N_blocks_used: \n")
+print(N_blocks_used)
+#%%
+plt.figure(figsize = (8,6))
+for fock in fids.keys():
+    print(fock)
+    print(fids[fock])
+    print(N_blocks_used[fock])
+    fids[fock] = np.squeeze(np.array(fids[fock]))
+    plt.semilogy(N_blocks_used[fock], 1-np.array(fids[fock]), '--.', label=fock)
+plt.legend()
+#%%
+plt.figure()
+for fock, N_blocks in N_blocks_used.items():
+    plt.scatter(fock, N_blocks[-1])
 #%%
 N_blocks = 12
 betas = np.array([

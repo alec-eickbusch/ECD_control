@@ -176,7 +176,7 @@ class CD_control_tf:
         fid = tf.cast(overlap * tf.math.conj(overlap), dtype=tf.float32)
         return fid
 
-    def optimize(self, learning_rate=0.1, epoch_size=100, epochs=100):
+    def optimize(self, learning_rate=0.1, epoch_size=100, epochs=100, df_stop=1e-5):
         optimizer = tf.optimizers.Adam(learning_rate)
         variables = [self.betas_rho, self.betas_angle, self.phis, self.thetas]
 
@@ -189,25 +189,33 @@ class CD_control_tf:
         fid = self.state_fidelity(
             self.betas_rho, self.betas_angle, self.phis, self.thetas
         )
-        initial_loss = loss = loss_fun(fid)
+        initial_loss = loss_fun(fid)
         print("Epoch: 0 Fidelity: {}".format(1 - np.exp(initial_loss.numpy())))
+        # def callback_early_stop()
+
         for epoch in range(epochs + 1)[1:]:
             for _ in range(epoch_size):
                 with tf.GradientTape() as tape:
-                    fid = self.state_fidelity(
+                    new_fid = self.state_fidelity(
                         self.betas_rho, self.betas_angle, self.phis, self.thetas
                     )
-                    loss = loss_fun(fid)
+                    loss = loss_fun(new_fid)
                     dloss_dvar = tape.gradient(loss, variables)
                 optimizer.apply_gradients(zip(dloss_dvar, variables))
-            fid = 1 - np.exp(loss.numpy())
-            print("Epoch: {} Fidelity: {}".format(epoch, fid))
+            df = new_fid - fid
+            fid = new_fid
+            print("Epoch: {} Fidelity: {} dF: {}".format(epoch, fid, df))
             if fid >= self.term_fid:
                 self.print_info()
                 return fid
+            if np.abs(df) < df_stop:
+                self.print_info()
+                return new_fid
+            fid = new_fid
+
         self.print_info()
         fid = 1 - np.exp(loss.numpy())
-        return fid
+        return fid[0, 0]
 
     # TODO: update for tf
     def randomize(self, beta_scale=None, alpha_scale=None):
