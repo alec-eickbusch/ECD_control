@@ -41,36 +41,8 @@ class CD_control_tf:
         self.initial_state = tfq.qt2tf(initial_state)
         self.target_state = tfq.qt2tf(target_state)
         self.N_blocks = N_blocks
-        self.betas_rho = (
-            tf.Variable(np.abs(np.array(betas)), dtype=tf.float32, trainable=True)
-            if betas is not None
-            else tf.Variable(tf.zeros(N_blocks, dtype=tf.float32), trainable=True)
-        )
-        self.betas_angle = (
-            tf.Variable(np.angle(np.array(betas)), dtype=tf.float32, trainable=True)
-            if betas is not None
-            else tf.Variable(tf.zeros(N_blocks, dtype=tf.float32), trainable=True)
-        )
-        self.alphas_rho = (
-            tf.Variable(np.abs(np.array(alphas)), dtype=tf.float32, trainable=True)
-            if alphas is not None
-            else tf.Variable(tf.zeros(N_blocks, dtype=tf.float32), trainable=True)
-        )
-        self.alphas_angle = (
-            tf.Variable(np.angle(np.array(alphas)), dtype=tf.float32, trainable=True)
-            if alphas is not None
-            else tf.Variable(tf.zeros(N_blocks, dtype=tf.float32), trainable=True)
-        )
-        self.phis = (
-            tf.Variable(phis, dtype=tf.float32, trainable=True)
-            if phis is not None
-            else tf.Variable(tf.zeros(N_blocks, dtype=tf.float32), trainable=True)
-        )
-        self.thetas = (
-            tf.Variable(thetas, dtype=tf.float32, trainable=True)
-            if phis is not None
-            else tf.Variable(tf.zeros(N_blocks, dtype=tf.float32), trainable=True)
-        )
+
+        self.set_tf_vars(betas=betas, phis=phis, thetas=thetas)
 
         self.max_alpha = max_alpha if use_displacements else 0.0
         self.max_beta = max_beta
@@ -228,16 +200,10 @@ class CD_control_tf:
         phis = np.random.uniform(-np.pi, np.pi, self.N_blocks)
         thetas = np.random.uniform(-np.pi, np.pi, self.N_blocks)
 
-        self.betas_rho = tf.Variable(np.abs(rho_beta), dtype=tf.float32, trainable=True)
-        self.betas_angle = tf.Variable(
-            np.angle(ang_beta), dtype=tf.float32, trainable=True
-        )
-        self.alphas_rho = tf.Variable(
-            np.abs(rho_alpha), dtype=tf.float32, trainable=True
-        )
-        self.alphas_angle = tf.Variable(
-            np.angle(ang_alpha), dtype=tf.float32, trainable=True
-        )
+        self.betas_rho = tf.Variable(rho_beta, dtype=tf.float32, trainable=True)
+        self.betas_angle = tf.Variable(ang_beta, dtype=tf.float32, trainable=True)
+        self.alphas_rho = tf.Variable(rho_alpha, dtype=tf.float32, trainable=True)
+        self.alphas_angle = tf.Variable(ang_alpha, dtype=tf.float32, trainable=True)
         self.phis = tf.Variable(phis, dtype=tf.float32, trainable=True)
         self.thetas = tf.Variable(thetas, dtype=tf.float32, trainable=True)
 
@@ -252,6 +218,41 @@ class CD_control_tf:
         thetas = thetas.numpy()
 
         return betas, phis, thetas
+
+    def set_tf_vars(self, betas=None, phis=None, thetas=None):
+        # if None, set to zero
+        self.betas_rho = (
+            tf.Variable(np.abs(np.array(betas)), dtype=tf.float32, trainable=True)
+            if betas is not None
+            else tf.Variable(tf.zeros(self.N_blocks, dtype=tf.float32), trainable=True)
+        )
+        self.betas_angle = (
+            tf.Variable(np.angle(np.array(betas)), dtype=tf.float32, trainable=True)
+            if betas is not None
+            else tf.Variable(tf.zeros(self.N_blocks, dtype=tf.float32), trainable=True)
+        )
+        """
+        self.alphas_rho = (
+            tf.Variable(np.abs(np.array(self.alphas)), dtype=tf.float32, trainable=True)
+            if alphas is not None
+            else tf.Variable(tf.zeros(self.N_blocks, dtype=tf.float32), trainable=True)
+        )
+        self.alphas_angle = (
+            tf.Variable(np.angle(np.array(self.alphas)), dtype=tf.float32, trainable=True)
+            if alphas is not None
+            else tf.Variable(tf.zeros(self.N_blocks, dtype=tf.float32), trainable=True)
+        )
+        """
+        self.phis = (
+            tf.Variable(phis, dtype=tf.float32, trainable=True)
+            if phis is not None
+            else tf.Variable(tf.zeros(self.N_blocks, dtype=tf.float32), trainable=True)
+        )
+        self.thetas = (
+            tf.Variable(thetas, dtype=tf.float32, trainable=True)
+            if phis is not None
+            else tf.Variable(tf.zeros(self.N_blocks, dtype=tf.float32), trainable=True)
+        )
 
     # when parameters is specificed, normalize_angles is being used
     # during the optimization. In this case, it normalizes the parameters
