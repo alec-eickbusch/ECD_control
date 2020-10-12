@@ -3,34 +3,27 @@
 %autoreload 2
 import sys
 sys.path.append("../../")
-from CD_control.CD_control_optimization import CD_control
+from CD_control.CD_control_tf import CD_control_tf
 from CD_control.helper_functions import plot_pulse, plot_wigner
 from CD_control.analysis import System, CD_control_analysis
+from CD_control.global_optimization_tf import Global_optimizer_tf
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 #%%
-N = 30 #cavity hilbert space 
-N2 = 2 #qubit hilbert space
+N = 100 #cavity hilbert space 
 alpha = 2 + 1j #cat alpha
-N_blocks = 2
-initial_state = qt.tensor(qt.basis(N,0),qt.basis(N2,0))
-target_state = qt.tensor((qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit(),\
-                          qt.basis(N2,0))
-term_fid = 0.99
+N_blocks = 4
+initial_state = qt.tensor(qt.basis(2,0),qt.basis(N,0))
+target_state = qt.tensor(qt.basis(2,0), (qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit())
+term_fid = 0.998
 #max alpha and beta are the maximum values of alpha and beta for optimization
-max_alpha = 5
-max_beta = 20
 name = "Cat creation"
 saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_control_parameters\\"
-CD_control_obj = CD_control(initial_state, target_state, N_blocks=N_blocks,\
-                    name=name, term_fid=term_fid,\
-                    max_alpha = max_alpha, max_beta=max_beta,
-                    saving_directory=saving_directory,
-                    basinhopping_kwargs={'T':0.1},
-                    save_all_minima = True,
-                    use_displacements=True, analytic=True,
-                    no_CD_end=True)
+CD_control_obj = Global_optimizer_tf(initial_state=initial_state, target_state=target_state,
+                    N_blocks=N_blocks,
+                    name=name, term_fid=term_fid,
+                    saving_directory=saving_directory)
 #%% We can plot the initial and target states (qubit traced out)
 plt.figure(figsize=(5,5), dpi=200)
 CD_control_obj.plot_state(i=0)
@@ -38,10 +31,19 @@ plt.title("initial state")
 plt.figure(figsize=(5, 5), dpi=200)
 CD_control_obj.plot_target_state()
 plt.title("target state")
+
+#%%
+CD_control_obj.multistart_optimize()
+#%%
+CD_control_obj.N_blocks_sweep()
 #%% Doing the optimization
 #The alpha and beta scale are scales for the random initialization.
-#CD_control_obj.randomize(alpha_scale=0.2, beta_scale=1)
+CD_control_obj.randomize(beta_scale = 2.0)
 print("Randomized parameters:")
+CD_control_obj.print_info()
+#%%
+CD_control_obj.optimize(learning_rate = 0.01, epoch_size=200, epochs=100, df_stop=1e-10)
+#%%
 CD_control_obj.print_info()
 CD_control_obj.optimize()
 print("after optimization:")

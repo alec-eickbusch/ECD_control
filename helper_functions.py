@@ -42,7 +42,7 @@ def plot_wigner(
     if ax is None:
         ax = fig.subplots()
     if tensor_state:
-        state = qt.ptrace(state, 0)
+        state = qt.ptrace(state, 1)
     W = (np.pi / 2.0) * qt.wigner(state, xvec, xvec, g=2)
     if len(xvec_plot) > len(xvec):
         W = np.pad(W, (num_pad, num_pad), mode="constant")
