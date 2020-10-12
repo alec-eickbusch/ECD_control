@@ -35,11 +35,20 @@ class CD_control_tf:
         term_fid=0.999,
         beta_penalty_multiplier=0,
         use_displacements=True,
+        unitary_optimization=False,
         no_CD_end=True,
     ):
 
-        self.initial_state = tfq.qt2tf(initial_state)
-        self.target_state = tfq.qt2tf(target_state)
+        self.initial_state = (
+            tfq.qt2tf(initial_state) if initial_state is not None else None
+        )
+        self.target_state = (
+            tfq.qt2tf(target_state) if target_state is not None else None
+        )
+        self.target_unitary = (
+            tfq.qt2tf(target_unitary) if target_unitary is not None else None
+        )
+        self.unitary_optimization = unitary_optimization
         self.N_blocks = N_blocks
 
         self.set_tf_vars(betas=betas, phis=phis, thetas=thetas)
@@ -54,12 +63,16 @@ class CD_control_tf:
         self.no_CD_end = no_CD_end
 
         # todo: handle case when initial state is a tf object.
-        self.N_cav = initial_state.dims[0][1]
+        if unitary_optimization:
+            self.N_cav = target_unitary.dims[0][1]
+        else:
+            self.N_cav = initial_state.dims[0][1]
         self.a = tfq.destroy(self.N_cav)
         self.adag = tfq.create(self.N_cav)
         self.q = tfq.position(self.N_cav)
         self.p = tfq.momentum(self.N_cav)
         self.n = tfq.num(self.N_cav)
+        self.I = tfq.qt2tf(qt.tensor(qt.identity(2), qt.identity(self.N_cav)))
 
         # Pre-diagonalize
         (self._eig_q, self._U_q) = tf.linalg.eigh(self.q)
@@ -148,6 +161,22 @@ class CD_control_tf:
         fid = tf.cast(overlap * tf.math.conj(overlap), dtype=tf.float32)
         return fid
 
+    @tf.function
+    def U_tot(self, betas_rho, betas_angle, phis, thetas):
+        bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
+        U_c = tf.scan(lambda a, b: tf.matmul(a, b), bs)[-1]
+        # U_c = self.I
+        # for U in bs:
+        #     U_c = U_c @ U  # following convention of state_fidelity..
+        return U_c
+
+    @tf.function
+    def state_fidelity_unitary(self, betas_rho, betas_angle, phis, thetas):
+        U_circuit = self.U_tot(betas_rho, betas_angle, phis, thetas)
+        D = self.N_cav * 2
+        overlap = tf.linalg.trace(tf.linalg.adjoint(self.target_unitary) @ U_circuit)
+        return tf.abs((1.0 / D) * overlap) ** 2
+
     def optimize(self, learning_rate=0.1, epoch_size=100, epochs=100, df_stop=1e-5):
         optimizer = tf.optimizers.Adam(learning_rate)
         variables = [self.betas_rho, self.betas_angle, self.phis, self.thetas]
@@ -158,9 +187,12 @@ class CD_control_tf:
             # minus = tf.constant(-1, dtype=tf.float32)
             return tf.math.log(1 - fid)
 
-        fid = self.state_fidelity(
-            self.betas_rho, self.betas_angle, self.phis, self.thetas
+        fid_func = (
+            self.state_fidelity
+            if not self.unitary_optimization
+            else self.state_fidelity_unitary
         )
+        fid = fid_func(self.betas_rho, self.betas_angle, self.phis, self.thetas)
         initial_loss = loss_fun(fid)
         print("Epoch: 0 Fidelity: {}".format(1 - np.exp(initial_loss.numpy())))
         # def callback_early_stop()
@@ -168,7 +200,7 @@ class CD_control_tf:
         for epoch in range(epochs + 1)[1:]:
             for _ in range(epoch_size):
                 with tf.GradientTape() as tape:
-                    new_fid = self.state_fidelity(
+                    new_fid = fid_func(
                         self.betas_rho, self.betas_angle, self.phis, self.thetas
                     )
                     loss = loss_fun(new_fid)
@@ -349,7 +381,11 @@ class CD_control_tf:
         betas_angle = self.betas_angle if betas_angle is None else betas_angle
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
-        f = self.state_fidelity(betas_rho, betas_angle, phis, thetas)
+        f = (
+            self.state_fidelity(betas_rho, betas_angle, phis, thetas)
+            if not self.unitary_optimization
+            else self.state_fidelity_unitary(betas_rho, betas_angle, phis, thetas)
+        )
         betas, phis, thetas = self.get_numpy_vars(betas_rho, betas_angle, phis, thetas)
         if human:
             with np.printoptions(precision=5, suppress=True):
