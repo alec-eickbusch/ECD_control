@@ -13,17 +13,18 @@ import matplotlib.pyplot as plt
 #%%
 N = 100 #cavity hilbert space 
 alpha = 2 + 1j #cat alpha
-N_blocks = 4
+N_blocks = 5
+no_CD_end = True
 initial_state = qt.tensor(qt.basis(2,0),qt.basis(N,0))
 target_state = qt.tensor(qt.basis(2,0), (qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit())
-term_fid = 0.998
+term_fid = 0.99
 #max alpha and beta are the maximum values of alpha and beta for optimization
 name = "Cat creation"
 saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_control_parameters\\"
 CD_control_obj = Global_optimizer_tf(initial_state=initial_state, target_state=target_state,
                     N_blocks=N_blocks,
                     name=name, term_fid=term_fid,
-                    saving_directory=saving_directory)
+                    saving_directory=saving_directory, no_CD_end=no_CD_end)
 #%% We can plot the initial and target states (qubit traced out)
 plt.figure(figsize=(5,5), dpi=200)
 CD_control_obj.plot_state(i=0)
@@ -33,7 +34,21 @@ CD_control_obj.plot_target_state()
 plt.title("target state")
 
 #%%
-CD_control_obj.multistart_optimize()
+CD_control_obj.randomize(beta_scale=1.0)
+betas, phis, thetas = CD_control_obj.get_numpy_vars()
+thetas[0] = np.pi/2.0
+betas[0] = 2*alpha
+CD_control_obj.set_tf_vars(betas, phis, thetas)
+beta_mask = np.ones(N_blocks)
+beta_mask[0] = 0
+theta_mask = beta_mask
+#beta_mask[-1] = 0
+CD_control_obj.optimize(beta_mask=beta_mask, theta_mask=theta_mask, learning_rate=1.0)
+#%%
+CD_control_obj.multistart_optimize(N_multistart = 50, beta_scale=0.5, learning_rate = 0.1)
+#%%
+CD_control_obj.term_fid = 0.9999
+CD_control_obj.pin_optimize(tolerance=0.1, learning_rate=0.01, df_stop=1e-8)
 #%%
 CD_control_obj.N_blocks_sweep()
 #%% Doing the optimization

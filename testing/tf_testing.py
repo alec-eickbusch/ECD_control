@@ -9,9 +9,9 @@ import tensorflow as tf
 #%%
 N = 100
 psi_i = qt.tensor(qt.basis(2, 0), qt.basis(N, 0))
-psi_t = qt.tensor(qt.basis(2, 0), qt.basis(N, 4))
+psi_t = qt.tensor(qt.basis(2, 0), qt.basis(N, 2))
 #%%
-N_blocks = 12
+N_blocks = 6
 betas = np.array([
     np.random.uniform(low=-1,high=1) + 1j*np.random.uniform(low=-1,high=1)
     for _ in range(N_blocks)]
@@ -19,13 +19,13 @@ betas = np.array([
 phis = np.array([
     np.random.uniform(low=-np.pi,high=np.pi) for _ in range(N_blocks)
 ])
+phis[0] = 0
 thetas = np.array([
     np.random.uniform(low=-np.pi,high=np.pi) for _ in range(N_blocks)
 ])
 #%%
 obj_tf = CD_control_tf(initial_state=psi_i, target_state=psi_t,
-                 N_blocks = N_blocks, term_fid=0.999)#,
-                # betas=betas,phis=phis, thetas=thetas, term_fid=0.99)
+                 N_blocks = N_blocks, term_fid=0.999)
 obj_tf.print_info()
 #%%
 obj = CD_control(initial_state=psi_i, target_state=psi_t, N_blocks=N_blocks,
