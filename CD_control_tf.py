@@ -148,11 +148,40 @@ class CD_control_tf:
         fid = tf.cast(overlap * tf.math.conj(overlap), dtype=tf.float32)
         return fid
 
-    def optimize(self, learning_rate=0.1, epoch_size=100, epochs=100, df_stop=1e-5):
+    def optimize(
+        self,
+        learning_rate=0.01,
+        epoch_size=100,
+        epochs=100,
+        df_stop=1e-6,
+        beta_mask=None,
+        phi_mask=None,
+        theta_mask=None,
+    ):
         optimizer = tf.optimizers.Adam(learning_rate)
         variables = [self.betas_rho, self.betas_angle, self.phis, self.thetas]
 
-        # todo: change to log
+        if beta_mask is None:
+            beta_mask = np.ones(self.N_blocks)
+            if self.no_CD_end:
+                beta_mask[-1] = 0  # don't optimize final CD
+
+        if phi_mask is None:
+            phi_mask = np.ones(self.N_blocks)
+            phi_mask[0] = 0  # stop gradient on first phi entry
+
+        if theta_mask is None:
+            theta_mask = np.ones(self.N_blocks)
+
+        beta_mask = tf.constant(beta_mask, dtype=tf.float32)
+        phi_mask = tf.constant(phi_mask, dtype=tf.float32)
+        theta_mask = tf.constant(theta_mask, dtype=tf.float32)
+
+        @tf.function
+        def entry_stop_gradients(target, mask):
+            mask_h = tf.abs(mask - 1)
+            return tf.stop_gradient(mask_h * target) + mask * target
+
         @tf.function
         def loss_fun(fid):
             # minus = tf.constant(-1, dtype=tf.float32)
@@ -168,9 +197,11 @@ class CD_control_tf:
         for epoch in range(epochs + 1)[1:]:
             for _ in range(epoch_size):
                 with tf.GradientTape() as tape:
-                    new_fid = self.state_fidelity(
-                        self.betas_rho, self.betas_angle, self.phis, self.thetas
-                    )
+                    betas_rho = entry_stop_gradients(self.betas_rho, beta_mask)
+                    betas_angle = entry_stop_gradients(self.betas_angle, beta_mask)
+                    phis = entry_stop_gradients(self.phis, phi_mask)
+                    thetas = entry_stop_gradients(self.thetas, theta_mask)
+                    new_fid = self.state_fidelity(betas_rho, betas_angle, phis, thetas)
                     loss = loss_fun(new_fid)
                     dloss_dvar = tape.gradient(loss, variables)
                 optimizer.apply_gradients(zip(dloss_dvar, variables))
@@ -178,13 +209,15 @@ class CD_control_tf:
             fid = new_fid
             print("Epoch: {} Fidelity: {} dF: {}".format(epoch, fid, df))
             if fid >= self.term_fid:
+                self.normalize_angles()
                 self.print_info()
                 return fid
             if np.abs(df) < df_stop:
+                self.normalize_angles()
                 self.print_info()
                 return new_fid
             fid = new_fid
-
+        self.normalize_angles()
         self.print_info()
         fid = 1 - np.exp(loss.numpy())
         return fid[0, 0]
@@ -199,6 +232,10 @@ class CD_control_tf:
         rho_alpha = np.random.uniform(0, alpha_scale, self.N_blocks)
         phis = np.random.uniform(-np.pi, np.pi, self.N_blocks)
         thetas = np.random.uniform(-np.pi, np.pi, self.N_blocks)
+
+        phis[0] = 0  # optimization is done realative to first phi
+        if self.no_CD_end:
+            rho_beta[-1] = 0
 
         self.betas_rho = tf.Variable(rho_beta, dtype=tf.float32, trainable=True)
         self.betas_angle = tf.Variable(ang_beta, dtype=tf.float32, trainable=True)
@@ -259,10 +296,8 @@ class CD_control_tf:
     # and returns the parameters without updating self.
     # if parameters not specified, just normalize self's angles.
     # todo: make faster with numpy...
-    def normalize_angles(self, phis=None, thetas=None):
-        do_return = phis is not None
-        phis = self.phis if phis is None else phis
-        thetas = self.thetas if thetas is None else thetas
+    def normalize_angles(self):
+        betas, phis, thetas = self.get_numpy_vars()
         thetas_new = []
         for theta in thetas:
             while theta < -np.pi:
@@ -279,11 +314,7 @@ class CD_control_tf:
                 phi = phi - 2 * np.pi
             phis_new.append(phi)
         phis = np.array(phis_new)
-        if do_return:
-            return phis, thetas
-        else:
-            self.thetas = thetas
-            self.phis = phis
+        self.set_tf_vars(betas, phis, thetas)
 
     def save(self):
         datestr = datetime.now().strftime("%Y%m%d_%H_%M_%S")
