@@ -19,7 +19,7 @@ def plot_wigner(
     ax=None,
     max_alpha=6,
     plot_max_alpha=None,
-    cbar=True,
+    cbar=False,
     npts=81,
 ):
     xvec = np.linspace(-max_alpha, max_alpha, npts)
