@@ -5,6 +5,7 @@
 from distutils.version import LooseVersion
 
 import tensorflow as tf
+import qutip as qt
 
 if LooseVersion(tf.__version__) >= "2.2":
     diag = tf.linalg.diag
@@ -17,6 +18,12 @@ else:
 # todo: handle case when passed an already tf object.
 def qt2tf(qt_object, dtype=tf.complex64):
     return tf.constant(qt_object.full(), dtype=dtype)
+
+
+def tf2qt(tf_object):
+    return qt.Qobj(
+        tf_object.numpy(), dims=[[2, int(tf_object.numpy().shape[0] / 2)], [1, 1]]
+    )
 
 
 def matrix_flatten(tensor):
