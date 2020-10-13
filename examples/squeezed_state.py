@@ -11,12 +11,12 @@ import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 #%%
-N = 50 #cavity hilbert space 
+N = 100 #cavity hilbert space 
 alpha = 2 + 1j #cat alpha
-N_blocks = 5
+N_blocks = 8
 no_CD_end = True
 initial_state = qt.tensor(qt.basis(2,0),qt.basis(N,0))
-target_state = qt.tensor(qt.basis(2,0), (qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit())
+target_state = qt.tensor(qt.basis(2,0), qt.squeeze(N,1.5)*qt.basis(N,0))
 term_fid = 0.9999
 #%%
 CD_control_obj = CD_control_tf(initial_state, target_state, N_blocks=N_blocks,
@@ -25,13 +25,18 @@ CD_control_obj = CD_control_tf(initial_state, target_state, N_blocks=N_blocks,
 plt.figure(figsize=(5,5), dpi=200)
 CD_control_obj.plot_initial_state()
 plt.title("initial state")
-#plt.figure(figsize=(5, 5), dpi=200)
-#CD_control_obj.plot_target_state()
-#plt.title("target state")
+plt.figure(figsize=(5, 5), dpi=200)
+CD_control_obj.plot_target_state()
+plt.title("target state")
 #%%
-CD_control_obj.randomize(beta_scale=1.0)
-fids = CD_control_obj.optimize(epochs = 50, epoch_size=10,dloss_stop=-1)
+#CD_control_obj.randomize(beta_scale=0.1)
+fids = CD_control_obj.optimize(epochs = 500, epoch_size=10,dloss_stop=1e-6, learning_rate=0.001)
 #%%
+plt.plot(fids)
+
+#%%
+
+
 CD_control_obj.plot_final_state()
 #%%
 CD_control_obj
@@ -85,10 +90,10 @@ Ec_GHz = 0.19267571  # measured anharmonicity
 Ec = (2*np.pi) * Ec_GHz
 chi_MHz = 0.03
 chi = 2*np.pi*1e-3*chi_MHz
-sigma = 6  # sigma for gaussian pulses
+sigma = 3  # sigma for gaussian pulses
 chop = 4  # chop for gaussian pulses
-buffer_time = 4  # time between discrete pulses
-ring_up_time = 16  # Time to ring up for large CD pulses
+buffer_time = 0  # time between discrete pulses
+ring_up_time = 8  # Time to ring up for large CD pulses
 sys = System(chi=chi, Ec=Ec, alpha0=alpha0,
              sigma=sigma, chop=chop, epsilon_m=epsilon_m, buffer_time=buffer_time,
              ring_up_time=ring_up_time)
