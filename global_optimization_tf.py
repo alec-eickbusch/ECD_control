@@ -29,7 +29,7 @@ class Global_optimizer_tf(CD_control_tf):
         )
         self.set_tf_vars(best_betas, best_phis, best_thetas)
         self.print_info()
-        return all_fids
+        return all_losses
 
     def N_blocks_sweep(
         self,

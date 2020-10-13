@@ -45,8 +45,7 @@ N_blocks = 3 #fewer N blocks for demonstration
 global_opt_obj = Global_optimizer_tf(initial_state, target_state, N_blocks=N_blocks,
                     term_fid = term_fid, no_CD_end=True)
 #%% A multi-start optimization
-losses = global_opt_obj.multistart_optimize(N_multistart=10, beta_scale=1.0, epochs = 100, epoch_size=10,dloss_stop=1e-6)
-#%%
+losses = global_opt_obj.multistart_optimize(N_multistart=5, beta_scale=1.0, epochs = 40, epoch_size=10,dloss_stop=1e-6)
 plt.figure()
 for loss in losses:
     fids = 1 - np.exp(loss)
