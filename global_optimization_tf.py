@@ -9,21 +9,24 @@ from CD_control.CD_control_tf import CD_control_tf
 class Global_optimizer_tf(CD_control_tf):
     def multistart_optimize(self, N_multistart=10, beta_scale=1.0, **kwargs):
         # initial randomization
-        all_fids = []
-        fid = 0.0
-        best_fid = fid
+        all_losses = []
+        loss = 0
+        best_loss = 0
         i = 0
-        while (i < N_multistart) and (fid < self.term_fid):
+        term_loss = np.log(1 - self.term_fid)
+        while (i < N_multistart) and (loss > term_loss):
             print("\nMultistart N: %d / %d\n" % (i, N_multistart))
             self.randomize(beta_scale)
-            fids = self.optimize(**kwargs)
-            all_fids.append(fids)
-            fid = fids[-1]
-            if fid > best_fid:
-                best_fid = fid
+            losses = self.optimize(**kwargs)
+            all_losses.append(losses)
+            loss = losses[-1]
+            if loss < best_loss:
+                best_loss = loss
                 best_betas, best_phis, best_thetas = self.get_numpy_vars()
             i += 1
-        print("Best fid found: %.4f" % best_fid)
+        print(
+            "Best found: loss =  %.4f fid = %.4f" % (best_loss, 1 - np.exp(best_loss))
+        )
         self.set_tf_vars(best_betas, best_phis, best_thetas)
         self.print_info()
         return all_fids
@@ -111,4 +114,3 @@ class Global_optimizer_tf(CD_control_tf):
         self.optimize(
             beta_mask=beta_mask, phi_mask=phi_mask, theta_mask=theta_mask, **kwargs
         )
-

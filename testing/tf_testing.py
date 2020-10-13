@@ -8,9 +8,16 @@ import qutip as qt
 import numpy as np
 import tensorflow as tf
 #%%
+x = tf.cast(tf.random.uniform((300,1)), dtype=tf.complex64) + 1j*tf.cast(tf.random.uniform((300,1)), dtype=tf.complex64)
+print(x)
+y = tf.linalg.adjoint(x)
+print(y)
+#%%
 N = 100
 psi_i = qt.tensor(qt.basis(2, 0), qt.basis(N, 0))
-psi_t = qt.tensor(qt.basis(2, 0), qt.basis(N, 2))
+alpha = 2 + 1j #cat alpha
+N_blocks = 5
+psi_t = qt.tensor(qt.basis(2,0), (qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit())
 #%%
 N_blocks = 6
 betas = np.array([
@@ -35,17 +42,22 @@ obj = CD_control(initial_state=psi_i, target_state=psi_t, N_blocks=N_blocks,
                     no_CD_end=False, betas=betas, phis=phis, thetas=thetas)
 obj.print_info()
 
-#%%
-psif = obj.forward_states()
-#%%
-psif_tf = [tfq.tf2qt(obj_tf.state(i)) for i in range(N_blocks)]
-#%%
-
 
 #%%
-obj_tf.plot_state(1)
+psif = obj.final_state()
+psif_tf = obj_tf.final_state(obj_tf.betas_rho, obj_tf.betas_angle, obj_tf.phis, obj_tf.thetas)
 #%%
-obj.plot_state(i=3)
+psit = obj.target_state
+psit_tf = obj_tf.target_state
+#%%
+psit_dag = psit.dag()
+psit_tf_dag = tf.linalg.adjoint(psit_tf)
+#%%
+
+#%%
+obj_tf.plot_final_state()
+#%%
+obj.plot_state(i=-1)
 #%%
 obj_tf.optimize(learning_rate = 0.01, epoch_size=20, epochs=40)
 #%%

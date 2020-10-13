@@ -22,9 +22,10 @@ if 0:
 #O = qt.tensor(qt.identity(2), c.code_projector())
 O = qt.tensor(qt.identity(2), (c.stabilizer_symmetric(i=0) + c.stabilizer_symmetric(i=1) + c.pauli_symmetric(i = 0))/3.0)
 #%%
-N_blocks = 6
+N_blocks = 16
 no_CD_end = True
-initial_state = qt.tensor(qt.basis(2,0),qt.squeeze(N,1.5)*qt.basis(N,0))
+#initial_state = qt.tensor(qt.basis(2,0),qt.squeeze(N,1.5)*qt.basis(N,0))
+initial_state = qt.tensor(qt.basis(2,0), qt.basis(N,0))
 target_state = qt.tensor(qt.basis(2,0), c.zero_logical)
 term_fid = 0.999
 #%%
@@ -42,8 +43,13 @@ CD_control_obj.plot_target_state()
 plt.title("target state")
 
 #%%
-CD_control_obj.randomize(beta_scale=0.001)
-fids = CD_control_obj.optimize(epochs = 2000, epoch_size=2, dloss_stop=1e-7, learning_rate=0.001)
+CD_control_obj.randomize(beta_scale=1)
+fids = CD_control_obj.optimize(epochs = 2000, epoch_size=2, dloss_stop=1e-7, learning_rate=0.01)
+#%%
+plt.figure()
+plt.plot(fids)
+plt.xlabel('epoch')
+plt.ylabel('fid')
 #%%
 CD_control_obj.plot_final_state()
 #%%
@@ -118,7 +124,23 @@ plt.title("cd grape final state")
 plt.figure(figsize=(5, 5), dpi=200)
 plot_wigner(psif)
 plt.title("constructed pulse final state")
-
+#%%
+psif = sys.simulate_pulse_master_equation(e, O, initial_state, use_qubit_T1=True, use_qubit_T2=True)
+fid = qt.fidelity(psif, target_state)
+fid_c = qt.fidelity(psif.ptrace(0), target_state.ptrace(0))
+fid_q = qt.fidelity(psif.ptrace(1), target_state.ptrace(1))
+zero = qt.tensor(qt.basis(2,0),qt.identity(N))
+fid_zero = qt.fidelity(zero.dag()*psif*zero, target_state.ptrace(1))
+print("\n\nSimulated fidelity to final state: %.5f" % fid)
+print("Simulated QUBIT fidelity to final state: %.5f" % fid_q)
+print("Simulated CAVITY fidelity to final state: %.5f\n\n" % fid_c)
+print("Simulated zero post selected cavity fidelity to final state: %.5f\n\n" % fid_c)
+plt.figure(figsize=(5, 5), dpi=200)
+CD_control_obj.plot_final_state()
+plt.title("cd grape final state")
+plt.figure(figsize=(5, 5), dpi=200)
+plot_wigner(psif)
+plt.title("constructed pulse final state")
 #%% Going step by step
 CD_control_obj.N_blocks = 0
 e, O = analysis_obj.composite_pulse()
