@@ -25,9 +25,9 @@ CD_control_obj = CD_control_tf(initial_state, target_state, N_blocks=N_blocks,
 plt.figure(figsize=(5,5), dpi=200)
 CD_control_obj.plot_initial_state()
 plt.title("initial state")
-#plt.figure(figsize=(5, 5), dpi=200)
-#CD_control_obj.plot_target_state()
-#plt.title("target state")
+plt.figure(figsize=(5, 5), dpi=200)
+CD_control_obj.plot_target_state()
+plt.title("target state")
 #%%
 CD_control_obj.randomize(beta_scale=1.0)
 fids = CD_control_obj.optimize(epochs = 50, epoch_size=10,dloss_stop=-1)

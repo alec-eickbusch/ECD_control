@@ -3,6 +3,7 @@
 %autoreload 2
 from CD_control.CD_control_tf import CD_control_tf
 from CD_control.CD_control_optimization import CD_control
+import CD_control.tf_quantum as tfq
 import qutip as qt
 import numpy as np
 import tensorflow as tf
@@ -25,15 +26,26 @@ thetas = np.array([
 ])
 #%%
 obj_tf = CD_control_tf(initial_state=psi_i, target_state=psi_t,
-                 N_blocks = N_blocks, term_fid=0.999)
+                 N_blocks = N_blocks, term_fid=0.999,
+                 betas=betas, phis=phis, thetas=thetas, no_CD_end=False)
 obj_tf.print_info()
 #%%
 obj = CD_control(initial_state=psi_i, target_state=psi_t, N_blocks=N_blocks,
                     use_displacements=False, analytic=True,
                     no_CD_end=False, betas=betas, phis=phis, thetas=thetas)
+obj.print_info()
+
 #%%
-obj_tf.randomize(beta_scale = 1.0)
-obj_tf.print_info()
+psif = obj.forward_states()
+#%%
+psif_tf = [tfq.tf2qt(obj_tf.state(i)) for i in range(N_blocks)]
+#%%
+
+
+#%%
+obj_tf.plot_state(1)
+#%%
+obj.plot_state(i=3)
 #%%
 obj_tf.optimize(learning_rate = 0.01, epoch_size=20, epochs=40)
 #%%
@@ -42,7 +54,7 @@ d_tf = (obj_tf.construct_displacement_operators(obj_tf.betas_rho, obj_tf.betas_a
 d = np.array([obj.D(obj.betas[i]).ptrace(1).full()/2.0 for i in range(N_blocks)])
 
 #%%
-cut = 40
+cut = 80
 print(np.max(np.abs((d_tf - d)[:,:cut,:cut])))
 # %%
 b_tf = obj_tf.construct_block_operators(betas_rho = obj_tf.betas_rho, betas_angle=obj_tf.betas_angle,
@@ -50,7 +62,7 @@ b_tf = obj_tf.construct_block_operators(betas_rho = obj_tf.betas_rho, betas_angl
 #%%
 b = np.array([obj.U_i_block(i).full() for i in range(N_blocks)])
 #%%
-cut = 50
+cut = 90
 print(np.max(np.abs((b_tf - b)[:,:cut,:cut])))
 #%%
 overlap = obj_tf.state_overlap(obj_tf.betas_rho, obj_tf.betas_angle, obj_tf.phis, obj_tf.thetas)
@@ -60,6 +72,11 @@ print(fid_tf)
 #%%
 fid = obj.fidelity()
 print(fid)
+#%%
+plt.figure()
+obj.plot_state(i=-1)
+plt.figure()
+obj_tf.plot_final_state()
 
 # %%
 import CD_control.tf_quantum as tfq

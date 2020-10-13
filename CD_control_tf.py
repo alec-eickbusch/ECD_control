@@ -132,15 +132,33 @@ class CD_control_tf:
         ur = tf.constant(-1, dtype=tf.complex64) * exp_dag * sin * ds
         lr = cos * ds_dag
 
-        blocks = tf.concat([tf.concat([ul, ur], 2), tf.concat([ll, lr], 2)], 1)
+        # without pi pulse, block matrix is:
+        # (ul, ur)
+        # (ll, lr)
+        # however, with pi pulse included:
+        # (ll, lr)
+        # (ul, ur)
+        blocks = -1j * tf.concat([tf.concat([ll, lr], 2), tf.concat([ul, ur], 2)], 1)
 
         return blocks
+
+    @tf.function
+    def state(self, i=0, betas_rho=None, betas_angle=None, phis=None, thetas=None):
+        betas_rho = self.betas_rho if betas_rho is None else betas_rho
+        betas_angle = self.betas_angle if betas_angle is None else betas_angle
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+        bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
+        psi = self.initial_state
+        for U in bs[:i]:
+            psi = U @ psi
+        return psi
 
     @tf.function
     def final_state(self, betas_rho, betas_angle, phis, thetas):
         bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
         psi = self.initial_state
-        for U in tf.reverse(bs, axis=[0]):
+        for U in bs:
             psi = U @ psi
         return psi
 
@@ -186,6 +204,12 @@ class CD_control_tf:
         self, contour=True, fig=None, ax=None, max_alpha=6, cbar=True
     ):
         state = tfq.tf2qt(self.target_state)
+        plot_wigner(
+            state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
+        )
+
+    def plot_state(self, i=0, contour=True, fig=None, ax=None, max_alpha=6, cbar=True):
+        state = tfq.tf2qt(self.state(i=i))
         plot_wigner(
             state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
         )
