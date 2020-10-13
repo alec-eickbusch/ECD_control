@@ -322,6 +322,7 @@ class CD_control_tf:
                 self.normalize_angles()
                 self.print_info()
                 return losses
+            # TODO: use real gradient here, not the dloss!
             if np.abs(dloss) < dloss_stop:
                 self.normalize_angles()
                 self.print_info()
