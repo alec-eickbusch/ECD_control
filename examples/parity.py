@@ -11,7 +11,7 @@ import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 #%%
-N = 10 #cavity hilbert space 
+N = 100 #cavity hilbert space 
 # alpha = 2 + 1j #cat alpha
 N_blocks = 5
 # initial_state = qt.tensor(qt.basis(2,0),qt.basis(N,0))
@@ -24,7 +24,7 @@ term_fid = 0.998
 #max alpha and beta are the maximum values of alpha and beta for optimization
 name = "Parity"
 saving_directory = "/"
-CD_control_obj = Global_optimizer_tf(target_unitary=targ, unitary_optimization=True,
+CD_control_obj = Global_optimizer_tf(target_unitary=targ, unitary_optimization=True, P_cav=10,
                     N_blocks=N_blocks,
                     name=name, term_fid=term_fid,
                     saving_directory=saving_directory)
