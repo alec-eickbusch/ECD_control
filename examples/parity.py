@@ -11,7 +11,7 @@ import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 #%%
-N = 100 #cavity hilbert space 
+N = 10 #cavity hilbert space 
 # alpha = 2 + 1j #cat alpha
 N_blocks = 5
 # initial_state = qt.tensor(qt.basis(2,0),qt.basis(N,0))
@@ -30,7 +30,7 @@ CD_control_obj = Global_optimizer_tf(target_unitary=targ, unitary_optimization=T
                     saving_directory=saving_directory)
 
 #%%
-CD_control_obj.multistart_optimize()
+CD_control_obj.multistart_optimize(beta_scale=)
 #%%
 CD_control_obj.N_blocks_sweep()
 #%% Doing the optimization
