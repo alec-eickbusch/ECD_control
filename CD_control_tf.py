@@ -86,7 +86,7 @@ class CD_control_tf:
 
             partial_I = qt.identity(self.N_cav)
             for j in range(self.P_cav, self.N_cav):
-                partial_I[j, j] = 0
+                partial_I -= qt.ket2dm(qt.basis(self.N_cav, j))
             self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
 
             # Pre-diagonalize
@@ -214,7 +214,7 @@ class CD_control_tf:
         overlap = tf.linalg.trace(
             tf.linalg.adjoint(self.target_unitary) @ self.P_matrix @ U_circuit
         )
-        return tf.abs((1.0 / D) * overlap) ** 2
+        return tf.cast(tf.abs((1.0 / D) * overlap) ** 2, dtype=tf.float32)
 
     # returns <psi_f | O | psi_f>
     @tf.function
@@ -329,10 +329,11 @@ class CD_control_tf:
         initial_loss = loss_fun(
             self.betas_rho, self.betas_angle, self.phis, self.thetas
         )
-        callback_fun(self, initial_loss.numpy()[0, 0], 0, 0)
+        print(initial_loss.numpy())
+        callback_fun(self, initial_loss.numpy(), 0, 0)
 
         losses = []
-        losses.append(initial_loss.numpy()[0, 0])
+        losses.append(initial_loss.numpy())
         loss = initial_loss
         for epoch in range(epochs + 1)[1:]:
             for _ in range(epoch_size):
@@ -346,8 +347,8 @@ class CD_control_tf:
                 optimizer.apply_gradients(zip(dloss_dvar, variables))
             dloss = new_loss - loss
             loss = new_loss
-            losses.append(loss.numpy()[0, 0])
-            callback_fun(self, loss.numpy()[0, 0], dloss.numpy()[0, 0], epoch)
+            losses.append(loss.numpy())
+            callback_fun(self, loss.numpy(), dloss.numpy(), epoch)
             if loss <= term_loss:
                 self.normalize_angles()
                 self.print_info()
