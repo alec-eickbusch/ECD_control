@@ -340,11 +340,11 @@ class CD_control:
         # return ((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
         zz = qt.tensor(qt.ket2dm(qt.basis(self.N_qb, 0)), qt.identity(self.N_cav))
         oo = qt.tensor(qt.ket2dm(qt.basis(self.N_qb, 1)), qt.identity(self.N_cav))
-        # return self.R(0, np.pi) * (self.D(beta / 2.0) * zz + self.D(-beta / 2.0) * oo)
+        return self.R(0, np.pi) * (self.D(beta / 2.0) * zz + self.D(-beta / 2.0) * oo)
         # includes pi rotation
 
         # alec 10/8/2020: Removing pi rotation to compare with tensorflow version.
-        return self.D(beta / 2.0) * zz + self.D(-beta / 2.0) * oo
+        # return self.D(beta / 2.0) * zz + self.D(-beta / 2.0) * oo
 
     # TODO: is it faster with non-exponential form?
     def R(self, phi, theta):
@@ -373,7 +373,7 @@ class CD_control:
         r = np.abs(beta)
         return (
             (0.5 / r)
-            * (self.sz * (beta * self.a.dag() - np.conj(beta) * self.a))
+            * (-self.sz * (beta * self.a.dag() - np.conj(beta) * self.a))
             * self.CD(beta)
         )
 
@@ -381,7 +381,7 @@ class CD_control:
         r = np.abs(beta)
         return (
             (0.5j)
-            * (self.sz * (beta * self.a.dag() + np.conj(beta) * self.a) - r ** 2 / 2)
+            * (-self.sz * (beta * self.a.dag() + np.conj(beta) * self.a) - r ** 2 / 2)
             * self.CD(beta)
         )
 
@@ -567,7 +567,8 @@ class CD_control:
         psi = initial_state if initial_state is not None else self.initial_state
         for i in range(self.N_blocks):
             psi = self.R(phis[i], thetas[i]) * psi
-            psi = self.D(alphas[i]) * psi
+            if self.use_displacements:
+                psi = self.D(alphas[i]) * psi
             psi = self.CD(betas[i]) * psi
         return psi
 

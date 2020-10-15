@@ -23,6 +23,7 @@ class CD_control_tf:
         initial_state=None,
         target_state=None,
         target_unitary=None,
+        P_cav=None,
         N_blocks=1,
         betas=None,
         alphas=None,
@@ -37,6 +38,8 @@ class CD_control_tf:
         use_displacements=True,
         unitary_optimization=False,
         no_CD_end=True,
+        optimize_expectation=False,
+        O=None,
     ):
 
         self.initial_state = (
@@ -61,25 +64,37 @@ class CD_control_tf:
         self.beta_penalty_multiplier = beta_penalty_multiplier
         self.use_displacements = use_displacements
         self.no_CD_end = no_CD_end
+        self.optimize_expectation = optimize_expectation
+        if self.optimize_expectation:
+            self.O = tfq.qt2tf(O)
 
         # todo: handle case when initial state is a tf object.
         if unitary_optimization:
             self.N_cav = target_unitary.dims[0][1]
         else:
             self.N_cav = initial_state.dims[0][1]
-        self.a = tfq.destroy(self.N_cav)
-        self.adag = tfq.create(self.N_cav)
-        self.q = tfq.position(self.N_cav)
-        self.p = tfq.momentum(self.N_cav)
-        self.n = tfq.num(self.N_cav)
-        self.I = tfq.qt2tf(qt.tensor(qt.identity(2), qt.identity(self.N_cav)))
 
-        # Pre-diagonalize
-        (self._eig_q, self._U_q) = tf.linalg.eigh(self.q)
-        (self._eig_p, self._U_p) = tf.linalg.eigh(self.p)
-        (self._eig_n, self._U_n) = tf.linalg.eigh(self.n)
+        self.P_cav = P_cav if P_cav is not None else self.N_cav
 
-        self._qp_comm = tf.linalg.diag_part(self.q @ self.p - self.p @ self.q)
+        with tf.device("CPU:0"):
+            self.a = tfq.destroy(self.N_cav)
+            self.adag = tfq.create(self.N_cav)
+            self.q = tfq.position(self.N_cav)
+            self.p = tfq.momentum(self.N_cav)
+            self.n = tfq.num(self.N_cav)
+            self.I = tfq.qt2tf(qt.tensor(qt.identity(2), qt.identity(self.N_cav)))
+
+            partial_I = qt.identity(self.N_cav)
+            for j in range(self.P_cav, self.N_cav):
+                partial_I[j, j] = 0
+            self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
+
+            # Pre-diagonalize
+            (self._eig_q, self._U_q) = tf.linalg.eigh(self.q)
+            (self._eig_p, self._U_p) = tf.linalg.eigh(self.p)
+            (self._eig_n, self._U_n) = tf.linalg.eigh(self.n)
+
+            self._qp_comm = tf.linalg.diag_part(self.q @ self.p - self.p @ self.q)
 
     @tf.function
     def construct_displacement_operators(self, alphas_rho, alphas_angle):
@@ -139,20 +154,42 @@ class CD_control_tf:
         ur = tf.constant(-1, dtype=tf.complex64) * exp_dag * sin * ds
         lr = cos * ds_dag
 
-        blocks = tf.concat([tf.concat([ul, ur], 2), tf.concat([ll, lr], 2)], 1)
+        # without pi pulse, block matrix is:
+        # (ul, ur)
+        # (ll, lr)
+        # however, with pi pulse included:
+        # (ll, lr)
+        # (ul, ur)
+        blocks = -1j * tf.concat([tf.concat([ll, lr], 2), tf.concat([ul, ur], 2)], 1)
 
         return blocks
+
+    @tf.function
+    def state(self, i=0, betas_rho=None, betas_angle=None, phis=None, thetas=None):
+        betas_rho = self.betas_rho if betas_rho is None else betas_rho
+        betas_angle = self.betas_angle if betas_angle is None else betas_angle
+        phis = self.phis if phis is None else phis
+        thetas = self.thetas if thetas is None else thetas
+        bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
+        psi = self.initial_state
+        for U in bs[:i]:
+            psi = U @ psi
+        return psi
+
+    @tf.function
+    def final_state(self, betas_rho, betas_angle, phis, thetas):
+        bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
+        psi = self.initial_state
+        for U in bs:
+            psi = U @ psi
+        return psi
 
     # TODO: use tf.einsum to quickly do these contractions
     @tf.function
     def state_overlap(self, betas_rho, betas_angle, phis, thetas):
-        # U = tf.eye(2, 2, dtype=tf.complex64)
-        bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
-        psi = self.initial_state
-        for U in tf.reverse(bs, axis=[0]):
-            psi = U @ psi
+        psif = self.final_state(betas_rho, betas_angle, phis, thetas)
         psi_target_dag = tf.linalg.adjoint(self.target_state)
-        overlap = psi_target_dag @ psi
+        overlap = psi_target_dag @ psif
         return overlap
 
     @tf.function
@@ -164,62 +201,165 @@ class CD_control_tf:
     @tf.function
     def U_tot(self, betas_rho, betas_angle, phis, thetas):
         bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
-        U_c = tf.scan(lambda a, b: tf.matmul(a, b), bs)[-1]
+        U_c = tf.scan(lambda a, b: tf.matmul(b, a), bs)[-1]
         # U_c = self.I
         # for U in bs:
-        #     U_c = U_c @ U  # following convention of state_fidelity..
+        #     U_c = U @ U_c
         return U_c
 
     @tf.function
-    def state_fidelity_unitary(self, betas_rho, betas_angle, phis, thetas):
+    def unitary_fidelity(self, betas_rho, betas_angle, phis, thetas):
         U_circuit = self.U_tot(betas_rho, betas_angle, phis, thetas)
-        D = self.N_cav * 2
-        overlap = tf.linalg.trace(tf.linalg.adjoint(self.target_unitary) @ U_circuit)
+        D = self.P_cav * 2
+        overlap = tf.linalg.trace(
+            tf.linalg.adjoint(self.target_unitary) @ self.P_matrix @ U_circuit
+        )
         return tf.abs((1.0 / D) * overlap) ** 2
 
-    def optimize(self, learning_rate=0.1, epoch_size=100, epochs=100, df_stop=1e-5):
+    # returns <psi_f | O | psi_f>
+    @tf.function
+    def expectation_value(self, betas_rho, betas_angle, phis, thetas, O):
+        psif = self.final_state(betas_rho, betas_angle, phis, thetas)
+        psif_dag = tf.linalg.adjoint(psif)
+        expect = psif_dag @ O @ psif
+        return expect
+
+    def plot_initial_state(
+        self, contour=True, fig=None, ax=None, max_alpha=6, cbar=False
+    ):
+        state = tfq.tf2qt(self.initial_state)
+        plot_wigner(
+            state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar
+        )
+
+    def plot_final_state(
+        self, contour=True, fig=None, ax=None, max_alpha=6, cbar=False
+    ):
+        state = tfq.tf2qt(
+            self.final_state(self.betas_rho, self.betas_angle, self.phis, self.thetas)
+        )
+        plot_wigner(
+            state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
+        )
+
+    def plot_target_state(
+        self, contour=True, fig=None, ax=None, max_alpha=6, cbar=False
+    ):
+        state = tfq.tf2qt(self.target_state)
+        plot_wigner(
+            state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
+        )
+
+    def plot_state(self, i=0, contour=True, fig=None, ax=None, max_alpha=6, cbar=False):
+        state = tfq.tf2qt(self.state(i=i))
+        plot_wigner(
+            state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
+        )
+
+    def optimize(
+        self,
+        learning_rate=0.01,
+        epoch_size=100,
+        epochs=100,
+        dloss_stop=1e-6,
+        beta_mask=None,
+        phi_mask=None,
+        theta_mask=None,
+        callback_fun=None,
+    ):
         optimizer = tf.optimizers.Adam(learning_rate)
         variables = [self.betas_rho, self.betas_angle, self.phis, self.thetas]
 
-        # todo: change to log
+        if beta_mask is None:
+            beta_mask = np.ones(self.N_blocks)
+            if self.no_CD_end:
+                beta_mask[-1] = 0  # don't optimize final CD
+
+        if phi_mask is None:
+            phi_mask = np.ones(self.N_blocks)
+            phi_mask[0] = 0  # stop gradient on first phi entry
+
+        if theta_mask is None:
+            theta_mask = np.ones(self.N_blocks)
+
+        beta_mask = tf.constant(beta_mask, dtype=tf.float32)
+        phi_mask = tf.constant(phi_mask, dtype=tf.float32)
+        theta_mask = tf.constant(theta_mask, dtype=tf.float32)
+
         @tf.function
-        def loss_fun(fid):
-            # minus = tf.constant(-1, dtype=tf.float32)
-            return tf.math.log(1 - fid)
+        def entry_stop_gradients(target, mask):
+            mask_h = tf.abs(mask - 1)
+            return tf.stop_gradient(mask_h * target) + mask * target
 
-        fid_func = (
-            self.state_fidelity
-            if not self.unitary_optimization
-            else self.state_fidelity_unitary
+        if self.optimize_expectation:
+
+            @tf.function
+            def loss_fun(betas_rho, betas_angle, phis, thetas):
+                expect = self.expectation_value(
+                    betas_rho, betas_angle, phis, thetas, self.O
+                )
+                return tf.math.log(1 - tf.math.real(expect))
+
+        else:
+
+            @tf.function
+            def loss_fun(betas_rho, betas_angle, phis, thetas):
+                fid_func = (
+                    self.state_fidelity
+                    if not self.unitary_optimization
+                    else self.unitary_fidelity
+                )
+                fid = fid_func(betas_rho, betas_angle, phis, thetas)
+                return tf.math.log(1 - fid)
+
+        term_loss = np.log(1 - self.term_fid)
+
+        # format of callback will always be
+        # callback_fun(self, loss, dloss, epoch)
+        # passing self to callback will allow one to print any values of the variables
+        if callback_fun is None:
+
+            def callback_fun(obj, loss, dloss, epoch):
+                fid = 1 - np.exp(loss)
+                print(
+                    "Epoch: %d Fid: %.6f Loss: %.6f dLoss: %.6f"
+                    % (epoch, fid, loss, dloss)
+                )
+
+        initial_loss = loss_fun(
+            self.betas_rho, self.betas_angle, self.phis, self.thetas
         )
-        fid = fid_func(self.betas_rho, self.betas_angle, self.phis, self.thetas)
-        initial_loss = loss_fun(fid)
-        print("Epoch: 0 Fidelity: {}".format(1 - np.exp(initial_loss.numpy())))
-        # def callback_early_stop()
+        callback_fun(self, initial_loss.numpy()[0, 0], 0, 0)
 
+        losses = []
+        losses.append(initial_loss.numpy()[0, 0])
+        loss = initial_loss
         for epoch in range(epochs + 1)[1:]:
             for _ in range(epoch_size):
                 with tf.GradientTape() as tape:
-                    new_fid = fid_func(
-                        self.betas_rho, self.betas_angle, self.phis, self.thetas
-                    )
-                    loss = loss_fun(new_fid)
-                    dloss_dvar = tape.gradient(loss, variables)
+                    betas_rho = entry_stop_gradients(self.betas_rho, beta_mask)
+                    betas_angle = entry_stop_gradients(self.betas_angle, beta_mask)
+                    phis = entry_stop_gradients(self.phis, phi_mask)
+                    thetas = entry_stop_gradients(self.thetas, theta_mask)
+                    new_loss = loss_fun(betas_rho, betas_angle, phis, thetas)
+                    dloss_dvar = tape.gradient(new_loss, variables)
                 optimizer.apply_gradients(zip(dloss_dvar, variables))
-            df = new_fid - fid
-            fid = new_fid
-            print("Epoch: {} Fidelity: {} dF: {}".format(epoch, fid, df))
-            if fid >= self.term_fid:
+            dloss = new_loss - loss
+            loss = new_loss
+            losses.append(loss.numpy()[0, 0])
+            callback_fun(self, loss.numpy()[0, 0], dloss.numpy()[0, 0], epoch)
+            if loss <= term_loss:
+                self.normalize_angles()
                 self.print_info()
-                return fid
-            if np.abs(df) < df_stop:
+                return losses
+            # TODO: use real gradient here, not the dloss!
+            if np.abs(dloss) < dloss_stop:
+                self.normalize_angles()
                 self.print_info()
-                return new_fid
-            fid = new_fid
-
+                return losses
+        self.normalize_angles()
         self.print_info()
-        fid = 1 - np.exp(loss.numpy())
-        return fid[0, 0]
+        return losses
 
     # TODO: update for tf
     def randomize(self, beta_scale=None, alpha_scale=None):
@@ -231,6 +371,10 @@ class CD_control_tf:
         rho_alpha = np.random.uniform(0, alpha_scale, self.N_blocks)
         phis = np.random.uniform(-np.pi, np.pi, self.N_blocks)
         thetas = np.random.uniform(-np.pi, np.pi, self.N_blocks)
+
+        phis[0] = 0  # optimization is done realative to first phi
+        if self.no_CD_end:
+            rho_beta[-1] = 0
 
         self.betas_rho = tf.Variable(rho_beta, dtype=tf.float32, trainable=True)
         self.betas_angle = tf.Variable(ang_beta, dtype=tf.float32, trainable=True)
@@ -291,10 +435,8 @@ class CD_control_tf:
     # and returns the parameters without updating self.
     # if parameters not specified, just normalize self's angles.
     # todo: make faster with numpy...
-    def normalize_angles(self, phis=None, thetas=None):
-        do_return = phis is not None
-        phis = self.phis if phis is None else phis
-        thetas = self.thetas if thetas is None else thetas
+    def normalize_angles(self):
+        betas, phis, thetas = self.get_numpy_vars()
         thetas_new = []
         for theta in thetas:
             while theta < -np.pi:
@@ -311,11 +453,7 @@ class CD_control_tf:
                 phi = phi - 2 * np.pi
             phis_new.append(phi)
         phis = np.array(phis_new)
-        if do_return:
-            return phis, thetas
-        else:
-            self.thetas = thetas
-            self.phis = phis
+        self.set_tf_vars(betas, phis, thetas)
 
     def save(self):
         datestr = datetime.now().strftime("%Y%m%d_%H_%M_%S")
@@ -384,7 +522,7 @@ class CD_control_tf:
         f = (
             self.state_fidelity(betas_rho, betas_angle, phis, thetas)
             if not self.unitary_optimization
-            else self.state_fidelity_unitary(betas_rho, betas_angle, phis, thetas)
+            else self.unitary_fidelity(betas_rho, betas_angle, phis, thetas)
         )
         betas, phis, thetas = self.get_numpy_vars(betas_rho, betas_angle, phis, thetas)
         if human:
