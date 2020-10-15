@@ -30,7 +30,7 @@ CD_control_obj = Global_optimizer_tf(target_unitary=targ, unitary_optimization=T
                     saving_directory=saving_directory)
 
 #%%
-CD_control_obj.multistart_optimize(beta_scale=)
+CD_control_obj.multistart_optimize()
 #%%
 CD_control_obj.N_blocks_sweep()
 #%% Doing the optimization

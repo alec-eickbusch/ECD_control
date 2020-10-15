@@ -1,6 +1,8 @@
 #%%
 %load_ext autoreload
 %autoreload 2
+import sys
+sys.path.append("../../")
 from CD_control.CD_control_tf import CD_control_tf
 from CD_control.helper_functions import plot_pulse, plot_wigner
 from CD_control.analysis import System, CD_control_analysis
