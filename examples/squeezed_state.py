@@ -1,21 +1,22 @@
 #%%
 %load_ext autoreload
 %autoreload 2
+import sys
+sys.path.append("../../")
 from CD_control.CD_control_tf import CD_control_tf
 from CD_control.helper_functions import plot_pulse, plot_wigner
 from CD_control.analysis import System, CD_control_analysis
 from CD_control.global_optimization_tf import Global_optimizer_tf
-import CD_control.tf_quantum as tfq
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 #%%
-N = 80 #cavity hilbert space 
+N = 100 #cavity hilbert space 
 alpha = 2 + 1j #cat alpha
-N_blocks = 5
+N_blocks = 8
 no_CD_end = True
 initial_state = qt.tensor(qt.basis(2,0),qt.basis(N,0))
-target_state = qt.tensor(qt.basis(2,0), (qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit())
+target_state = qt.tensor(qt.basis(2,0), qt.squeeze(N,1.5)*qt.basis(N,0))
 term_fid = 0.9999
 #%%
 CD_control_obj = CD_control_tf(initial_state, target_state, N_blocks=N_blocks,
@@ -27,32 +28,18 @@ plt.title("initial state")
 plt.figure(figsize=(5, 5), dpi=200)
 CD_control_obj.plot_target_state()
 plt.title("target state")
-#%% First, a basic optimization
-CD_control_obj.randomize(beta_scale=1.0)
-losses = CD_control_obj.optimize(epochs = 100, epoch_size=10,dloss_stop=1e-6)
 #%%
-#by default, the loss function is 1-log(fid)
-fids = 1 - np.exp(losses)
-plt.semilogy(1-fids)
-plt.xlabel('epoch')
-plt.ylabel('1-Fidelity')
-plt.title("Optimization")
+#CD_control_obj.randomize(beta_scale=0.1)
+fids = CD_control_obj.optimize(epochs = 500, epoch_size=10,dloss_stop=1e-6, learning_rate=0.001)
+#%%
+plt.plot(fids)
 
 #%%
+
+
 CD_control_obj.plot_final_state()
-#%% Now, we can perform global optimizations
-N_blocks = 3 #fewer N blocks for demonstration
-global_opt_obj = Global_optimizer_tf(initial_state, target_state, N_blocks=N_blocks,
-                    term_fid = term_fid, no_CD_end=True)
-#%% A multi-start optimization
-losses = global_opt_obj.multistart_optimize(N_multistart=5, beta_scale=1.0, epochs = 40, epoch_size=10,dloss_stop=1e-6)
-plt.figure()
-for loss in losses:
-    fids = 1 - np.exp(loss)
-    plt.semilogy(1-fids)
-plt.xlabel('epoch')
-plt.ylabel('1-Fidelity')
-plt.title("Multistart Optimization")
+#%%
+CD_control_obj
 #%%
 CD_control_obj.randomize(beta_scale=1.0)
 betas, phis, thetas = CD_control_obj.get_numpy_vars()
@@ -103,16 +90,13 @@ Ec_GHz = 0.19267571  # measured anharmonicity
 Ec = (2*np.pi) * Ec_GHz
 chi_MHz = 0.03
 chi = 2*np.pi*1e-3*chi_MHz
-sigma = 6  # sigma for gaussian pulses
+sigma = 3  # sigma for gaussian pulses
 chop = 4  # chop for gaussian pulses
-buffer_time = 4  # time between discrete pulses
-ring_up_time = 16  # Time to ring up for large CD pulses
-qubit_T1_us = 60.0
-qubit_T2_us = 60.0
+buffer_time = 0  # time between discrete pulses
+ring_up_time = 8  # Time to ring up for large CD pulses
 sys = System(chi=chi, Ec=Ec, alpha0=alpha0,
              sigma=sigma, chop=chop, epsilon_m=epsilon_m, buffer_time=buffer_time,
-             ring_up_time=ring_up_time, qubit_T1_us=qubit_T1_us,
-             qubit_T2_us=qubit_T2_us)
+             ring_up_time=ring_up_time)
 analysis_obj = CD_control_analysis(CD_control_obj, sys)
 #%%  The composite pulse
 e, O = analysis_obj.composite_pulse()
@@ -129,118 +113,118 @@ plt.figure(figsize=(5, 5), dpi=200)
 plot_wigner(psif)
 plt.title("constructed pulse final state")
 
-#%%
-psif = sys.simulate_pulse_master_equation(e, O, initial_state, use_qubit_T1=True, use_qubit_T2=True)
-fid = qt.fidelity(psif, target_state)
-fid_c = qt.fidelity(psif.ptrace(0), target_state.ptrace(0))
-fid_q = qt.fidelity(psif.ptrace(1), target_state.ptrace(1))
-zero = qt.tensor(qt.basis(2,0),qt.identity(N))
-fid_zero = qt.fidelity(zero.dag()*psif*zero, target_state.ptrace(1))
+#%% Going step by step
+CD_control_obj.N_blocks = 0
+e, O = analysis_obj.composite_pulse()
+plt.figure(figsize=(8, 4), dpi=200)
+plot_pulse(e, O)
+psif = sys.simulate_pulse_trotter(e, O, initial_state)
+fid = qt.fidelity(psif, CD_control_obj.final_state())
+fid_c = qt.fidelity(psif.ptrace(0), CD_control_obj.final_state().ptrace(0))
+fid_q = qt.fidelity(psif.ptrace(1), CD_control_obj.final_state().ptrace(1))
 print("\n\nSimulated fidelity to final state: %.5f" % fid)
 print("Simulated QUBIT fidelity to final state: %.5f" % fid_q)
 print("Simulated CAVITY fidelity to final state: %.5f\n\n" % fid_c)
-print("Simulated zero post selected cavity fidelity to final state: %.5f\n\n" % fid_c)
 plt.figure(figsize=(5, 5), dpi=200)
 CD_control_obj.plot_final_state()
 plt.title("cd grape final state")
 plt.figure(figsize=(5, 5), dpi=200)
 plot_wigner(psif)
 plt.title("constructed pulse final state")
-
-#%% Going step by step
-max_N_blocks = 1
-e, O = analysis_obj.composite_pulse(max_N_blocks=max_N_blocks)
-plt.figure(figsize=(8, 4), dpi=200)
-plot_pulse(e, O)
-psif = sys.simulate_pulse_master_equation(e, O, initial_state)
-psif_cd = tfq.tf2qt(CD_control_obj.state(i=max_N_blocks))
-fid = qt.fidelity(psif, psif_cd)
-fid_c = qt.fidelity(psif.ptrace(0), psif_cd.ptrace(0))
-fid_q = qt.fidelity(psif.ptrace(1), psif_cd.ptrace(1))
-print("\n\nSimulated fidelity to final state: %.5f" % fid)
-print("Simulated QUBIT fidelity to final state: %.5f" % fid_q)
-print("Simulated CAVITY fidelity to final state: %.5f\n\n" % fid_c)
-plt.figure(figsize=(5, 5), dpi=200)
-plot_wigner(psif_cd)
-plt.title("cd grape final state")
-plt.figure(figsize=(5, 5), dpi=200)
-plot_wigner(psif)
-plt.title("constructed pulse final state")
 b = qt.Bloch()
-b.add_states(psif_cd.ptrace(0))
-b.add_states(psif.ptrace(0))
+b.add_states(CD_control_obj.final_state().ptrace(1))
+b.add_states(psif.ptrace(1))
 b.show()
-
-#%% Going step by step
-max_N_blocks = 2
-e, O = analysis_obj.composite_pulse(max_N_blocks=max_N_blocks)
+#%%
+CD_control_obj.N_blocks = 1
+e, O = analysis_obj.composite_pulse()
 plt.figure(figsize=(8, 4), dpi=200)
 plot_pulse(e, O)
 psif = sys.simulate_pulse_trotter(e, O, initial_state)
-psif_cd = tfq.tf2qt(CD_control_obj.state(i=max_N_blocks))
-fid = qt.fidelity(psif, psif_cd)
-fid_c = qt.fidelity(psif.ptrace(0), psif_cd.ptrace(0))
-fid_q = qt.fidelity(psif.ptrace(1), psif_cd.ptrace(1))
+fid = qt.fidelity(psif, CD_control_obj.final_state())
+fid_c = qt.fidelity(psif.ptrace(0), CD_control_obj.final_state().ptrace(0))
+fid_q = qt.fidelity(psif.ptrace(1), CD_control_obj.final_state().ptrace(1))
 print("\n\nSimulated fidelity to final state: %.5f" % fid)
 print("Simulated QUBIT fidelity to final state: %.5f" % fid_q)
 print("Simulated CAVITY fidelity to final state: %.5f\n\n" % fid_c)
 plt.figure(figsize=(5, 5), dpi=200)
-plot_wigner(psif_cd)
+CD_control_obj.plot_final_state()
 plt.title("cd grape final state")
 plt.figure(figsize=(5, 5), dpi=200)
 plot_wigner(psif)
 plt.title("constructed pulse final state")
 b = qt.Bloch()
-b.add_states(psif_cd.ptrace(0))
-b.add_states(psif.ptrace(0))
+b.add_states(CD_control_obj.final_state().ptrace(1))
+b.add_states(psif.ptrace(1))
 b.show()
-#%% Going step by step
-max_N_blocks = 3
-e, O = analysis_obj.composite_pulse(max_N_blocks=max_N_blocks)
+#%%
+CD_control_obj.N_blocks = 2
+e, O = analysis_obj.composite_pulse()
 plt.figure(figsize=(8, 4), dpi=200)
 plot_pulse(e, O)
 psif = sys.simulate_pulse_trotter(e, O, initial_state)
-psif_cd = tfq.tf2qt(CD_control_obj.state(i=max_N_blocks))
-fid = qt.fidelity(psif, psif_cd)
-fid_c = qt.fidelity(psif.ptrace(0), psif_cd.ptrace(0))
-fid_q = qt.fidelity(psif.ptrace(1), psif_cd.ptrace(1))
+fid = qt.fidelity(psif, CD_control_obj.final_state())
+fid_c = qt.fidelity(psif.ptrace(0), CD_control_obj.final_state().ptrace(0))
+fid_q = qt.fidelity(psif.ptrace(1), CD_control_obj.final_state().ptrace(1))
 print("\n\nSimulated fidelity to final state: %.5f" % fid)
 print("Simulated QUBIT fidelity to final state: %.5f" % fid_q)
 print("Simulated CAVITY fidelity to final state: %.5f\n\n" % fid_c)
 plt.figure(figsize=(5, 5), dpi=200)
-plot_wigner(psif_cd)
+CD_control_obj.plot_final_state()
 plt.title("cd grape final state")
 plt.figure(figsize=(5, 5), dpi=200)
 plot_wigner(psif)
 plt.title("constructed pulse final state")
 b = qt.Bloch()
-b.add_states(psif_cd.ptrace(0))
-b.add_states(psif.ptrace(0))
+b.add_states(CD_control_obj.final_state().ptrace(1))
+b.add_states(psif.ptrace(1))
 b.show()
-
-# %%
-#%% Going step by step
-max_N_blocks = 5
-e, O = analysis_obj.composite_pulse(max_N_blocks=max_N_blocks)
+#%%
+CD_control_obj.N_blocks = 3
+e, O = analysis_obj.composite_pulse()
 plt.figure(figsize=(8, 4), dpi=200)
 plot_pulse(e, O)
 psif = sys.simulate_pulse_trotter(e, O, initial_state)
-psif_cd = tfq.tf2qt(CD_control_obj.state(i=max_N_blocks))
-fid = qt.fidelity(psif, psif_cd)
-fid_c = qt.fidelity(psif.ptrace(0), psif_cd.ptrace(0))
-fid_q = qt.fidelity(psif.ptrace(1), psif_cd.ptrace(1))
+fid = qt.fidelity(psif, CD_control_obj.final_state())
+fid_c = qt.fidelity(psif.ptrace(0), CD_control_obj.final_state().ptrace(0))
+fid_q = qt.fidelity(psif.ptrace(1), CD_control_obj.final_state().ptrace(1))
 print("\n\nSimulated fidelity to final state: %.5f" % fid)
 print("Simulated QUBIT fidelity to final state: %.5f" % fid_q)
 print("Simulated CAVITY fidelity to final state: %.5f\n\n" % fid_c)
 plt.figure(figsize=(5, 5), dpi=200)
-plot_wigner(psif_cd)
+CD_control_obj.plot_final_state()
 plt.title("cd grape final state")
 plt.figure(figsize=(5, 5), dpi=200)
 plot_wigner(psif)
 plt.title("constructed pulse final state")
 b = qt.Bloch()
-b.add_states(psif_cd.ptrace(0))
-b.add_states(psif.ptrace(0))
+b.add_states(CD_control_obj.final_state().ptrace(1))
+b.add_states(psif.ptrace(1))
 b.show()
-
+#%%
+CD_control_obj.N_blocks = 4
+e, O = analysis_obj.composite_pulse()
+plt.figure(figsize=(8, 4), dpi=200)
+plot_pulse(e, O)
+psif = sys.simulate_pulse_trotter(e, O, initial_state)
+fid = qt.fidelity(psif, CD_control_obj.final_state())
+fid_c = qt.fidelity(psif.ptrace(0), CD_control_obj.final_state().ptrace(0))
+fid_q = qt.fidelity(psif.ptrace(1), CD_control_obj.final_state().ptrace(1))
+print("\n\nSimulated fidelity to final state: %.5f" % fid)
+print("Simulated QUBIT fidelity to final state: %.5f" % fid_q)
+print("Simulated CAVITY fidelity to final state: %.5f\n\n" % fid_c)
+plt.figure(figsize=(5, 5), dpi=200)
+CD_control_obj.plot_final_state()
+plt.title("cd grape final state")
+plt.figure(figsize=(5, 5), dpi=200)
+plot_wigner(psif)
+plt.title("constructed pulse final state")
+b = qt.Bloch()
+b.add_states(CD_control_obj.final_state().ptrace(1))
+b.add_states(psif.ptrace(1))
+b.show()
+#%% Finally, we can save our parameters
+savefile = CD_control_obj.save()
+#%% You can also load up parameters
+CD_control_obj.load(savefile)
 # %%
