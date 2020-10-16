@@ -4,13 +4,14 @@
 import sys
 sys.path.append("../../")
 from CD_control.CD_control_tf import CD_control_tf
-from CD_control.helper_functions import plot_pulse, plot_wigner
+from CD_control.helper_functions import plot_pulse, plot_wigner, alpha_from_epsilon, plot_pulse_with_alpha
 from CD_control.analysis import System, CD_control_analysis
 from CD_control.global_optimization_tf import Global_optimizer_tf
 from bosonic_codes.GKPCode import *
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
+plt.rcParams.update({'font.size': 14, 'pdf.fonttype': 42, 'ps.fonttype': 42})
 
 #%%
 N = 150 #cavity hilbert space 
@@ -20,8 +21,9 @@ if 0:
 #c.plot_mixed_wigner(contour=True)
 #%%
 #O = qt.tensor(qt.identity(2), c.code_projector())
-O = qt.tensor(qt.identity(2), (c.stabilizer_symmetric(i=0) + c.stabilizer_symmetric(i=1) + c.pauli_symmetric(i = 0))/3.0)
+#O = qt.tensor(qt.identity(2), (c.stabilizer_symmetric(i=0) + c.stabilizer_symmetric(i=1) + c.pauli_symmetric(i = 0))/3.0)
 #%%
+saving_directory = "Z:\\Data\\Tennessee2020\\20201013_cooldown\\CD_control_data\\GKP_optimization\\"
 N_blocks = 16
 no_CD_end = True
 #initial_state = qt.tensor(qt.basis(2,0),qt.squeeze(N,1.5)*qt.basis(N,0))
@@ -29,19 +31,52 @@ initial_state = qt.tensor(qt.basis(2,0), qt.basis(N,0))
 target_state = qt.tensor(qt.basis(2,0), c.zero_logical)
 term_fid = 0.999
 #%%
-CD_control_obj = CD_control_tf(initial_state = initial_state, target_state = target_state)
+n = qt.tensor(qt.identity(2), qt.num(N))
+nbar_target = qt.expect(n, target_state)
+print("target state nbar: %f" % nbar_target)
 #%%
-CD_control_obj = CD_control_tf(initial_state, target_state,
+global_opt_obj = Global_optimizer_tf(initial_state, target_state,
                                 N_blocks = N_blocks, term_fid=term_fid,
                                 no_CD_end=no_CD_end)
 #%% We can plot the initial and target states (qubit traced out)
 plt.figure(figsize=(5,5), dpi=200)
-CD_control_obj.plot_initial_state()
+global_opt_obj.plot_initial_state()
 plt.title("initial state")
+#%%
+plot_name = "gkp_16_target_state"
 plt.figure(figsize=(5, 5), dpi=200)
-CD_control_obj.plot_target_state()
-plt.title("target state")
-
+global_opt_obj.plot_target_state(contour=True)
+plt.title(r'$\psi_{target}$')
+fig_savefile = saving_directory + plot_name + '.png'
+plt.tight_layout()
+plt.savefig(fig_savefile, filetype='png', transparent=True)
+#%%
+losses = global_opt_obj.multistart_optimize(N_multistart=30, beta_scale=1.0, epochs = 500,
+                                             epoch_size=10,dloss_stop=1e-6, learning_rate=0.01)
+#%%
+plot_name = "gkp_16_multistart"
+plt.figure(figsize=(4.5,3.5), dpi=200)
+for loss in losses:
+    fids = 1 - np.exp(loss)
+    plt.semilogy(1-fids)
+#plt.axhline(0.01, linestyle=':', color='black', alpha=0.5)
+plt.xlabel('epoch')
+plt.ylabel('1-Fidelity')
+plt.title("Multistart Optimization")
+fig_savefile = saving_directory + plot_name + '.png'
+plt.tight_layout()
+plt.savefig(fig_savefile, filetype='png', transparent=True)
+#%%
+global_opt_obj.print_info()
+#%%
+print(losses)
+#%%
+betas, phis, thetas = global_opt_obj.get_numpy_vars()
+#%%
+filename = "gkp_16_20201014.npz"
+savefile = saving_directory+filename
+np.savez(savefile, losses=np.array(losses), betas=betas, phis=phis, thetas=thetas)
+print("data saved as: " + savefile)
 #%%
 CD_control_obj.randomize(beta_scale=1)
 fids = CD_control_obj.optimize(epochs = 2000, epoch_size=2, dloss_stop=1e-7, learning_rate=0.01)
@@ -50,6 +85,8 @@ plt.figure()
 plt.plot(fids)
 plt.xlabel('epoch')
 plt.ylabel('fid')
+#%%
+print(fids)
 #%%
 CD_control_obj.plot_final_state()
 #%%
@@ -96,8 +133,8 @@ CD_control_obj.plot_final_state()
 plt.title("final state")
 #%% Now, we can convert these parameters to a pulse we can run on the experiment
 #first, creating a system object
-epsilon_m = 2*np.pi*1e-3*600.0  # maximum displacement rate
-alpha0 = 55  # maximum displacement before things break down
+epsilon_m = 2*np.pi*1e-3*500.0  # maximum displacement rate
+alpha0 = 60  # maximum displacement before things break down
 Ec_GHz = 0.19267571  # measured anharmonicity
 Ec = (2*np.pi) * Ec_GHz
 chi_MHz = 0.03
@@ -109,11 +146,28 @@ ring_up_time = 4  # Time to ring up for large CD pulses
 sys = System(chi=chi, Ec=Ec, alpha0=alpha0,
              sigma=sigma, chop=chop, epsilon_m=epsilon_m, buffer_time=buffer_time,
              ring_up_time=ring_up_time)
-analysis_obj = CD_control_analysis(CD_control_obj, sys)
+analysis_obj = CD_control_analysis(global_opt_obj, sys)
 #%%  The composite pulse
 e, O = analysis_obj.composite_pulse()
-plt.figure(figsize=(8, 4), dpi=200)
-plot_pulse(e, O)
+#%%
+alpha = alpha_from_epsilon(e)
+#%%
+plot_name = "gkp_16_pulse_20201014"
+fig = plt.figure(figsize=(7.5, 5), dpi=200)
+plot_pulse_with_alpha(e, O, alpha, nbar=True, labels=False, fig=fig, us=True)
+fig_savefile = saving_directory + plot_name + '.png'
+plt.tight_layout()
+plt.savefig(fig_savefile, filetype='png', transparent=True)
+#%%
+plot_name = "gkp_16_betas_20201014"
+
+fig = plt.figure(figsize=(4, 3.25), dpi=200)
+plt.plot(np.abs(betas),'o', color='black')
+plt.xlabel('round')
+plt.ylabel(r'$|\beta|$')
+fig_savefile = saving_directory + plot_name + '.png'
+plt.tight_layout()
+plt.savefig(fig_savefile, filetype='png', transparent=True)
 #%%
 psif = sys.simulate_pulse_trotter(e, O, initial_state)
 fid = qt.fidelity(psif, target_state)
@@ -126,6 +180,7 @@ plot_wigner(psif)
 plt.title("constructed pulse final state")
 #%%
 psif = sys.simulate_pulse_master_equation(e, O, initial_state, use_qubit_T1=True, use_qubit_T2=True)
+#%%
 fid = qt.fidelity(psif, target_state)
 fid_c = qt.fidelity(psif.ptrace(0), target_state.ptrace(0))
 fid_q = qt.fidelity(psif.ptrace(1), target_state.ptrace(1))
