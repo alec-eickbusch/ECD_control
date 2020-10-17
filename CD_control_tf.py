@@ -160,8 +160,8 @@ class CD_control_tf:
         # however, with pi pulse included:
         # (ll, lr)
         # (ul, ur)
+        # pi pulse also adds -i phase, however don't need to trck it unless using multiple oscillators.a
         blocks = -1j * tf.concat([tf.concat([ll, lr], 2), tf.concat([ul, ur], 2)], 1)
-
         return blocks
 
     @tf.function
@@ -180,11 +180,11 @@ class CD_control_tf:
     def final_state(self, betas_rho, betas_angle, phis, thetas):
         bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
         psi = self.initial_state
+        # note: might be able to use tf.einsum or tf.scan (as done in U_tot) here.
         for U in bs:
             psi = U @ psi
         return psi
 
-    # TODO: use tf.einsum to quickly do these contractions
     @tf.function
     def state_overlap(self, betas_rho, betas_angle, phis, thetas):
         psif = self.final_state(betas_rho, betas_angle, phis, thetas)
@@ -202,19 +202,16 @@ class CD_control_tf:
     def U_tot(self, betas_rho, betas_angle, phis, thetas):
         bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
         U_c = tf.scan(lambda a, b: tf.matmul(b, a), bs)[-1]
-        # U_c = self.I
-        # for U in bs:
-        #     U_c = U @ U_c
         return U_c
 
     @tf.function
     def unitary_fidelity(self, betas_rho, betas_angle, phis, thetas):
         U_circuit = self.U_tot(betas_rho, betas_angle, phis, thetas)
-        D = self.P_cav * 2
+        D = tf.constant(self.P_cav * 2, dtype=tf.complex64)
         overlap = tf.linalg.trace(
             tf.linalg.adjoint(self.target_unitary) @ self.P_matrix @ U_circuit
         )
-        return tf.cast(tf.abs((1.0 / D) * overlap) ** 2, dtype=tf.float32)
+        return tf.cast((1.0 / D) * overlap * tf.math.conj(overlap), dtype=tf.float32)
 
     # returns <psi_f | O | psi_f>
     @tf.function
@@ -223,53 +220,6 @@ class CD_control_tf:
         psif_dag = tf.linalg.adjoint(psif)
         expect = psif_dag @ O @ psif
         return expect
-
-    def plot_initial_state(
-        self, contour=True, fig=None, ax=None, max_alpha=6, cbar=False
-    ):
-        state = tfq.tf2qt(self.initial_state)
-        plot_wigner(
-            state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar
-        )
-
-    def plot_final_state(
-        self, contour=True, fig=None, ax=None, max_alpha=6, cbar=False
-    ):
-        state = tfq.tf2qt(
-            self.final_state(self.betas_rho, self.betas_angle, self.phis, self.thetas)
-        )
-        plot_wigner(
-            state,
-            contour=contour,
-            fig=fig,
-            ax=ax,
-            max_alpha=max_alpha,
-            cbar=cbar,
-        )
-
-    def plot_target_state(
-        self, contour=True, fig=None, ax=None, max_alpha=6, cbar=False
-    ):
-        state = tfq.tf2qt(self.target_state)
-        plot_wigner(
-            state,
-            contour=contour,
-            fig=fig,
-            ax=ax,
-            max_alpha=max_alpha,
-            cbar=cbar,
-        )
-
-    def plot_state(self, i=0, contour=True, fig=None, ax=None, max_alpha=6, cbar=False):
-        state = tfq.tf2qt(self.state(i=i))
-        plot_wigner(
-            state,
-            contour=contour,
-            fig=fig,
-            ax=ax,
-            max_alpha=max_alpha,
-            cbar=cbar,
-        )
 
     def optimize(
         self,
@@ -315,16 +265,18 @@ class CD_control_tf:
                 )
                 return tf.math.log(1 - tf.math.real(expect))
 
+        if self.unitary_optimization:
+
+            @tf.function
+            def loss_fun(betas_rho, betas_angle, phis, thetas):
+                fid = self.unitary_fidelity(betas_rho, betas_angle, phis, thetas)
+                return tf.math.log(1 - fid)
+
         else:
 
             @tf.function
             def loss_fun(betas_rho, betas_angle, phis, thetas):
-                fid_func = (
-                    self.state_fidelity
-                    if not self.unitary_optimization
-                    else self.unitary_fidelity
-                )
-                fid = fid_func(betas_rho, betas_angle, phis, thetas)
+                fid = self.state_fidelity(betas_rho, betas_angle, phis, thetas)
                 return tf.math.log(1 - fid)
 
         term_loss = np.log(1 - self.term_fid)
@@ -344,7 +296,6 @@ class CD_control_tf:
         initial_loss = loss_fun(
             self.betas_rho, self.betas_angle, self.phis, self.thetas
         )
-        print(initial_loss.numpy())
         callback_fun(self, initial_loss.numpy(), 0, 0)
 
         losses = []
@@ -368,7 +319,6 @@ class CD_control_tf:
                 self.normalize_angles()
                 self.print_info()
                 return losses
-            # TODO: use real gradient here, not the dloss!
             if np.abs(dloss) < dloss_stop:
                 self.normalize_angles()
                 self.print_info()
