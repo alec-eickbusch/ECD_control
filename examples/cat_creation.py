@@ -18,19 +18,25 @@ N_blocks = 5
 no_CD_end = True
 initial_state = qt.tensor(qt.basis(2,0),qt.basis(N,0))
 target_state = qt.tensor(qt.basis(2,0), (qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit())
-term_fid = 0.9999
+term_fid = 0.999
 #%%
 CD_control_obj = CD_control_tf(initial_state, target_state, N_blocks=N_blocks,
-                    term_fid = term_fid, no_CD_end=True)
+                    term_fid = term_fid, no_CD_end=True, use_displacements=False)
 #%% We can plot the initial and target states (qubit traced out)
-plt.figure(figsize=(5,5), dpi=200)
-CD_control_obj.plot_initial_state()
-plt.title("initial state")
-plt.figure(figsize=(5, 5), dpi=200)
-CD_control_obj.plot_target_state()
-plt.title("target state")
+if 0:
+    plt.figure(figsize=(5,5), dpi=200)
+    CD_control_obj.plot_initial_state()
+    plt.title("initial state")
+    plt.figure(figsize=(5, 5), dpi=200)
+    CD_control_obj.plot_target_state()
+    plt.title("target state")
+#%%
+CD_control_obj.print_info()
 #%% First, a basic optimization
-CD_control_obj.randomize(beta_scale=1.0)
+CD_control_obj.randomize(beta_scale=1.0, alpha_scale=1.0)
+#%%
+CD_control_obj.print_info()
+#%%
 losses = CD_control_obj.optimize(epochs = 100, epoch_size=10,dloss_stop=1e-6)
 #%%
 #by default, the loss function is 1-log(fid)
