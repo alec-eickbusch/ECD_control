@@ -7,8 +7,7 @@ Created on Tue Nov  5 14:18:08 2019
 """
 
 import numpy as np
-from CD_control.helper_functions import alpha_from_epsilon
-from CD_control.visualization import plot_pulse
+from CD_control.analysis.helper_functions import alpha_from_epsilon, plot_pulse
 
 #%%
 def gaussian_wave(sigma, chop=4):
