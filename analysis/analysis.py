@@ -266,8 +266,7 @@ class CD_control_analysis:
     # a block is defined by a rotation and displacement pulse, followed by a CD pulse.
     # for now pulse block will end with buffer time zeros.
     def pulse_block(self, i):
-        betas, phis, thetas = self.CD_control_object.get_numpy_vars()
-        alphas = np.zeros_like(betas)
+        betas, alphas, phis, thetas = self.CD_control_object.get_numpy_vars()
         beta = betas[i]
         alpha = alphas[i]
         phi = phis[i]
