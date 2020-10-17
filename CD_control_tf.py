@@ -84,9 +84,10 @@ class CD_control_tf:
             self.n = tfq.num(self.N_cav)
             self.I = tfq.qt2tf(qt.tensor(qt.identity(2), qt.identity(self.N_cav)))
 
-            partial_I = qt.identity(self.N_cav)
+            partial_I = np.array(qt.identity(self.N_cav))
             for j in range(self.P_cav, self.N_cav):
-                partial_I -= qt.ket2dm(qt.basis(self.N_cav, j))
+                partial_I[j, j] = 0
+            partial_I = qt.Qobj(partial_I)
             self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
 
             # Pre-diagonalize
