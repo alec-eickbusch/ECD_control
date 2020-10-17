@@ -199,9 +199,22 @@ class CD_control_tf:
         return fid
 
     @tf.function
+    def mult_bin_tf(self, a):
+        while a.shape[0] > 1:
+            if a.shape[0] % 2 == 1:
+                a = tf.concat(
+                    [a[:-2], [tf.matmul(a[-2], a[-1])]], 0
+                )  # maybe there's a faster way to deal with immutable constants
+            a = tf.matmul(a[::2, ...], a[1::2, ...])
+        return a[0]
+
+    @tf.function
     def U_tot(self, betas_rho, betas_angle, phis, thetas):
         bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
-        U_c = tf.scan(lambda a, b: tf.matmul(b, a), bs)[-1]
+        # U_c = tf.scan(lambda a, b: tf.matmul(b, a), bs)[-1]
+        U_c = self.mult_bin_tf(
+            tf.reverse(bs, axis=[0])
+        )  # [U_1,U_2,..] -> [U_N,U_{N-1},..]-> U_N @ U_{N-1} @ .. @ U_1
         # U_c = self.I
         # for U in bs:
         #     U_c = U @ U_c

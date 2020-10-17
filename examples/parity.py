@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 #%%
 N = 100 #cavity hilbert space 
 # alpha = 2 + 1j #cat alpha
-N_blocks = 5
+N_blocks = 20
 # initial_state = qt.tensor(qt.basis(2,0),qt.basis(N,0))
 # target_state = qt.tensor(qt.basis(2,0), (qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit())
 a = qt.tensor(qt.identity(2), qt.destroy(N))
