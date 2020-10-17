@@ -3,9 +3,8 @@ import numpy as np
 import qutip as qt
 
 # from CD_control.CD_control_optimization import *
-from CD_control.basic_pulses import fastest_CD, rotate, disp_gaussian
-from CD_control.helper_functions import alpha_from_epsilon
-from CD_control.visualization import plot_pulse
+from CD_control.analysis.basic_pulses import fastest_CD, rotate, disp_gaussian
+from CD_control.analysis.helper_functions import alpha_from_epsilon, plot_pulse
 import matplotlib.pyplot as plt
 
 plt.rcParams.update({"font.size": 16, "pdf.fonttype": 42, "ps.fonttype": 42})

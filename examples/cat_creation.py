@@ -4,8 +4,8 @@
 import sys
 sys.path.append("../../")
 from CD_control.CD_control_tf import CD_control_tf
-from CD_control.visualization import plot_pulse, plot_wigner
-from CD_control.analysis import System, CD_control_analysis
+from CD_control.analysis.helper_functions import plot_pulse
+from CD_control.analysis.analysis import System, CD_control_analysis
 from CD_control.global_optimization_tf import Global_optimizer_tf
 import CD_control.tf_quantum as tfq
 import numpy as np
