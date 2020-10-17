@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 #%%
 N = 80 #cavity hilbert space 
 # alpha = 2 + 1j #cat alpha
-N_blocks = 15
+N_blocks = 20
 # initial_state = qt.tensor(qt.basis(2,0),qt.basis(N,0))
 # target_state = qt.tensor(qt.basis(2,0), (qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit())
 a = qt.tensor(qt.identity(2), qt.destroy(N))
@@ -23,13 +23,37 @@ targ = (1j*np.pi*a.dag()*a*sz).expm()
 term_fid = 0.998
 #max alpha and beta are the maximum values of alpha and beta for optimization
 name = "Parity"
-saving_directory = "/"
-CD_control_obj = Global_optimizer_tf(target_unitary=targ, unitary_optimization=True, P_cav=4,
+saving_directory = "Z:\\Data\\Tennessee2020\\20201013_cooldown\\CD_control_data\\parity_optimization\\"
+global_opt_obj = Global_optimizer_tf(target_unitary=targ, unitary_optimization=True, P_cav=4,
                     N_blocks=N_blocks,
                     name=name, term_fid=term_fid,
                     saving_directory=saving_directory)
 
 #%%
+losses = global_opt_obj.multistart_optimize(N_multistart=30, beta_scale=1.0, epochs = 500,
+                                             epoch_size=10,dloss_stop=1e-6, learning_rate=0.01)
+plot_name = "parity_N_20_pcav_4_multistart"
+plt.figure(figsize=(4.5,3.5), dpi=200)
+for loss in losses:
+    fids = 1 - np.exp(loss)
+    plt.semilogy(1-fids)
+#plt.axhline(0.01, linestyle=':', color='black', alpha=0.5)
+plt.xlabel('epoch')
+plt.ylabel('1-Fidelity')
+plt.title("Multistart Optimization")
+fig_savefile = saving_directory + plot_name + '.png'
+plt.tight_layout()
+plt.savefig(fig_savefile, filetype='png', transparent=True)
+
+global_opt_obj.print_info()
+betas, phis, thetas = global_opt_obj.get_numpy_vars()
+filename = "parity_N_20_pcav_4_20201014.npz"
+savefile = saving_directory+filename
+np.savez(savefile, losses=np.array(losses), betas=betas, phis=phis, thetas=thetas)
+print("data saved as: " + savefile)
+#%%
+
+
 CD_control_obj.multistart_optimize()
 #%%
 CD_control_obj.N_blocks_sweep()
