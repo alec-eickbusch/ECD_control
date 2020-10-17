@@ -239,7 +239,12 @@ class CD_control_tf:
             self.final_state(self.betas_rho, self.betas_angle, self.phis, self.thetas)
         )
         plot_wigner(
-            state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
+            state,
+            contour=contour,
+            fig=fig,
+            ax=ax,
+            max_alpha=max_alpha,
+            cbar=cbar,
         )
 
     def plot_target_state(
@@ -247,13 +252,23 @@ class CD_control_tf:
     ):
         state = tfq.tf2qt(self.target_state)
         plot_wigner(
-            state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
+            state,
+            contour=contour,
+            fig=fig,
+            ax=ax,
+            max_alpha=max_alpha,
+            cbar=cbar,
         )
 
     def plot_state(self, i=0, contour=True, fig=None, ax=None, max_alpha=6, cbar=False):
         state = tfq.tf2qt(self.state(i=i))
         plot_wigner(
-            state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
+            state,
+            contour=contour,
+            fig=fig,
+            ax=ax,
+            max_alpha=max_alpha,
+            cbar=cbar,
         )
 
     def optimize(
