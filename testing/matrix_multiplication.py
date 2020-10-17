@@ -44,6 +44,11 @@ def mult_bin_tf(a):
     return a
 
 
+@tf.function
+def mult_bin_tf_inbuilt(a):
+    return tf.math.reduce_prod(a, axis=0)
+
+
 #%%
 np.random.seed(0)
 matrices = np.array(np.random.rand(2 ** 10 + 3, 2, 2), dtype=np.float32)
@@ -59,11 +64,16 @@ print(timeit.timeit(bin_time, number=100))
 with tf.device("CPU:0"):
     mat = tf.constant(matrices.copy(), dtype=tf.float32)
     mat2 = tf.constant(matrices.copy(), dtype=tf.float32)
+    mat3 = tf.constant(matrices.copy(), dtype=tf.float32)
+
     reg_time_tf = wrapper(mult_tf, mat)
     bin_time_tf = wrapper(mult_bin_tf, mat2)
+    inbuilt_time_tf = wrapper(mult_bin_tf_inbuilt, mat3)
     print(reg_time_tf())
     print(bin_time_tf())
+    print(inbuilt_time_tf())
     print(timeit.timeit(reg_time_tf, number=100))
     print(timeit.timeit(bin_time_tf, number=100))
+    print(timeit.timeit(inbuilt_time_tf, number=100))
 
 # %%
