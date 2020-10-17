@@ -7,15 +7,19 @@
 import numpy as np
 import tensorflow as tf
 
+print(
+    "\nNeed tf version 2.3.0 or later. Using tensorflow version: "
+    + tf.__version__
+    + "\n"
+)
 #%%
 import CD_control.tf_quantum as tfq
-import matplotlib.pyplot as plt
-from CD_control.helper_functions import plot_wigner
+from CD_control.visualization import VisualizationMixin
 import qutip as qt
 from datetime import datetime
 
 #%%
-class CD_control_tf:
+class CD_control_tf(VisualizationMixin):
 
     # a block is defined as the unitary: CD(beta)D(alpha)R_phi(theta)
     def __init__(
@@ -496,14 +500,14 @@ class CD_control_tf:
             if loss <= term_loss:
                 self.normalize_angles()
                 self.print_info()
-                return losses
+                return np.squeeze(np.array(losses))
             if np.abs(dloss) < dloss_stop:
                 self.normalize_angles()
                 self.print_info()
-                return losses
+                return np.squeeze(np.array(losses))
         self.normalize_angles()
         self.print_info()
-        return losses
+        return np.squeeze(np.array(losses))
 
     # TODO: update for tf
     def randomize(self, beta_scale=None, alpha_scale=None):
@@ -720,6 +724,7 @@ class CD_control_tf:
                 print("N_blocks:      " + str(self.N_blocks))
                 print("Unitary opt :  " + str(self.unitary_optimization))
                 # todo: add expectation optimization info
+                print("N_cav:         " + str(self.N_cav))
                 print("P_cav:         " + str(self.P_cav))
                 print("Term fid:      %.6f" % self.term_fid)
                 print("displacements: " + str(self.use_displacements))
@@ -734,6 +739,7 @@ class CD_control_tf:
             print("N_blocks: " + repr(self.N_blocks))
             print("Unitary optimization: " + str(self.unitary_optimization))
             # todo: add expectation optimization info
+            print("N_cav:         " + str(self.N_cav))
             print("P_cav: " + str(self.P_cav))
             print("Term fid: %.6f" % self.term_fid)
             print("Use displacements: " + str(self.use_displacements))

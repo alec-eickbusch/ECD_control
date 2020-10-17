@@ -4,7 +4,7 @@
 import sys
 sys.path.append("../../")
 from CD_control.CD_control_tf import CD_control_tf
-from CD_control.helper_functions import plot_pulse, plot_wigner
+from CD_control.visualization import plot_pulse, plot_wigner
 from CD_control.analysis import System, CD_control_analysis
 from CD_control.global_optimization_tf import Global_optimizer_tf
 import CD_control.tf_quantum as tfq
@@ -23,7 +23,7 @@ term_fid = 0.999
 CD_control_obj = CD_control_tf(initial_state, target_state, N_blocks=N_blocks,
                     term_fid = term_fid, no_CD_end=True, use_displacements=False)
 #%% We can plot the initial and target states (qubit traced out)
-if 0:
+if 1:
     plt.figure(figsize=(5,5), dpi=200)
     CD_control_obj.plot_initial_state()
     plt.title("initial state")
