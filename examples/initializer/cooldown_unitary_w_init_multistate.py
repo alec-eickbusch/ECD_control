@@ -34,31 +34,25 @@ CD_control_obj = CD_control_init_tf(N_blocks=N_blocks,target_unitary=targ,
                     saving_directory=saving_directory)
 
 #%% 
-CD_control_obj.state_initialize_unitary()
+states = tf.stack([
+    tfq.qt2tf(qt.tensor(qt.basis(2,0),qt.basis(N,0))),
+    tfq.qt2tf(qt.tensor(qt.basis(2,0),qt.basis(N,1))),
+    ])
+CD_control_obj.multi_state_initialize_unitary(states)
 
-#%% 
+#%% Test Initialization
 CD_control_obj.plot_initial_state()
 CD_control_obj.plot_final_state()
 CD_control_obj.plot_target_state()
 
 #%% Unitary Fidelity Optimization with States Basis
-CD_control_unitary_obj = CD_control_obj.initialized_obj(unitary_optimization="states")
-states = tf.stack([tfq.qt2tf(qt.tensor(qt.basis(2,1),qt.basis(N,0))), tfq.qt2tf(qt.tensor(qt.basis(2,0),qt.basis(N,0))),tfq.qt2tf(qt.tensor(qt.basis(2,0),qt.basis(N,1))),tfq.qt2tf(qt.tensor(qt.basis(2,1),qt.basis(N,1)))])
-states = tf.stack([
-    tfq.qt2tf(qt.tensor(qt.basis(2,0),qt.basis(N,0))),
-    tfq.qt2tf(qt.tensor(qt.basis(2,0),qt.basis(N,1))),
-    ])
-CD_control_unitary_obj.set_unitary_fidelity_state_basis(states)
+CD_control_unitary_obj = CD_control_obj.initialized_obj(unitary_optimization=True)
 CD_control_unitary_obj.optimize(epochs=100, epoch_size=10, dloss_stop=1e-6)
 
 #%% 
 CD_control_unitary_obj.plot_initial_state()
 CD_control_unitary_obj.plot_final_state()
 CD_control_unitary_obj.plot_target_state()
-
-#%% Normal Unitary Fidelity Optimization
-CD_control_unitary_obj2 = CD_control_obj.initialized_obj(unitary_optimization=True)
-CD_control_unitary_obj2.optimize(epochs=100, epoch_size=10, dloss_stop=1e-6)
 
 
 # #%% 

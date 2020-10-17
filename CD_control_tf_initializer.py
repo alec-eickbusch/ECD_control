@@ -145,14 +145,27 @@ class CD_control_init_tf(CD_control_tf):
 
     def state_initialize_unitary(self):
         print("==========================================================")
-        # (psi_f.dag() U_f) U_n (U_i psi_i) => psi_f' = U_f.dag() @ psi_f
+        print("Single State Transfer Unitary Initializatoin\n")
         self.initial_state = self.initial_state_original
         self.target_state = self.target_state_original
         self.unitary_optimization = False
         self.randomize(beta_scale=3)
         self.optimize(epochs=100, epoch_size=10, dloss_stop=1e-6)
         self.print_info()
-        # TODO add some stop condition if max fid isn't reached
+        betas, phis, thetas = self.get_numpy_vars()
+        self.betas_full = betas
+        self.phis_full = phis
+        self.thetas_full = thetas
+        print("==========================================================")
+
+    def multi_state_initialize_unitary(self, states):
+        print("==========================================================")
+        print("Multi State Transfer Unitary Initializatoin\n")
+        self.set_unitary_fidelity_state_basis(states)
+        self.unitary_optimization = "states"
+        self.randomize(beta_scale=3)
+        self.optimize(epochs=100, epoch_size=10, dloss_stop=1e-6)
+        self.print_info()
         betas, phis, thetas = self.get_numpy_vars()
         self.betas_full = betas
         self.phis_full = phis
