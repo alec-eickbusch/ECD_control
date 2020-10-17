@@ -188,7 +188,14 @@ class CD_control_tf:
         return psi
 
     @tf.function
-    def final_state(self, betas_rho, betas_angle, phis, thetas):
+    def final_state(
+        self, betas_rho=None, betas_angle=None, phis=None, thetas=None,
+    ):
+        betas_rho = betas_rho if betas_rho is not None else self.betas_rho
+        betas_angle = betas_angle if betas_angle is not None else self.betas_angle
+        phis = phis if phis is not None else self.phis
+        thetas = thetas if thetas is not None else self.thetas
+
         bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
         psi = self.initial_state
         for U in bs:
@@ -422,7 +429,6 @@ class CD_control_tf:
 
         phis[0] = 0  # optimization is done realative to first phi
         if self.no_CD_end:
-            print("ERRRRRROR")
             rho_beta[-1] = 0
 
         self.betas_rho = tf.Variable(rho_beta, dtype=tf.float32, trainable=True)
