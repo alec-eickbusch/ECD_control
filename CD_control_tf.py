@@ -26,7 +26,6 @@ class CD_control_tf:
         P_cav=None,
         N_blocks=1,
         betas=None,
-        alphas=None,
         phis=None,
         thetas=None,
         max_alpha=5,
@@ -41,16 +40,27 @@ class CD_control_tf:
         optimize_expectation=False,
         O=None,
     ):
-
+        self.initial_state = initial_state if initial_state is not None else None
         self.initial_state = (
-            tfq.qt2tf(initial_state) if initial_state is not None else None
+            tfq.qt2tf(initial_state)
+            if not tf.is_tensor(self.initial_state)
+            else self.initial_state
         )
+
+        self.target_state = target_state if target_state is not None else None
         self.target_state = (
-            tfq.qt2tf(target_state) if target_state is not None else None
+            tfq.qt2tf(target_state)
+            if not tf.is_tensor(self.target_state)
+            else self.target_state
         )
+
+        self.target_unitary = target_unitary if target_unitary is not None else None
         self.target_unitary = (
-            tfq.qt2tf(target_unitary) if target_unitary is not None else None
+            tfq.qt2tf(target_unitary)
+            if not tf.is_tensor(self.target_unitary)
+            else self.target_unitary
         )
+
         self.unitary_optimization = unitary_optimization
         self.N_blocks = N_blocks
 
@@ -70,9 +80,9 @@ class CD_control_tf:
 
         # todo: handle case when initial state is a tf object.
         if unitary_optimization:
-            self.N_cav = target_unitary.dims[0][1]
+            self.N_cav = self.target_unitary.numpy().shape[0] // 2
         else:
-            self.N_cav = initial_state.dims[0][1]
+            self.N_cav = self.initial_state.numpy().shape[0] // 2
 
         self.P_cav = P_cav if P_cav is not None else self.N_cav
 
@@ -228,7 +238,25 @@ class CD_control_tf:
         overlap = tf.linalg.trace(
             tf.linalg.adjoint(self.target_unitary) @ self.P_matrix @ U_circuit
         )
-        return tf.cast(tf.abs((1.0 / D) * overlap) ** 2, dtype=tf.float32)
+        return tf.cast(
+            (1.0 / D) ** 2 * overlap * tf.math.conj(overlap), dtype=tf.float32
+        )
+
+    def set_unitary_fidelity_state_basis(self, states):
+        self.initial_unitary_states = states
+        self.target_unitary_states = self.target_unitary @ states  # using broadcasting
+
+    def unitary_fidelity_state_decomp(self, betas_rho, betas_angle, phis, thetas):
+        bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
+        psis = self.initial_unitary_states
+        for U in bs:
+            psis = U @ psis  # using broadcasting
+        psis_target_dag = tf.linalg.adjoint(self.target_unitary_states)
+        overlaps = psis_target_dag @ psis
+        overlap = tf.reduce_sum(overlaps)
+        return tf.cast(
+            (1.0 / len(psis)) ** 2 * overlap * tf.math.conj(overlap), dtype=tf.float32
+        )
 
     # returns <psi_f | O | psi_f>
     @tf.function
@@ -321,8 +349,13 @@ class CD_control_tf:
                 fid_func = (
                     self.state_fidelity
                     if not self.unitary_optimization
-                    else self.unitary_fidelity
+                    else (
+                        self.unitary_fidelity_state_decomp
+                        if self.unitary_optimization == "states"
+                        else self.unitary_fidelity
+                    )
                 )
+
                 fid = fid_func(betas_rho, betas_angle, phis, thetas)
                 return tf.math.log(1 - fid)
 
@@ -389,6 +422,7 @@ class CD_control_tf:
 
         phis[0] = 0  # optimization is done realative to first phi
         if self.no_CD_end:
+            print("ERRRRRROR")
             rho_beta[-1] = 0
 
         self.betas_rho = tf.Variable(rho_beta, dtype=tf.float32, trainable=True)
@@ -475,12 +509,12 @@ class CD_control_tf:
         filestring = self.saving_directory + self.name + "_" + datestr
         filename_np = filestring + ".npz"
         filename_qt = filestring + ".qt"
+        betas, phis, thetas = self.get_numpy_vars(betas_rho, betas_angle, phis, thetas)
         np.savez(
             filename_np,
-            betas=self.betas,
-            alphas=self.alphas,
-            phis=self.phis,
-            thetas=self.thetas,
+            betas=betas,
+            phis=phis,
+            thetas=thetas,
             max_alpha=self.max_alpha,
             max_beta=self.max_beta,
             name=self.name,
@@ -537,7 +571,11 @@ class CD_control_tf:
         f = (
             self.state_fidelity(betas_rho, betas_angle, phis, thetas)
             if not self.unitary_optimization
-            else self.unitary_fidelity(betas_rho, betas_angle, phis, thetas)
+            else (
+                self.unitary_fidelity_state_decomp(betas_rho, betas_angle, phis, thetas)
+                if self.unitary_optimization == "states"
+                else self.unitary_fidelity(betas_rho, betas_angle, phis, thetas)
+            )
         )
         betas, phis, thetas = self.get_numpy_vars(betas_rho, betas_angle, phis, thetas)
         if human:
