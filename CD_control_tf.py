@@ -31,7 +31,6 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
         P_cav=None,
         N_blocks=1,
         betas=None,
-        alphas=None,
         phis=None,
         thetas=None,
         max_alpha=5,
@@ -46,16 +45,27 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
         optimize_expectation=False,
         O=None,
     ):
-
+        self.initial_state = initial_state if initial_state is not None else None
         self.initial_state = (
-            tfq.qt2tf(initial_state) if initial_state is not None else None
+            tfq.qt2tf(initial_state)
+            if not tf.is_tensor(self.initial_state)
+            else self.initial_state
         )
+
+        self.target_state = target_state if target_state is not None else None
         self.target_state = (
-            tfq.qt2tf(target_state) if target_state is not None else None
+            tfq.qt2tf(target_state)
+            if not tf.is_tensor(self.target_state)
+            else self.target_state
         )
+
+        self.target_unitary = target_unitary if target_unitary is not None else None
         self.target_unitary = (
-            tfq.qt2tf(target_unitary) if target_unitary is not None else None
+            tfq.qt2tf(target_unitary)
+            if not tf.is_tensor(self.target_unitary)
+            else self.target_unitary
         )
+
         self.unitary_optimization = unitary_optimization
         self.N_blocks = N_blocks
 
@@ -75,9 +85,9 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
 
         # todo: handle case when initial state is a tf object.
         if unitary_optimization:
-            self.N_cav = target_unitary.dims[0][1]
+            self.N_cav = self.target_unitary.numpy().shape[0] // 2
         else:
-            self.N_cav = initial_state.dims[0][1]
+            self.N_cav = self.initial_state.numpy().shape[0] // 2
 
         self.P_cav = P_cav if P_cav is not None else self.N_cav
 
@@ -89,9 +99,10 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
             self.n = tfq.num(self.N_cav)
             self.I = tfq.qt2tf(qt.tensor(qt.identity(2), qt.identity(self.N_cav)))
 
-            partial_I = qt.identity(self.N_cav)
+            partial_I = np.array(qt.identity(self.N_cav))
             for j in range(self.P_cav, self.N_cav):
-                partial_I -= qt.ket2dm(qt.basis(self.N_cav, j))
+                partial_I[j, j] = 0
+            partial_I = qt.Qobj(partial_I)
             self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
 
             # Pre-diagonalize
@@ -285,6 +296,7 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
             psi = U @ psi
         return psi
 
+    # TODO: How does it handle the if statements here?
     @tf.function
     def final_state(
         self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
@@ -295,6 +307,7 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
             )
         else:
             bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
+
         psi = self.initial_state
         # note: might be able to use tf.einsum or tf.scan (as done in U_tot) here.
         for U in bs:
@@ -323,6 +336,16 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
         return fid
 
     @tf.function
+    def mult_bin_tf(self, a):
+        while a.shape[0] > 1:
+            if a.shape[0] % 2 == 1:
+                a = tf.concat(
+                    [a[:-2], [tf.matmul(a[-2], a[-1])]], 0
+                )  # maybe there's a faster way to deal with immutable constants
+            a = tf.matmul(a[::2, ...], a[1::2, ...])
+        return a[0]
+
+    @tf.function
     def U_tot(self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas):
         if self.use_displacements:
             bs = self.construct_block_operators_with_displacements(
@@ -330,7 +353,13 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
             )
         else:
             bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
-        U_c = tf.scan(lambda a, b: tf.matmul(b, a), bs)[-1]
+        # U_c = tf.scan(lambda a, b: tf.matmul(b, a), bs)[-1]
+        U_c = self.mult_bin_tf(
+            tf.reverse(bs, axis=[0])
+        )  # [U_1,U_2,..] -> [U_N,U_{N-1},..]-> U_N @ U_{N-1} @ .. @ U_1
+        # U_c = self.I
+        # for U in bs:
+        #     U_c = U @ U_c
         return U_c
 
     @tf.function
@@ -344,7 +373,34 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
         overlap = tf.linalg.trace(
             tf.linalg.adjoint(self.target_unitary) @ self.P_matrix @ U_circuit
         )
-        return tf.cast((1.0 / D) * overlap * tf.math.conj(overlap), dtype=tf.float32)
+        return tf.cast(
+            (1.0 / D) ** 2 * overlap * tf.math.conj(overlap), dtype=tf.float32
+        )
+
+    @tf.function
+    def set_unitary_fidelity_state_basis(self, states):
+        self.initial_unitary_states = states
+        self.target_unitary_states = self.target_unitary @ states  # using broadcasting
+
+    @tf.function
+    def unitary_fidelity_state_decomp(
+        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+    ):
+        if self.use_displacements:
+            bs = self.construct_block_operators_with_displacements(
+                betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+            )
+        else:
+            bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
+        psis = self.initial_unitary_states
+        for U in bs:
+            psis = U @ psis  # using broadcasting
+        psis_target_dag = tf.linalg.adjoint(self.target_unitary_states)
+        overlaps = psis_target_dag @ psis
+        overlap = tf.reduce_sum(overlaps)
+        return tf.cast(
+            (1.0 / len(psis)) ** 2 * overlap * tf.math.conj(overlap), dtype=tf.float32
+        )
 
     # returns <psi_f | O | psi_f>
     @tf.function
@@ -426,15 +482,27 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
                 return tf.math.log(1 - tf.math.real(expect))
 
         if self.unitary_optimization:
+            if self.unitary_optimization == "states":
 
-            @tf.function
-            def loss_fun(
-                betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-            ):
-                fid = self.unitary_fidelity(
+                @tf.function
+                def loss_fun(
                     betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-                )
-                return tf.math.log(1 - fid)
+                ):
+                    fid = self.unitary_fidelity_state_decomp(
+                        betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+                    )
+                    return tf.math.log(1 - fid)
+
+            else:
+
+                @tf.function
+                def loss_fun(
+                    betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+                ):
+                    fid = self.unitary_fidelity(
+                        betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+                    )
+                    return tf.math.log(1 - fid)
 
         else:
 
@@ -638,12 +706,12 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
         filestring = self.saving_directory + self.name + "_" + datestr
         filename_np = filestring + ".npz"
         filename_qt = filestring + ".qt"
+        betas, phis, thetas = self.get_numpy_vars(betas_rho, betas_angle, phis, thetas)
         np.savez(
             filename_np,
-            betas=self.betas,
-            alphas=self.alphas,
-            phis=self.phis,
-            thetas=self.thetas,
+            betas=betas,
+            phis=phis,
+            thetas=thetas,
             max_alpha=self.max_alpha,
             max_beta=self.max_beta,
             name=self.name,
@@ -712,12 +780,11 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
                 betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
             )
             if not self.unitary_optimization
-            else self.unitary_fidelity(
-                betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+            else (
+                self.unitary_fidelity_state_decomp(betas_rho, betas_angle, phis, thetas)
+                if self.unitary_optimization == "states"
+                else self.unitary_fidelity(betas_rho, betas_angle, phis, thetas)
             )
-        )
-        betas, alphas, phis, thetas = self.get_numpy_vars(
-            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
         )
         if human:
             with np.printoptions(precision=5, suppress=True):
