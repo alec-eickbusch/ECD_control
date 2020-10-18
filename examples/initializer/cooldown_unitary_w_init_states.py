@@ -5,8 +5,9 @@ import sys
 sys.path.append("../../../")
 from CD_control.CD_control_tf import CD_control_tf
 from CD_control.CD_control_tf_initializer import CD_control_init_tf
-from CD_control.helper_functions import plot_pulse, plot_wigner
-from CD_control.analysis import System, CD_control_analysis
+from CD_control.visualization import plot_wigner
+from CD_control.analysis.helper_functions import plot_pulse
+from CD_control.analysis.analysis import System, CD_control_analysis
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
@@ -23,7 +24,7 @@ targ[N,1] = 1
 targ[N,N] = 0
 targ[N+1,N+1] = 1
 targ = qt.Qobj(targ,dims=[[2,N],[2,N]])
-term_fid = 0.9999
+term_fid = 0.99
 #max alpha and beta are the maximum values of alpha and beta for optimization
 name = "Cooldown"
 saving_directory = "/"
@@ -49,6 +50,7 @@ states = tf.stack([
     tfq.qt2tf(qt.tensor(qt.basis(2,0),qt.basis(N,1))),
     ])
 CD_control_unitary_obj.set_unitary_fidelity_state_basis(states)
+#%%
 CD_control_unitary_obj.optimize(epochs=100, epoch_size=10, dloss_stop=1e-6)
 
 #%% 

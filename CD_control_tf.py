@@ -31,6 +31,7 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
         P_cav=None,
         N_blocks=1,
         betas=None,
+        alphas=None,
         phis=None,
         thetas=None,
         max_alpha=5,
@@ -377,7 +378,6 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
             (1.0 / D) ** 2 * overlap * tf.math.conj(overlap), dtype=tf.float32
         )
 
-    @tf.function
     def set_unitary_fidelity_state_basis(self, states):
         self.initial_unitary_states = states
         self.target_unitary_states = self.target_unitary @ states  # using broadcasting
@@ -781,10 +781,17 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
             )
             if not self.unitary_optimization
             else (
-                self.unitary_fidelity_state_decomp(betas_rho, betas_angle, phis, thetas)
+                self.unitary_fidelity_state_decomp(
+                    betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+                )
                 if self.unitary_optimization == "states"
-                else self.unitary_fidelity(betas_rho, betas_angle, phis, thetas)
+                else self.unitary_fidelity(
+                    betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+                )
             )
+        )
+        betas, alphas, phis, thetas = self.get_numpy_vars(
+            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
         )
         if human:
             with np.printoptions(precision=5, suppress=True):
