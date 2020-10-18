@@ -192,3 +192,13 @@ class CD_control_init_tf(CD_control_tf):
             **kwargs
         )
 
+    def setup(self, unitary_optimization=None, **kwargs):
+        self.unitary_optimization = (
+            unitary_optimization
+            if unitary_optimization is not None
+            else self.unitary_optimization
+        )
+        self.betas = self.betas_full
+        self.thetas = self.thetas_full
+        self.phis = self.phis_full
+        self.N_blocks = self.N_blocks if self.N_reached is None else self.N_reached
