@@ -3,11 +3,7 @@
 %autoreload 2
 import sys
 sys.path.append("../../")
-from CD_control.CD_control_tf import CD_control_tf
-from CD_control.analysis.helper_functions import plot_pulse
-from CD_control.analysis.analysis import System, CD_control_analysis
-from CD_control.global_optimization_tf import Global_optimizer_tf
-import CD_control.tf_quantum as tfq
+import unitary_decomposition_optimizer as udo
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
@@ -20,24 +16,24 @@ initial_state = qt.tensor(qt.basis(2,0),qt.basis(N,0))
 target_state = qt.tensor(qt.basis(2,0), (qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit())
 term_fid = 0.999
 #%%
-CD_control_obj = CD_control_tf(initial_state, target_state, N_blocks=N_blocks,
+opt = udo.Optimizer(initial_state = initial_state, target_state = target_state, N_blocks=N_blocks,
                     term_fid = term_fid, no_CD_end=True, use_displacements=False)
 #%% We can plot the initial and target states (qubit traced out)
 if 1:
     plt.figure(figsize=(5,5), dpi=200)
-    CD_control_obj.plot_initial_state()
+    opt.plot_initial_state()
     plt.title("initial state")
     plt.figure(figsize=(5, 5), dpi=200)
-    CD_control_obj.plot_target_state()
+    opt.plot_target_state()
     plt.title("target state")
 #%%
-CD_control_obj.print_info()
+opt.print_info()
 #%% First, a basic optimization
-CD_control_obj.randomize(beta_scale=1.0, alpha_scale=1.0)
+opt.randomize(beta_scale=1.0, alpha_scale=1.0)
 #%%
-CD_control_obj.print_info()
+opt.print_info()
 #%%
-losses = CD_control_obj.optimize(epochs = 100, epoch_size=10,dloss_stop=1e-6)
+losses = opt.optimize(epochs = 100, epoch_size=10,dloss_stop=1e-6)
 #%%
 #by default, the loss function is 1-log(fid)
 fids = 1 - np.exp(losses)
@@ -47,7 +43,7 @@ plt.ylabel('1-Fidelity')
 plt.title("Optimization")
 
 #%%
-CD_control_obj.plot_final_state()
+opt.plot_final_state()
 #%% Now, we can perform global optimizations
 N_blocks = 3 #fewer N blocks for demonstration
 global_opt_obj = Global_optimizer_tf(initial_state, target_state, N_blocks=N_blocks,

@@ -13,84 +13,59 @@ print(
     + "\n"
 )
 #%%
-import CD_control.tf_quantum as tfq
-from CD_control.visualization import VisualizationMixin
-from CD_control.global_optimization_tf import GlobalOptimizerMixin
+import unitary_decomposition_optimizer.tf_quantum as tfq
+from .visualization import VisualizationMixin
+from .global_optimizer import GlobalOptimizerMixin
 import qutip as qt
 from datetime import datetime
 
 #%%
-class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
+class LocalOptimizer(GlobalOptimizerMixin, VisualizationMixin):
 
     # a block is defined as the unitary: CD(beta)D(alpha)R_phi(theta)
     def __init__(
         self,
-        initial_state=None,
-        target_state=None,
+        optimization_type="state_transfer",
         target_unitary=None,
         P_cav=None,
-        N_blocks=1,
+        initial_states=None,
+        target_states=None,
+        expectation_operators=None,
+        target_expectation_values=None,
+        N_blocks=20,
+        desired_loss=np.log(1e-3),
         betas=None,
         alphas=None,
         phis=None,
         thetas=None,
-        max_alpha=5,
-        max_beta=5,
-        saving_directory=None,
-        name="CD_control",
-        term_fid=0.999,
-        beta_penalty_multiplier=0,
         use_displacements=True,
-        unitary_optimization=False,
         no_CD_end=True,
-        optimize_expectation=False,
-        O=None,
     ):
-        self.initial_state = initial_state if initial_state is not None else None
-        self.initial_state = (
-            tfq.qt2tf(initial_state)
-            if not tf.is_tensor(self.initial_state)
-            else self.initial_state
-        )
-
-        self.target_state = target_state if target_state is not None else None
-        self.target_state = (
-            tfq.qt2tf(target_state)
-            if not tf.is_tensor(self.target_state)
-            else self.target_state
-        )
-
-        self.target_unitary = target_unitary if target_unitary is not None else None
-        self.target_unitary = (
-            tfq.qt2tf(target_unitary)
-            if not tf.is_tensor(self.target_unitary)
-            else self.target_unitary
-        )
-
-        self.unitary_optimization = unitary_optimization
+        self.optimization_type = optimization_type
+        if self.optimization_type == "state transfer":
+            self.initial_states = tf.stack(
+                [tfq.qt2tf(state) for state in initial_states]
+            )
+            # todo: can instead store dag of target states
+            self.target_states = tf.stack([tfq.qt2tf(state) for state in target_states])
+            self.N_cav = self.initial_states[0].numpy().shape[0] // 2
+        elif self.optimization_type == "unitary":
+            self.target_unitary = tfq.qt2tf(target_unitary)
+            self.N_cav = self.target_unitary.numpy().shape[0] // 2
+            self.P_cav = P_cav if P_cav is not None else self.N_cav
+        elif self.optimization_type == "expectation":
+            pass
+            # todo: handle this case.
+        else:
+            raise ValueError(
+                "optimization_type must be one of \{'state transfer', 'unitary', 'expectation'\}"
+            )
         self.N_blocks = N_blocks
-
         self.use_displacements = use_displacements
         self.set_tf_vars(betas=betas, alphas=alphas, phis=phis, thetas=thetas)
 
-        self.max_alpha = max_alpha if use_displacements else 0.0
-        self.max_beta = max_beta
-        self.saving_directory = saving_directory
-        self.name = name
-        self.term_fid = term_fid
-        self.beta_penalty_multiplier = beta_penalty_multiplier
+        self.desired_loss = desired_loss
         self.no_CD_end = no_CD_end
-        self.optimize_expectation = optimize_expectation
-        if self.optimize_expectation:
-            self.O = tfq.qt2tf(O)
-
-        # todo: handle case when initial state is a tf object.
-        if unitary_optimization:
-            self.N_cav = self.target_unitary.numpy().shape[0] // 2
-        else:
-            self.N_cav = self.initial_state.numpy().shape[0] // 2
-
-        self.P_cav = P_cav if P_cav is not None else self.N_cav
 
         with tf.device("CPU:0"):
             self.a = tfq.destroy(self.N_cav)
@@ -100,18 +75,19 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
             self.n = tfq.num(self.N_cav)
             self.I = tfq.qt2tf(qt.tensor(qt.identity(2), qt.identity(self.N_cav)))
 
-            partial_I = np.array(qt.identity(self.N_cav))
-            for j in range(self.P_cav, self.N_cav):
-                partial_I[j, j] = 0
-            partial_I = qt.Qobj(partial_I)
-            self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
-
             # Pre-diagonalize
             (self._eig_q, self._U_q) = tf.linalg.eigh(self.q)
             (self._eig_p, self._U_p) = tf.linalg.eigh(self.p)
             (self._eig_n, self._U_n) = tf.linalg.eigh(self.n)
 
             self._qp_comm = tf.linalg.diag_part(self.q @ self.p - self.p @ self.q)
+
+            if self.optimization_type == "unitary":
+                partial_I = np.array(qt.identity(self.N_cav))
+                for j in range(self.P_cav, self.N_cav):
+                    partial_I[j, j] = 0
+                partial_I = qt.Qobj(partial_I)
+                self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
 
     @tf.function
     def construct_displacement_operators_rho_angle(self, alphas_rho, alphas_angle):
@@ -326,6 +302,7 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
         overlap = psi_target_dag @ psif
         return overlap
 
+    """
     @tf.function
     def state_fidelity(
         self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
@@ -335,6 +312,7 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
         )
         fid = tf.cast(overlap * tf.math.conj(overlap), dtype=tf.float32)
         return fid
+    """
 
     @tf.function
     def mult_bin_tf(self, a):
@@ -383,7 +361,7 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
         self.target_unitary_states = self.target_unitary @ states  # using broadcasting
 
     @tf.function
-    def unitary_fidelity_state_decomp(
+    def state_fidelity(
         self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
     ):
         if self.use_displacements:
@@ -392,10 +370,10 @@ class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
             )
         else:
             bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
-        psis = self.initial_unitary_states
+        psis = self.initial_states
         for U in bs:
             psis = U @ psis  # using broadcasting
-        psis_target_dag = tf.linalg.adjoint(self.target_unitary_states)
+        psis_target_dag = tf.linalg.adjoint(self.target_states)
         overlaps = psis_target_dag @ psis
         overlap = tf.reduce_sum(overlaps)
         return tf.cast(

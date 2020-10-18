@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import CD_control.tf_quantum as tfq
+import unitary_decomposition_optimizer.tf_quantum as tfq
 import qutip as qt
 
 plt.rcParams.update({"font.size": 14, "pdf.fonttype": 42, "ps.fonttype": 42})
@@ -75,9 +75,6 @@ def plot_wigner(
         fig.colorbar(im, cax=cbar_ax, ticks=ticks)
         cbar_ax.set_title(r"$\frac{\pi}{2} W(\alpha)$", pad=10)
     ax.set_aspect("equal", adjustable="box")
-
-
-
 
 
 # visulaization mixin for control optimization object

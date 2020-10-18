@@ -1,17 +1,17 @@
-from CD_control.CD_control_tf import CD_control_tf
+from .local_optimizer import LocalOptimizer
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 import binarytree as bt
-import CD_control.tf_quantum as tfq
+import unitary_decomposition_optimizer.tf_quantum as tfq
 import tensorflow as tf
 
 
-class CD_control_init_tf(CD_control_tf):
+class Initalizer:
 
     # a block is defined as the unitary: CD(beta)D(alpha)R_phi(theta)
     def __init__(self, ind_order=None, **kwargs):
-        CD_control_tf.__init__(self, **kwargs)
+        LocalOptimizer.__init__(self, **kwargs)
 
         self.max_N = self.N_blocks
         self.N_reached = None
@@ -178,7 +178,7 @@ class CD_control_init_tf(CD_control_tf):
         print("==========================================================")
 
     def initialized_obj(self, unitary_optimization=None, **kwargs):
-        return CD_control_tf(
+        return LocalOptimizer(
             target_unitary=self.target_unitary_original,
             initial_state=self.initial_state_original,
             target_state=self.target_state_original,

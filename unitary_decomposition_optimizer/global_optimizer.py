@@ -5,7 +5,7 @@ import qutip as qt
 from datetime import datetime
 
 
-class GlobalOptimizerMixin:
+class GlobalOptimizer:
     def multistart_optimize(self, N_multistart=10, beta_scale=1.0, **kwargs):
         # initial randomization
         all_losses = []
