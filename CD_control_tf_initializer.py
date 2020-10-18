@@ -1,6 +1,4 @@
 from CD_control.CD_control_tf import CD_control_tf
-from CD_control.basic_pulses import *
-from CD_control.helper_functions import *
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
@@ -69,12 +67,13 @@ class CD_control_init_tf(CD_control_tf):
             self.optimize(epochs=100, epoch_size=10, dloss_stop=1e-6)
             self.print_info()
             # TODO add some stop condition if max fid isn't reached
-            betas, phis, thetas = self.get_numpy_vars()
+            betas, alphas, phis, thetas = self.get_numpy_vars()
             (
                 self.params["betas"][n],
+                self.params["alphas"][n],
                 self.params["phis"][n],
                 self.params["thetas"][n],
-            ) = (betas[0], phis[0], thetas[0])
+            ) = (betas[0], alphas[0], phis[0], thetas[0])
             self.fids_reached[n] = self.state_fidelity(
                 self.betas_rho, self.betas_angle, self.phis, self.thetas
             ).numpy()
@@ -113,12 +112,13 @@ class CD_control_init_tf(CD_control_tf):
             self.optimize(epochs=100, epoch_size=10, dloss_stop=1e-6)
             self.print_info()
             # TODO add some stop condition if max fid isn't reached
-            betas, phis, thetas = self.get_numpy_vars()
+            betas, alphas, phis, thetas = self.get_numpy_vars()
             (
                 self.params["betas"][n],
+                self.params["alphas"][n],
                 self.params["phis"][n],
                 self.params["thetas"][n],
-            ) = (betas[0], phis[0], thetas[0])
+            ) = (betas[0], alphas[0], phis[0], thetas[0])
             self.fids_reached[n] = self.unitary_fidelity(
                 self.betas_rho, self.betas_angle, self.phis, self.thetas
             ).numpy()
@@ -131,15 +131,18 @@ class CD_control_init_tf(CD_control_tf):
     def concat_controls(self, include_N=None):
         include_N = include_N if include_N is not None else self.N_reached
         self.betas_full = []
+        self.alphas_full = []
         self.thetas_full = []
         self.phis_full = []
 
         for i in self.ind_order:  # TODO adapt for Unitary initialization
             if i in self.params["betas"] and i < include_N:
                 self.betas_full.append(self.params["betas"][i])
+                self.alphas_full.append(self.params["alphas"][i])
                 self.thetas_full.append(self.params["thetas"][i])
                 self.phis_full.append(self.params["phis"][i])
         self.betas_full = np.array(self.betas_full)
+        self.alphas_full = np.array(self.alphas_full)
         self.thetas_full = np.array(self.thetas_full)
         self.phis_full = np.array(self.phis_full)
 
@@ -152,8 +155,9 @@ class CD_control_init_tf(CD_control_tf):
         self.randomize(beta_scale=3)
         self.optimize(epochs=100, epoch_size=10, dloss_stop=1e-6)
         self.print_info()
-        betas, phis, thetas = self.get_numpy_vars()
+        betas, alphas, phis, thetas = self.get_numpy_vars()
         self.betas_full = betas
+        self.alphas_full = alphas
         self.phis_full = phis
         self.thetas_full = thetas
         print("==========================================================")
@@ -166,8 +170,9 @@ class CD_control_init_tf(CD_control_tf):
         self.randomize(beta_scale=3)
         self.optimize(epochs=100, epoch_size=10, dloss_stop=1e-6)
         self.print_info()
-        betas, phis, thetas = self.get_numpy_vars()
+        betas, alphas, phis, thetas = self.get_numpy_vars()
         self.betas_full = betas
+        self.alphas_full = alphas
         self.phis_full = phis
         self.thetas_full = thetas
         print("==========================================================")
@@ -182,6 +187,7 @@ class CD_control_init_tf(CD_control_tf):
             else self.unitary_optimization,
             P_cav=self.P_cav,
             betas=self.betas_full,
+            alphas=self.alphas_full,
             thetas=self.thetas_full,
             phis=self.phis_full,
             N_blocks=self.N_blocks if self.N_reached is None else self.N_reached,
@@ -199,6 +205,7 @@ class CD_control_init_tf(CD_control_tf):
             else self.unitary_optimization
         )
         self.betas = self.betas_full
+        self.alphas = self.alphas_full
         self.thetas = self.thetas_full
         self.phis = self.phis_full
         self.N_blocks = self.N_blocks if self.N_reached is None else self.N_reached
