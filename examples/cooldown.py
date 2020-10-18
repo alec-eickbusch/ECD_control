@@ -2,58 +2,58 @@
 %load_ext autoreload
 %autoreload 2
 import sys
-sys.path.append("../../../")
-from CD_control.CD_control_optimization import CD_control
-from CD_control.CD_control_initializer import CD_control_init
+sys.path.append("../../")
+from CD_control.CD_control_tf import CD_control_tf
 from CD_control.helper_functions import plot_pulse, plot_wigner
 from CD_control.analysis import System, CD_control_analysis
+from CD_control.global_optimization_tf import Global_optimizer_tf
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
+import CD_control.tf_quantum as tfq
 #%%
-N = 60 #cavity hilbert space 
-N2 = 2 #qubit hilbert space
-N_blocks = 5
-term_fid = 0.99
+N = 50 #cavity hilbert space 
+# alpha = 2 + 1j #cat alpha
+N_blocks = 20 #5
+# initial_state = qt.tensor(qt.basis(2,0),qt.basis(N,0))
+# target_state = qt.tensor(qt.basis(2,0), (qt.coherent(N,alpha) + qt.coherent(N,-alpha)).unit())
+a = qt.tensor(qt.identity(2), qt.destroy(N))
+q = qt.tensor(qt.destroy(2), qt.identity(N))
+sz = 1 - 2 * q.dag() * q
+targ = np.array(qt.tensor(qt.identity(2),qt.identity(N)))
+targ[N-1,N-1] = 0
+targ[1,1] = 0
+targ[N-1,1] = 1
+targ[1,N-1] = 1
+targ = qt.Qobj(targ,dims=[[2,N],[2,N]])
+term_fid = 0.9999
 #max alpha and beta are the maximum values of alpha and beta for optimization
-max_alpha = 6
-max_beta = 8
-name = "Parity Gate"
-saving_directory = "C:\\Users\\Alec Eickbusch\\Documents\\CD_control_parameters\\"
-max_N = 7
-CD_control_obj_init = CD_control_init(max_N=max_N, name=name, term_fid=term_fid,
-                    max_alpha = max_alpha, max_beta=max_beta,
-                    saving_directory=saving_directory,
-                    basinhopping_kwargs={'T':0.1},
-                    save_all_minima = True, unitary_optimization="full",
-                    use_displacements=True, analytic=True, N=N, N2=N2)
-# parity = (1j*np.pi*CD_control_obj_init.a.dag()*CD_control_obj_init.a*CD_control_obj_init.sz).expm()
-targ = CD_control_obj_init.CD(2 + 1j)*CD_control_obj_init.CD(1j)*CD_control_obj_init.CD(0.12)*CD_control_obj_init.R(0.123,.412)
-CD_control_obj_init.target_unitary_original = targ
-
-#%% 
-CD_control_obj_init.binary_initialize_unitary()
-
-#%% 
-CD_control_obj = CD_control(CD_control_init_obj=CD_control_obj_init, N_blocks=2,
+name = "Cooldown"
+saving_directory = "/"
+CD_control_obj = Global_optimizer_tf(target_unitary=targ, unitary_optimization=True, P_cav=2,
+                    N_blocks=N_blocks,
                     name=name, term_fid=term_fid,
-                    max_alpha = max_alpha, max_beta=max_beta,
-                    saving_directory=saving_directory,
-                    basinhopping_kwargs={'T':0.1},
-                    save_all_minima = True,
-                    use_displacements=True, analytic=True)
-CD_control_obj.fidelity()
-#%% We can plot the initial and target states (qubit traced out)
-plt.figure(figsize=(5,5), dpi=200)
+                    saving_directory=saving_directory)
+
+#%%
+CD_control_obj.multistart_optimize()
+
+#%%
+CD_control_obj.initial_state = tfq.qt2tf(qt.tensor(qt.basis(2,0), qt.basis(N,1)))
+CD_control_obj.target_state = tfq.qt2tf(qt.tensor(qt.basis(2,1), qt.basis(N,0)))
 CD_control_obj.plot_initial_state()
-plt.title("initial state")
-plt.figure(figsize=(5, 5), dpi=200)
+CD_control_obj.plot_final_state()
 CD_control_obj.plot_target_state()
-plt.title("target state")
+#%%
+CD_control_obj.N_blocks_sweep()
 #%% Doing the optimization
 #The alpha and beta scale are scales for the random initialization.
-# CD_control_obj.randomize(alpha_scale=0.2, beta_scale=1)
+CD_control_obj.randomize(beta_scale = 2.0)
 print("Randomized parameters:")
+CD_control_obj.print_info()
+#%%
+CD_control_obj.optimize(learning_rate = 0.01, epoch_size=200, epochs=100, df_stop=1e-10)
+#%%
 CD_control_obj.print_info()
 CD_control_obj.optimize()
 print("after optimization:")
