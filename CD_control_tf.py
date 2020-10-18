@@ -15,11 +15,12 @@ print(
 #%%
 import CD_control.tf_quantum as tfq
 from CD_control.visualization import VisualizationMixin
+from CD_control.global_optimization_tf import GlobalOptimizerMixin
 import qutip as qt
 from datetime import datetime
 
 #%%
-class CD_control_tf(VisualizationMixin):
+class CD_control_tf(GlobalOptimizerMixin, VisualizationMixin):
 
     # a block is defined as the unitary: CD(beta)D(alpha)R_phi(theta)
     def __init__(

@@ -3,10 +3,9 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import qutip as qt
 from datetime import datetime
-from CD_control.CD_control_tf import CD_control_tf
 
 
-class Global_optimizer_tf(CD_control_tf):
+class GlobalOptimizerMixin:
     def multistart_optimize(self, N_multistart=10, beta_scale=1.0, **kwargs):
         # initial randomization
         all_losses = []
@@ -22,12 +21,12 @@ class Global_optimizer_tf(CD_control_tf):
             loss = losses[-1]
             if loss < best_loss:
                 best_loss = loss
-                best_betas, best_phis, best_thetas = self.get_numpy_vars()
+                best_betas, best_alphas, best_phis, best_thetas = self.get_numpy_vars()
             i += 1
         print(
             "Best found: loss =  %.4f fid = %.4f" % (best_loss, 1 - np.exp(best_loss))
         )
-        self.set_tf_vars(best_betas, best_phis, best_thetas)
+        self.set_tf_vars(best_betas, best_alphas, best_phis, best_thetas)
         self.print_info()
         return all_losses
 
@@ -62,8 +61,9 @@ class Global_optimizer_tf(CD_control_tf):
 
     # TODO: could also pin angle of beta if it's 0 or 90...
     def pin_optimize(self, tolerance=0.01, **kwargs):
-        betas, phis, thetas = self.get_numpy_vars()
+        betas, alphas, phis, thetas = self.get_numpy_vars()
         beta_mask = np.ones(self.N_blocks)
+        alpha_mask = np.ones(self.N_blocks)
         phi_mask = np.ones(self.N_blocks)
         theta_mask = np.ones(self.N_blocks)
         phi_mask[0] = 0
@@ -74,6 +74,12 @@ class Global_optimizer_tf(CD_control_tf):
             if np.abs(beta) <= tolerance:
                 betas[i] = 0.0
                 beta_mask[i] = 0
+
+        if self.use_displacements:
+            for i, alpha in enumerate(alphas):
+                if np.abs(alpha) <= tolerance:
+                    alphas[i] = 0.0
+                    alpha_mask[i] = 0
 
         # todo: could do this in much more efficint way... :D
         for i, phi in enumerate(phis):
@@ -110,7 +116,11 @@ class Global_optimizer_tf(CD_control_tf):
                 thetas[i] = -np.pi
                 theta_mask[i] = 0
 
-        self.set_tf_vars(betas, phis, thetas)
+        self.set_tf_vars(betas, alphas, phis, thetas)
         self.optimize(
-            beta_mask=beta_mask, phi_mask=phi_mask, theta_mask=theta_mask, **kwargs
+            beta_mask=beta_mask,
+            alpha_mask=alpha_mask,
+            phi_mask=phi_mask,
+            theta_mask=theta_mask,
+            **kwargs
         )
