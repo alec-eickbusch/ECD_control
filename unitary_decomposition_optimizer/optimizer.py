@@ -1,5 +1,6 @@
 from .local_optimizer import LocalOptimizer
 from .global_optimizer import GlobalOptimizer
+from .visualization import VisualizationMixin
 from .initalizer import Initalizer
 import numpy as np
 import qutip as qt
@@ -9,7 +10,7 @@ import unitary_decomposition_optimizer.tf_quantum as tfq
 import tensorflow as tf
 
 
-class Optimizer(Initalizer, GloberOptimizer, VisualizationMixin):
+class Optimizer(Initalizer, GlobalOptimizer, VisualizationMixin):
     """
     Main optimization class for interface with the user.
 

@@ -18,35 +18,35 @@ import qutip as qt
 from datetime import datetime
 
 #%%
-class LocalOptimizer:
+class BatchedGlobalOptimizer:
 
     # a block is defined as the unitary: CD(beta)D(alpha)R_phi(theta)
     def __init__(
         self,
-        optimization_type="state_transfer",
+        optimization_type="state transfer",
         target_unitary=None,
         P_cav=None,
         initial_states=None,
         target_states=None,
         expectation_operators=None,
         target_expectation_values=None,
+        N_multistart=10,
         N_blocks=20,
-        desired_loss=np.log(1e-3),
-        betas=None,
-        alphas=None,
-        phis=None,
-        thetas=None,
+        # desired_loss=np.log(1e-3),\
+        term_fid=0.99,
         use_displacements=True,
         no_CD_end=True,
     ):
         self.optimization_type = optimization_type
         if self.optimization_type == "state transfer":
-            self.initial_states = tf.stack(
-                [tfq.qt2tf(state) for state in initial_states]
-            )
+            # self.initial_states = tf.stack(
+            #    [tfq.qt2tf(state) for state in initial_states]
+            # )
             # todo: can instead store dag of target states
-            self.target_states = tf.stack([tfq.qt2tf(state) for state in target_states])
-            self.N_cav = self.initial_states[0].numpy().shape[0] // 2
+            # self.target_states = tf.stack([tfq.qt2tf(state) for state in target_states])
+            self.initial_state = tfq.qt2tf(initial_states[0])
+            self.target_state = tfq.qt2tf(target_states[0])
+            self.N_cav = self.initial_state.numpy().shape[0] // 2
         elif self.optimization_type == "unitary":
             self.target_unitary = tfq.qt2tf(target_unitary)
             self.N_cav = self.target_unitary.numpy().shape[0] // 2
@@ -59,33 +59,39 @@ class LocalOptimizer:
                 "optimization_type must be one of \{'state transfer', 'unitary', 'expectation'\}"
             )
         self.N_blocks = N_blocks
+        self.N_multistart = N_multistart
         self.use_displacements = use_displacements
-        self.set_tf_vars(betas=betas, alphas=alphas, phis=phis, thetas=thetas)
-
-        self.desired_loss = desired_loss
+        self.betas_rho = []
+        self.betas_angle = []
+        self.alphas_rho = []
+        self.alphas_angle = []
+        self.phis = []
+        self.thetas = []
+        self.term_fid = term_fid
         self.no_CD_end = no_CD_end
+        self.randomize_and_set_vars()
+        # self.set_tf_vars(betasG=betas, alphas=alphas, phis=phis, thetas=thetas)
 
-        with tf.device("CPU:0"):
-            self.a = tfq.destroy(self.N_cav)
-            self.adag = tfq.create(self.N_cav)
-            self.q = tfq.position(self.N_cav)
-            self.p = tfq.momentum(self.N_cav)
-            self.n = tfq.num(self.N_cav)
-            self.I = tfq.qt2tf(qt.tensor(qt.identity(2), qt.identity(self.N_cav)))
+        self.a = tfq.destroy(self.N_cav)
+        self.adag = tfq.create(self.N_cav)
+        self.q = tfq.position(self.N_cav)
+        self.p = tfq.momentum(self.N_cav)
+        self.n = tfq.num(self.N_cav)
+        self.I = tfq.qt2tf(qt.tensor(qt.identity(2), qt.identity(self.N_cav)))
 
-            # Pre-diagonalize
-            (self._eig_q, self._U_q) = tf.linalg.eigh(self.q)
-            (self._eig_p, self._U_p) = tf.linalg.eigh(self.p)
-            (self._eig_n, self._U_n) = tf.linalg.eigh(self.n)
+        # Pre-diagonalize
+        (self._eig_q, self._U_q) = tf.linalg.eigh(self.q)
+        (self._eig_p, self._U_p) = tf.linalg.eigh(self.p)
+        (self._eig_n, self._U_n) = tf.linalg.eigh(self.n)
 
-            self._qp_comm = tf.linalg.diag_part(self.q @ self.p - self.p @ self.q)
+        self._qp_comm = tf.linalg.diag_part(self.q @ self.p - self.p @ self.q)
 
-            if self.optimization_type == "unitary":
-                partial_I = np.array(qt.identity(self.N_cav))
-                for j in range(self.P_cav, self.N_cav):
-                    partial_I[j, j] = 0
-                partial_I = qt.Qobj(partial_I)
-                self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
+        if self.optimization_type == "unitary":
+            partial_I = np.array(qt.identity(self.N_cav))
+            for j in range(self.P_cav, self.N_cav):
+                partial_I[j, j] = 0
+            partial_I = qt.Qobj(partial_I)
+            self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
 
     @tf.function
     def construct_displacement_operators_rho_angle(self, alphas_rho, alphas_angle):
@@ -121,17 +127,17 @@ class LocalOptimizer:
         )
 
     @tf.function
-    def construct_displacement_operators(self, alphas):
+    def batch_construct_displacement_operators(self, alphas):
 
         # Reshape amplitudes for broadcast against diagonals
         sqrt2 = tf.math.sqrt(tf.constant(2, dtype=tf.complex64))
         re_a = tf.reshape(
             sqrt2 * tf.cast(tf.math.real(alphas), dtype=tf.complex64),
-            [alphas.shape[0], 1],
+            [alphas.shape[0], alphas.shape[1], 1],
         )
         im_a = tf.reshape(
             sqrt2 * tf.cast(tf.math.imag(alphas), dtype=tf.complex64),
-            [alphas.shape[0], 1],
+            [alphas.shape[0], alphas.shape[1], 1],
         )
 
         # Exponentiate diagonal matrices
@@ -187,7 +193,7 @@ class LocalOptimizer:
         return blocks
 
     @tf.function
-    def construct_block_operators_with_displacements(
+    def batch_construct_block_operators_with_displacements(
         self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
     ):
 
@@ -213,14 +219,19 @@ class LocalOptimizer:
             tf.constant(1j, dtype=tf.complex64)
             * tf.cast(alphas_angle, dtype=tf.complex64)
         )
-        ds_g = self.construct_displacement_operators(Bs_g)
-        ds_e = self.construct_displacement_operators(Bs_e)
+        ds_g = self.batch_construct_displacement_operators(Bs_g)
+        ds_e = self.batch_construct_displacement_operators(Bs_e)
         Phis = phis - tf.constant(np.pi, dtype=tf.float32) / tf.constant(
             2, dtype=tf.float32
         )
         Thetas = thetas / tf.constant(2, dtype=tf.float32)
-        Phis = tf.cast(tfq.matrix_flatten(Phis), dtype=tf.complex64)
-        Thetas = tf.cast(tfq.matrix_flatten(Thetas), dtype=tf.complex64)
+        Phis = tf.cast(
+            tf.reshape(Phis, [Phis.shape[0], Phis.shape[1], 1, 1]), dtype=tf.complex64
+        )
+        Thetas = tf.cast(
+            tf.reshape(Thetas, [Thetas.shape[0], Thetas.shape[1], 1, 1]),
+            dtype=tf.complex64,
+        )
 
         exp = tf.math.exp(tf.constant(1j, dtype=tf.complex64) * Phis)
         exp_dag = tf.linalg.adjoint(exp)
@@ -240,7 +251,7 @@ class LocalOptimizer:
         # (ll, lr)
         # (ul, ur)
         # pi pulse also adds -i phase, however don't need to trck it unless using multiple oscillators.a
-        blocks = -1j * tf.concat([tf.concat([ll, lr], 2), tf.concat([ul, ur], 2)], 1)
+        blocks = -1j * tf.concat([tf.concat([ll, lr], 3), tf.concat([ul, ur], 3)], 2)
         return blocks
 
     @tf.function
@@ -273,32 +284,46 @@ class LocalOptimizer:
 
     # TODO: How does it handle the if statements here?
     @tf.function
-    def final_state(
+    def batch_final_states(
         self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
     ):
         if self.use_displacements:
-            bs = self.construct_block_operators_with_displacements(
+            bs = self.batch_construct_block_operators_with_displacements(
                 betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
             )
         else:
-            bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
+            bs = self.batch_construct_block_operators(
+                betas_rho, betas_angle, phis, thetas
+            )
 
-        psi = self.initial_state
+        psis = tf.stack([self.initial_state] * self.N_multistart)
         # note: might be able to use tf.einsum or tf.scan (as done in U_tot) here.
         for U in bs:
-            psi = U @ psi
-        return psi
+            psis = U @ psis
+        return psis
 
     @tf.function
-    def state_overlap(
+    def batch_state_overlaps(
         self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
     ):
-        psif = self.final_state(
+        psifs = self.batch_final_states(
             betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
         )
-        psi_target_dag = tf.linalg.adjoint(self.target_state)
-        overlap = psi_target_dag @ psif
-        return overlap
+        # todo: could be batched beforehand
+        psits = tf.stack([self.target_state] * self.N_multistart)
+        psi_ts_dag = tf.linalg.adjoint(psits)
+        overlaps = psi_ts_dag @ psifs
+        return overlaps
+
+    @tf.function
+    def batch_state_fidelities(
+        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+    ):
+        overlaps = self.batch_state_overlaps(
+            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+        )
+        fids = tf.cast(overlaps * tf.math.conj(overlaps), dtype=tf.float32)
+        return fids
 
     """
     @tf.function
@@ -358,26 +383,6 @@ class LocalOptimizer:
         self.initial_unitary_states = states
         self.target_unitary_states = self.target_unitary @ states  # using broadcasting
 
-    @tf.function
-    def state_fidelity(
-        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-    ):
-        if self.use_displacements:
-            bs = self.construct_block_operators_with_displacements(
-                betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-            )
-        else:
-            bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
-        psis = self.initial_states
-        for U in bs:
-            psis = U @ psis  # using broadcasting
-        psis_target_dag = tf.linalg.adjoint(self.target_states)
-        overlaps = psis_target_dag @ psis
-        overlap = tf.reduce_sum(overlaps)
-        return tf.cast(
-            (1.0 / len(psis)) ** 2 * overlap * tf.math.conj(overlap), dtype=tf.float32
-        )
-
     # returns <psi_f | O | psi_f>
     @tf.function
     def expectation_value(
@@ -415,6 +420,7 @@ class LocalOptimizer:
         else:
             variables = [self.betas_rho, self.betas_angle, self.phis, self.thetas]
 
+        """
         if beta_mask is None:
             beta_mask = np.ones(self.N_blocks)
             if self.no_CD_end:
@@ -488,8 +494,16 @@ class LocalOptimizer:
             ):
                 fid = self.state_fidelity(
                     betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-                )
+                )e
                 return tf.math.log(1 - fid)
+        """
+
+        @tf.function
+        def loss_fun(fids):
+            # I think it's important that the log is taken before the avg
+            losses = tf.math.log(1 - fids)
+            avg_loss = tf.reduce_sum(losses) / self.N_multistart
+            return avg_loss
 
         term_loss = np.log(1 - self.term_fid)
 
@@ -498,14 +512,15 @@ class LocalOptimizer:
         # passing self to callback will allow one to print any values of the variables
         if callback_fun is None:
 
-            def callback_fun(obj, loss, dloss, epoch):
-                fid = 1 - np.exp(loss)
+            def callback_fun(obj, fids, epoch):
+                avg_fid = tf.reduce_sum(fids)/self.N_multistart
+                max_fid = tf.reduce_max(fids)
                 print(
-                    "Epoch: %d Fid: %.6f Loss: %.6f dLoss: %.6f"
-                    % (epoch, fid, loss, dloss)
+                    "Epoch: %d Avg Fid: %.6f Max fid: %.6f"
+                    % (epoch, avg_fid, max_fid)
                 )
 
-        initial_loss = loss_fun(
+        initial_fids = self.batch_state_fidelities(
             self.betas_rho,
             self.betas_angle,
             self.alphas_rho,
@@ -513,14 +528,17 @@ class LocalOptimizer:
             self.phis,
             self.thetas,
         )
-        callback_fun(self, initial_loss.numpy(), 0, 0)
+        initial_loss = loss_fun(initial_fids)
+        # callback_fun(self, initial_loss.numpy(), 0, 0)
 
         losses = []
         losses.append(initial_loss.numpy())
         loss = initial_loss
+        all_fids = []
         for epoch in range(epochs + 1)[1:]:
             for _ in range(epoch_size):
                 with tf.GradientTape() as tape:
+                    """
                     betas_rho = entry_stop_gradients(self.betas_rho, beta_mask)
                     betas_angle = entry_stop_gradients(self.betas_angle, beta_mask)
                     if self.use_displacements:
@@ -533,56 +551,82 @@ class LocalOptimizer:
                         alphas_angle = self.alphas_angle
                     phis = entry_stop_gradients(self.phis, phi_mask)
                     thetas = entry_stop_gradients(self.thetas, theta_mask)
-                    new_loss = loss_fun(
-                        betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+                    """
+                    fids = self.batch_state_fidelities(
+                        self.betas_rho,
+                        self.betas_angle,
+                        self.alphas_rho,
+                        self.alphas_angle,
+                        self.phis,
+                        self.thetas,
                     )
+                    new_loss = loss_fun(fids)
                     dloss_dvar = tape.gradient(new_loss, variables)
                 optimizer.apply_gradients(zip(dloss_dvar, variables))
             dloss = new_loss - loss
             loss = new_loss
             losses.append(loss.numpy())
-            callback_fun(self, loss.numpy(), dloss.numpy(), epoch)
-            if loss <= term_loss:
-                self.normalize_angles()
-                self.print_info()
-                return np.squeeze(np.array(losses))
-            if np.abs(dloss) < dloss_stop:
-                self.normalize_angles()
-                self.print_info()
-                return np.squeeze(np.array(losses))
-        self.normalize_angles()
-        self.print_info()
-        return np.squeeze(np.array(losses))
+            all_fids.append(fids)
+            # print(fids)
+            callback_fun(self,fids, epoch)
+            condition = tf.greater(fids, self.term_fid)
+            if tf.reduce_any(condition):
+                # self.normalize_angles()
+                #self.print_info()
+                return np.squeeze(np.array(all_fids)).T
+            # if np.abs(dloss) < dloss_stop:
+            # self.normalize_angles()
+            # self.print_info()
+            # return np.squeeze(np.array(losses))
+        # self.normalize_angles()
+        #self.print_info()
+        return np.squeeze(np.array(all_fids)).T
 
     # TODO: update for tf
-    def randomize(self, beta_scale=None, alpha_scale=None):
+    def randomize_and_set_vars(self, beta_scale=None, alpha_scale=None):
         beta_scale = 1.0 if beta_scale is None else beta_scale
         alpha_scale = 1.0 if alpha_scale is None else alpha_scale
-        ang_beta = np.random.uniform(-np.pi, np.pi, self.N_blocks)
-        rho_beta = np.random.uniform(0, beta_scale, self.N_blocks)
+        self.betas_rho = tf.Variable(
+            np.random.uniform(0, beta_scale, size=(self.N_blocks, self.N_multistart)),
+            dtype=tf.float32,
+            trainable=True,
+            name="betas_rho",
+        )
+        self.betas_angle = tf.Variable(
+            np.random.uniform(-np.pi, np.pi, size=(self.N_blocks, self.N_multistart)),
+            dtype=tf.float32,
+            trainable=True,
+            name="betas_angle",
+        )
         if self.use_displacements:
-            ang_alpha = np.random.uniform(-np.pi, np.pi, self.N_blocks)
-            rho_alpha = np.random.uniform(0, alpha_scale, self.N_blocks)
-        else:
-            ang_alpha = np.zeros(self.N_blocks)
-            rho_alpha = np.zeros(self.N_blocks)
-        phis = np.random.uniform(-np.pi, np.pi, self.N_blocks)
-        thetas = np.random.uniform(-np.pi, np.pi, self.N_blocks)
-
-        phis[0] = 0  # optimization is done realative to first phi
-        if self.no_CD_end:
-            rho_beta[-1] = 0
-
-        self.betas_rho = tf.Variable(rho_beta, dtype=tf.float32, trainable=True)
-        self.betas_angle = tf.Variable(ang_beta, dtype=tf.float32, trainable=True)
-        if self.use_displacements:
-            self.alphas_rho = tf.Variable(rho_alpha, dtype=tf.float32, trainable=True)
-            self.alphas_angle = tf.Variable(ang_alpha, dtype=tf.float32, trainable=True)
-        else:
-            self.alphas_rho = tf.constant(rho_alpha, dtype=tf.float32)
-            self.alphas_angle = tf.constant(ang_alpha, dtype=tf.float32)
-        self.phis = tf.Variable(phis, dtype=tf.float32, trainable=True)
-        self.thetas = tf.Variable(thetas, dtype=tf.float32, trainable=True)
+            self.alphas_rho = tf.Variable(
+                np.random.uniform(
+                    0, beta_scale, size=(self.N_blocks, self.N_multistart)
+                ),
+                dtype=tf.float32,
+                trainable=True,
+                name="alphas_rho",
+            )
+            self.alphas_angle = tf.Variable(
+                np.random.uniform(
+                    -np.pi, np.pi, size=(self.N_blocks, self.N_multistart)
+                ),
+                dtype=tf.float32,
+                trainable=True,
+                name="alphas_angle",
+            )
+        self.phis = tf.Variable(
+            np.random.uniform(-np.pi, np.pi, size=(self.N_blocks, self.N_multistart)),
+            dtype=tf.float32,
+            trainable=True,
+            name="betas_rho",
+        )
+        self.thetas = tf.Variable(
+            np.random.uniform(-np.pi, np.pi, size=(self.N_blocks, self.N_multistart)),
+            dtype=tf.float32,
+            trainable=True,
+            name="betas_angle",
+        )
 
     def get_numpy_vars(
         self,
