@@ -12,7 +12,6 @@ import qutip as qt
 import matplotlib.pyplot as plt
 import CD_control.tf_quantum as tfq
 import tensorflow as tf
-from qutip.visualization import plot_fock_distribution
 #%%
 N = 50 #cavity hilbert space 
 N_blocks = 20 #5
@@ -50,25 +49,6 @@ CD_control_obj.multi_state_initialize_unitary(states)
 CD_control_obj.plot_initial_state()
 CD_control_obj.plot_final_state()
 CD_control_obj.plot_target_state()
-
-
-#%% Thermal State
-n_thermal = 0
-
-thermal_state_dm = tfq.qt2tf(qt.tensor(qt.ket2dm(qt.basis(2,0)),qt.thermal_dm(N,n_thermal)))
-U = CD_control_obj.U_tot(CD_control_obj.betas_rho, CD_control_obj.betas_angle, CD_control_obj.phis, CD_control_obj.thetas)
-final_state_dm =  U @ thermal_state_dm @ tf.linalg.adjoint(U)
-
-vacuum_state_dm  = qt.tensor(qt.ket2dm(qt.basis(2,0)),qt.ket2dm(qt.basis(N,0)))
-thermal_state_dm = tfq.tf2qt(thermal_state_dm)
-final_state_dm = tfq.tf2qt(final_state_dm)
-fig, axes = plt.subplots(1, 2, figsize=(12,3))
-plot_fock_distribution(thermal_state_dm, fig=fig, ax=axes[0], title="Thermal Cavity State");
-plot_fock_distribution(final_state_dm, fig=fig, ax=axes[1], title="Cooled Cavity State");
-print("Thermal State Fidelity with vacuum: " + str(qt.fidelity(vacuum_state_dm, thermal_state_dm)))
-print("Cooled State Fidelity with cooled: " + str(qt.fidelity(vacuum_state_dm, final_state_dm)))
-fig.tight_layout()
-plt.show()
 
 #%% Unitary Fidelity Optimization 
 CD_control_unitary_obj = CD_control_obj.initialized_obj(unitary_optimization=True)
