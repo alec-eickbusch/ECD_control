@@ -18,7 +18,7 @@ import qutip as qt
 from datetime import datetime
 
 #%%
-class BatchedGlobalOptimizer:
+class BatchOptimizer:
 
     # a block is defined as the unitary: CD(beta)D(alpha)R_phi(theta)
     def __init__(
@@ -32,8 +32,8 @@ class BatchedGlobalOptimizer:
         target_expectation_values=None,
         N_multistart=10,
         N_blocks=20,
-        # desired_loss=np.log(1e-3),\
         term_fid=0.99,
+        dfid_stop=1e-4,
         use_displacements=True,
         no_CD_end=True,
     ):
@@ -68,6 +68,7 @@ class BatchedGlobalOptimizer:
         self.phis = []
         self.thetas = []
         self.term_fid = term_fid
+        self.dfid_stop = dfid_stop
         self.no_CD_end = no_CD_end
         self.randomize_and_set_vars()
         # self.set_tf_vars(betasG=betas, alphas=alphas, phis=phis, thetas=thetas)
@@ -92,39 +93,8 @@ class BatchedGlobalOptimizer:
                 partial_I[j, j] = 0
             partial_I = qt.Qobj(partial_I)
             self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
-
-    @tf.function
-    def construct_displacement_operators_rho_angle(self, alphas_rho, alphas_angle):
-
-        # Reshape amplitudes for broadcast against diagonals
-        sqrt2 = tf.math.sqrt(tf.constant(2, dtype=tf.float32))
-        cosines = tf.math.cos(alphas_angle)
-        sines = tf.math.sin(alphas_angle)
-        re_a = tf.cast(
-            tf.reshape(sqrt2 * alphas_rho * cosines, [alphas_rho.shape[0], 1]),
-            dtype=tf.complex64,
-        )
-        im_a = tf.cast(
-            tf.reshape(sqrt2 * alphas_rho * sines, [alphas_rho.shape[0], 1]),
-            dtype=tf.complex64,
-        )
-
-        # Exponentiate diagonal matrices
-        expm_q = tf.linalg.diag(tf.math.exp(1j * im_a * self._eig_q))
-        expm_p = tf.linalg.diag(tf.math.exp(-1j * re_a * self._eig_p))
-        expm_c = tf.linalg.diag(tf.math.exp(-0.5 * re_a * im_a * self._qp_comm))
-
-        # Apply Baker-Campbell-Hausdorff
-        return tf.cast(
-            self._U_q
-            @ expm_q
-            @ tf.linalg.adjoint(self._U_q)
-            @ self._U_p
-            @ expm_p
-            @ tf.linalg.adjoint(self._U_p)
-            @ expm_c,
-            dtype=tf.complex64,
-        )
+        
+        self.trajectories = 
 
     @tf.function
     def batch_construct_displacement_operators(self, alphas):
@@ -158,42 +128,7 @@ class BatchedGlobalOptimizer:
         )
 
     @tf.function
-    def construct_block_operators(self, betas_rho, betas_angle, phis, thetas):
-
-        Bs_g_rho = betas_rho / tf.constant(2, dtype=tf.float32)
-        Bs_g_angle = betas_angle
-        ds = self.construct_displacement_operators_rho_angle(Bs_g_rho, Bs_g_angle)
-        ds_dag = tf.linalg.adjoint(ds)
-        Phis = phis - tf.constant(np.pi, dtype=tf.float32) / tf.constant(
-            2, dtype=tf.float32
-        )
-        Thetas = thetas / tf.constant(2, dtype=tf.float32)
-        Phis = tf.cast(tfq.matrix_flatten(Phis), dtype=tf.complex64)
-        Thetas = tf.cast(tfq.matrix_flatten(Thetas), dtype=tf.complex64)
-
-        exp = tf.math.exp(tf.constant(1j, dtype=tf.complex64) * Phis)
-        exp_dag = tf.linalg.adjoint(exp)
-        cos = tf.math.cos(Thetas)
-        sin = tf.math.sin(Thetas)
-
-        # constructing the blocks of the matrix
-        ul = cos * ds
-        ll = exp * sin * ds_dag
-        ur = tf.constant(-1, dtype=tf.complex64) * exp_dag * sin * ds
-        lr = cos * ds_dag
-
-        # without pi pulse, block matrix is:
-        # (ul, ur)
-        # (ll, lr)
-        # however, with pi pulse included:
-        # (ll, lr)
-        # (ul, ur)
-        # pi pulse also adds -i phase, however don't need to trck it unless using multiple oscillators.a
-        blocks = -1j * tf.concat([tf.concat([ll, lr], 2), tf.concat([ul, ur], 2)], 1)
-        return blocks
-
-    @tf.function
-    def batch_construct_block_operators_with_displacements(
+    def batch_construct_block_operators(
         self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
     ):
 
@@ -287,15 +222,9 @@ class BatchedGlobalOptimizer:
     def batch_final_states(
         self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
     ):
-        if self.use_displacements:
-            bs = self.batch_construct_block_operators_with_displacements(
-                betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-            )
-        else:
-            bs = self.batch_construct_block_operators(
-                betas_rho, betas_angle, phis, thetas
-            )
-
+        bs = self.batch_construct_block_operators(
+            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+        )
         psis = tf.stack([self.initial_state] * self.N_multistart)
         # note: might be able to use tf.einsum or tf.scan (as done in U_tot) here.
         for U in bs:
@@ -400,7 +329,6 @@ class BatchedGlobalOptimizer:
         learning_rate=0.01,
         epoch_size=100,
         epochs=100,
-        dloss_stop=1e-6,
         beta_mask=None,
         phi_mask=None,
         theta_mask=None,
@@ -420,21 +348,19 @@ class BatchedGlobalOptimizer:
         else:
             variables = [self.betas_rho, self.betas_angle, self.phis, self.thetas]
 
-        """
         if beta_mask is None:
-            beta_mask = np.ones(self.N_blocks)
+            beta_mask = np.ones(shape=(self.N_blocks, self.N_multistart))
             if self.no_CD_end:
-                beta_mask[-1] = 0  # don't optimize final CD
+                beta_mask[-1, :] = 0  # don't optimize final CD
 
         if phi_mask is None:
-            phi_mask = np.ones(self.N_blocks)
-            phi_mask[0] = 0  # stop gradient on first phi entry
+            phi_mask = np.ones(shape=(self.N_blocks, self.N_multistart))
+            phi_mask[0, :] = 0  # stop gradient on first phi entry
 
         if theta_mask is None:
-            theta_mask = np.ones(self.N_blocks)
-
+            theta_mask = np.ones(shape=(self.N_blocks, self.N_multistart))
         if alpha_mask is None:
-            alpha_mask = np.ones(self.N_blocks)
+            alpha_mask = np.ones(shape=(self.N_blocks, self.N_multistart))
 
         beta_mask = tf.constant(beta_mask, dtype=tf.float32)
         phi_mask = tf.constant(phi_mask, dtype=tf.float32)
@@ -446,6 +372,7 @@ class BatchedGlobalOptimizer:
             mask_h = tf.abs(mask - 1)
             return tf.stop_gradient(mask_h * target) + mask * target
 
+        """
         if self.optimize_expectation:
 
             @tf.function
@@ -505,19 +432,20 @@ class BatchedGlobalOptimizer:
             avg_loss = tf.reduce_sum(losses) / self.N_multistart
             return avg_loss
 
-        term_loss = np.log(1 - self.term_fid)
-
         # format of callback will always be
         # callback_fun(self, loss, dloss, epoch)
         # passing self to callback will allow one to print any values of the variables
         if callback_fun is None:
 
-            def callback_fun(obj, fids, epoch):
-                avg_fid = tf.reduce_sum(fids)/self.N_multistart
+            def callback_fun(obj, fids, dfids, epoch):
+                avg_fid = tf.reduce_sum(fids) / self.N_multistart
                 max_fid = tf.reduce_max(fids)
+                avg_dfid = tf.reduce_sum(dfids) / self.N_multistart
+                max_dfid = tf.reduce_max(dfids)
                 print(
-                    "Epoch: %d Avg Fid: %.6f Max fid: %.6f"
-                    % (epoch, avg_fid, max_fid)
+                    "\rEpoch: %d Max Fid: %.6f Avg Fid: %.6f Max dFid: %.6f Avg dFid: %.6f"
+                    % (epoch, max_fid, avg_fid, max_dfid, avg_dfid),
+                    end="",
                 )
 
         initial_fids = self.batch_state_fidelities(
@@ -533,12 +461,11 @@ class BatchedGlobalOptimizer:
 
         losses = []
         losses.append(initial_loss.numpy())
-        loss = initial_loss
+        fids = initial_fids
         all_fids = []
         for epoch in range(epochs + 1)[1:]:
             for _ in range(epoch_size):
                 with tf.GradientTape() as tape:
-                    """
                     betas_rho = entry_stop_gradients(self.betas_rho, beta_mask)
                     betas_angle = entry_stop_gradients(self.betas_angle, beta_mask)
                     if self.use_displacements:
@@ -551,78 +478,114 @@ class BatchedGlobalOptimizer:
                         alphas_angle = self.alphas_angle
                     phis = entry_stop_gradients(self.phis, phi_mask)
                     thetas = entry_stop_gradients(self.thetas, theta_mask)
-                    """
-                    fids = self.batch_state_fidelities(
-                        self.betas_rho,
-                        self.betas_angle,
-                        self.alphas_rho,
-                        self.alphas_angle,
-                        self.phis,
-                        self.thetas,
+                    new_fids = self.batch_state_fidelities(
+                        betas_rho,
+                        betas_angle,
+                        alphas_rho,
+                        alphas_angle,
+                        phis,
+                        thetas,
                     )
-                    new_loss = loss_fun(fids)
+                    new_loss = loss_fun(new_fids)
                     dloss_dvar = tape.gradient(new_loss, variables)
                 optimizer.apply_gradients(zip(dloss_dvar, variables))
-            dloss = new_loss - loss
-            loss = new_loss
-            losses.append(loss.numpy())
-            all_fids.append(fids)
+            all_fids.append(new_fids)
+            dfids = new_fids - fids
+            fids = new_fids
             # print(fids)
-            callback_fun(self,fids, epoch)
-            condition = tf.greater(fids, self.term_fid)
-            if tf.reduce_any(condition):
+            callback_fun(self, fids, dfids, epoch)
+            condition_fid = tf.greater(fids, self.term_fid)
+            condition_dfid = tf.greater(dfids, self.dfid_stop)
+            if tf.reduce_any(condition_fid):
+                print("\n\n Optimization stopped. Term fidelity reached!\n\n")
                 # self.normalize_angles()
-                #self.print_info()
+                self.print_info()
+                return np.squeeze(np.array(all_fids)).T
+            if not tf.reduce_any(condition_dfid):
+                print("\n max dFid: %6f" % tf.reduce_max(dfids).numpy())
+                print("dFid stop: %6f" % self.dfid_stop)
+                print(
+                    "\n\n Optimization stopped.  No dfid is greater than dfid_stop\n\n"
+                )
+                self.print_info()
                 return np.squeeze(np.array(all_fids)).T
             # if np.abs(dloss) < dloss_stop:
             # self.normalize_angles()
             # self.print_info()
             # return np.squeeze(np.array(losses))
         # self.normalize_angles()
-        #self.print_info()
+        # self.print_info()
+        print(
+            "\n\n Optimization stopped.  Reached maximum number of epochs. Terminal fidelity not reached.\n\n"
+        )
+        self.print_info()
         return np.squeeze(np.array(all_fids)).T
 
     # TODO: update for tf
     def randomize_and_set_vars(self, beta_scale=None, alpha_scale=None):
         beta_scale = 1.0 if beta_scale is None else beta_scale
         alpha_scale = 1.0 if alpha_scale is None else alpha_scale
+        betas_rho = np.random.uniform(
+            0, beta_scale, size=(self.N_blocks, self.N_multistart)
+        )
+        betas_angle = np.random.uniform(
+            -np.pi, np.pi, size=(self.N_blocks, self.N_multistart)
+        )
+        if self.use_displacements:
+            alphas_rho = np.random.uniform(
+                0, beta_scale, size=(self.N_blocks, self.N_multistart)
+            )
+            alphas_angle = np.random.uniform(
+                -np.pi, np.pi, size=(self.N_blocks, self.N_multistart)
+            )
+        phis = np.random.uniform(-np.pi, np.pi, size=(self.N_blocks, self.N_multistart))
+        thetas = np.random.uniform(
+            -np.pi, np.pi, size=(self.N_blocks, self.N_multistart)
+        )
+        phis[0] = 0  # everything is relative to first phi
+        if self.no_CD_end:
+            betas_rho[-1] = 0
+            betas_angle[-1] = 0
         self.betas_rho = tf.Variable(
-            np.random.uniform(0, beta_scale, size=(self.N_blocks, self.N_multistart)),
+            betas_rho,
             dtype=tf.float32,
             trainable=True,
             name="betas_rho",
         )
         self.betas_angle = tf.Variable(
-            np.random.uniform(-np.pi, np.pi, size=(self.N_blocks, self.N_multistart)),
+            betas_angle,
             dtype=tf.float32,
             trainable=True,
             name="betas_angle",
         )
         if self.use_displacements:
             self.alphas_rho = tf.Variable(
-                np.random.uniform(
-                    0, beta_scale, size=(self.N_blocks, self.N_multistart)
-                ),
+                alphas_rho,
                 dtype=tf.float32,
                 trainable=True,
                 name="alphas_rho",
             )
             self.alphas_angle = tf.Variable(
-                np.random.uniform(
-                    -np.pi, np.pi, size=(self.N_blocks, self.N_multistart)
-                ),
+                alphas_angle,
                 dtype=tf.float32,
                 trainable=True,
                 name="alphas_angle",
             )
+        else:
+            self.alphas_rho = tf.constant(
+                np.zeros(shape=((self.N_blocks, self.N_multistart))), dtype=tf.float32
+            )
+            self.alphas_angle = tf.constant(
+                np.zeros(shape=((self.N_blocks, self.N_multistart))), dtype=tf.float32
+            )
         self.phis = tf.Variable(
-            np.random.uniform(-np.pi, np.pi, size=(self.N_blocks, self.N_multistart)),
+            phis,
             dtype=tf.float32,
             trainable=True,
             name="betas_rho",
         )
         self.thetas = tf.Variable(
-            np.random.uniform(-np.pi, np.pi, size=(self.N_blocks, self.N_multistart)),
+            thetas,
             dtype=tf.float32,
             trainable=True,
             name="betas_angle",
@@ -649,7 +612,8 @@ class BatchedGlobalOptimizer:
         phis = phis.numpy()
         thetas = thetas.numpy()
 
-        return betas, alphas, phis, thetas
+        # these will have shape N_multistart x N_blocks
+        return betas.T, alphas.T, phis.T, thetas.T
 
     def set_tf_vars(self, betas=None, alphas=None, phis=None, thetas=None):
         # if None, sets to zero
@@ -795,39 +759,33 @@ class BatchedGlobalOptimizer:
         alphas_angle = self.alphas_angle if alphas_angle is None else alphas_angle
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
-        f = (
-            self.state_fidelity(
-                betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-            )
-            if not self.unitary_optimization
-            else (
-                self.unitary_fidelity_state_decomp(
-                    betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-                )
-                if self.unitary_optimization == "states"
-                else self.unitary_fidelity(
-                    betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-                )
-            )
-        )
-        betas, alphas, phis, thetas = self.get_numpy_vars(
+        fids = self.batch_state_fidelities(
             betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
         )
+        max_idx = tf.argmax(fids)[0, 0].numpy()
+        all_betas, all_alphas, all_phis, all_thetas = self.get_numpy_vars(
+            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+        )
+        max_fid = fids[max_idx][0, 0].numpy()
+        betas = all_betas[max_idx]
+        alphas = all_alphas[max_idx]
+        phis = all_phis[max_idx]
+        thetas = all_thetas[max_idx]
         if human:
             with np.printoptions(precision=5, suppress=True):
-                print("\n\n" + str(self.name))
+                # print("\n\n" + str(self.name))
                 print("N_blocks:      " + str(self.N_blocks))
-                print("Unitary opt :  " + str(self.unitary_optimization))
+                # print("Unitary opt :  " + str(self.unitary_optimization))
                 # todo: add expectation optimization info
                 print("N_cav:         " + str(self.N_cav))
-                print("P_cav:         " + str(self.P_cav))
+                # print("P_cav:         " + str(self.P_cav))
                 print("Term fid:      %.6f" % self.term_fid)
                 print("displacements: " + str(self.use_displacements))
                 print("betas:         " + str(betas))
                 print("alphas:        " + str(alphas))
                 print("phis (deg):    " + str(phis * 180.0 / np.pi))
                 print("thetas (deg):  " + str(thetas * 180.0 / np.pi))
-                print("Fidelity:      %.6f" % f)
+                print("Max Fidelity:  %.6f" % max_fid)
                 print("\n")
         else:
             print("\n\n" + str(self.name))
@@ -842,7 +800,7 @@ class BatchedGlobalOptimizer:
             print("alphas: " + repr(alphas))
             print("phis: " + repr(phis))
             print("thetas: " + repr(thetas))
-            print("Fidelity: " + repr(f))
+            print("Max Fidelity: " + repr(max_fid))
             print("\n")
 
 
