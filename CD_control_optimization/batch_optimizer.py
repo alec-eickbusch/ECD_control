@@ -6,6 +6,7 @@
 
 import numpy as np
 import tensorflow as tf
+import h5py
 
 print(
     "\nNeed tf version 2.3.0 or later. Using tensorflow version: "
@@ -13,9 +14,10 @@ print(
     + "\n"
 )
 #%%
-import unitary_decomposition_optimizer.tf_quantum as tfq
+import CD_control_optimization.tf_quantum as tfq
 import qutip as qt
-from datetime import datetime
+import datetime
+import time
 
 #%%
 class BatchOptimizer:
@@ -36,6 +38,8 @@ class BatchOptimizer:
         dfid_stop=1e-4,
         use_displacements=True,
         no_CD_end=True,
+        name="CD_control",
+        saving_directory="",
     ):
         self.optimization_type = optimization_type
         if self.optimization_type == "state transfer":
@@ -93,8 +97,17 @@ class BatchOptimizer:
                 partial_I[j, j] = 0
             partial_I = qt.Qobj(partial_I)
             self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
-        
-        self.trajectories = 
+
+        # opt data will be a dictionary of dictonaries used to store optimization data
+        # the dictionary will be addressed by timestamps of optmization.
+        # each opt will append to opt_data a dictionary
+        # this dictionary will contain optimization parameters and results
+
+        self.opt_data = {}
+        self.timestamps = []
+        self.saving_directory = saving_directory
+        self.name = name
+        self.filename = self.saving_directory + self.name + ".h5"
 
     @tf.function
     def batch_construct_displacement_operators(self, alphas):
@@ -254,18 +267,6 @@ class BatchOptimizer:
         fids = tf.cast(overlaps * tf.math.conj(overlaps), dtype=tf.float32)
         return fids
 
-    """
-    @tf.function
-    def state_fidelity(
-        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-    ):
-        overlap = self.state_overlap(
-            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-        )
-        fid = tf.cast(overlap * tf.math.conj(overlap), dtype=tf.float32)
-        return fid
-    """
-
     @tf.function
     def mult_bin_tf(self, a):
         while a.shape[0] > 1:
@@ -334,7 +335,49 @@ class BatchOptimizer:
         theta_mask=None,
         alpha_mask=None,
         callback_fun=None,
+        save_all_parameters=False,
+        comments="",
     ):
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%I:%M:%S %p")
+        self.timestamps.append(timestamp)
+        print("Start time: " + timestamp)
+        # start time
+        start_time = time.time()
+        self.opt_data[timestamp] = {}
+        # data local to this function
+        self.opt_data[timestamp]["timestamp"] = timestamp
+        self.opt_data[timestamp]["leaning_rate"] = learning_rate
+        self.opt_data[timestamp]["epoch_size"] = epoch_size
+        self.opt_data[timestamp]["epochs"] = epochs
+        self.opt_data[timestamp]["save_all_parameters"] = save_all_parameters
+        self.opt_data[timestamp]["comments"] = comments
+        # data as part of the current object
+        self.opt_data[timestamp]["name"] = self.name
+        self.opt_data[timestamp]["optimization_type"] = self.optimization_type
+        self.opt_data[timestamp]["use_displacements"] = self.use_displacements
+        self.opt_data[timestamp]["N_blocks"] = self.N_blocks
+        self.opt_data[timestamp]["N_multistart"] = self.N_multistart
+        self.opt_data[timestamp]["no_CD_end"] = self.no_CD_end
+        self.opt_data[timestamp]["N_cav"] = self.N_cav
+        self.opt_data[timestamp]["term_fid"] = self.term_fid
+        self.opt_data[timestamp]["dfid_stop"] = self.dfid_stop
+        if self.optimization_type == "state_transfer":
+            self.opt_data[timestamp]["initial_states"] = self.initial_states
+            self.opt_data[timestamp]["final_states"] = self.final_states
+        elif self.optimization_type == "unitary":
+            self.opt_data[timestamp]["target_unitary"] = self.target_unitary
+            self.opt_data[timestamp]["P_cav"] = self.P_cav
+        elif self.optimization_type == "expectation":
+            pass
+            # todo: handle this case
+        # data which will accumulate during optimization
+        self.opt_data[timestamp]["fidelities"] = []
+        self.opt_data[timestamp]["betas"] = []
+        self.opt_data[timestamp]["alphas"] = []
+        self.opt_data[timestamp]["phis"] = []
+        self.opt_data[timestamp]["thetas"] = []
+        self.opt_data[timestamp]["elapsed_time_s"] = [0.0]
         optimizer = tf.optimizers.Adam(learning_rate)
         if self.use_displacements:
             variables = [
@@ -349,23 +392,33 @@ class BatchOptimizer:
             variables = [self.betas_rho, self.betas_angle, self.phis, self.thetas]
 
         if beta_mask is None:
-            beta_mask = np.ones(shape=(self.N_blocks, self.N_multistart))
+            beta_mask = np.ones(
+                shape=(self.N_blocks, self.N_multistart), dtype=np.int32
+            )
             if self.no_CD_end:
                 beta_mask[-1, :] = 0  # don't optimize final CD
 
         if phi_mask is None:
-            phi_mask = np.ones(shape=(self.N_blocks, self.N_multistart))
+            phi_mask = np.ones(shape=(self.N_blocks, self.N_multistart), dtype=np.int32)
             phi_mask[0, :] = 0  # stop gradient on first phi entry
 
         if theta_mask is None:
-            theta_mask = np.ones(shape=(self.N_blocks, self.N_multistart))
+            theta_mask = np.ones(
+                shape=(self.N_blocks, self.N_multistart), dtype=np.int32
+            )
         if alpha_mask is None:
-            alpha_mask = np.ones(shape=(self.N_blocks, self.N_multistart))
+            alpha_mask = np.ones(
+                shape=(self.N_blocks, self.N_multistart), dtype=np.int32
+            )
 
+        self.opt_data[timestamp]["beta_mask"] = beta_mask
+        self.opt_data[timestamp]["alpha_mask"] = alpha_mask
+        self.opt_data[timestamp]["phi_mask"] = phi_mask
+        self.opt_data[timestamp]["theta_mask"] = theta_mask
         beta_mask = tf.constant(beta_mask, dtype=tf.float32)
+        alpha_mask = tf.constant(alpha_mask, dtype=tf.float32)
         phi_mask = tf.constant(phi_mask, dtype=tf.float32)
         theta_mask = tf.constant(theta_mask, dtype=tf.float32)
-        alpha_mask = tf.constant(alpha_mask, dtype=tf.float32)
 
         @tf.function
         def entry_stop_gradients(target, mask):
@@ -438,13 +491,36 @@ class BatchOptimizer:
         if callback_fun is None:
 
             def callback_fun(obj, fids, dfids, epoch):
+                elapsed_time_s = time.time() - start_time
+                self.opt_data[timestamp]["fidelities"].append(
+                    np.squeeze(np.array(fids))
+                )
+                betas, alphas, phis, thetas = self.get_numpy_vars()
+                self.opt_data[timestamp]["betas"].append(betas)
+                self.opt_data[timestamp]["alphas"].append(alphas)
+                self.opt_data[timestamp]["phis"].append(phis)
+                self.opt_data[timestamp]["thetas"].append(thetas)
+                self.opt_data[timestamp]["elapsed_time_s"].append(elapsed_time_s)
+                if epoch == 0:
+                    self.save_optimization_data(timestamp, append=False)
+                else:
+                    self.save_optimization_data(timestamp, append=True)
                 avg_fid = tf.reduce_sum(fids) / self.N_multistart
                 max_fid = tf.reduce_max(fids)
                 avg_dfid = tf.reduce_sum(dfids) / self.N_multistart
                 max_dfid = tf.reduce_max(dfids)
                 print(
-                    "\rEpoch: %d Max Fid: %.6f Avg Fid: %.6f Max dFid: %.6f Avg dFid: %.6f"
-                    % (epoch, max_fid, avg_fid, max_dfid, avg_dfid),
+                    "\r Epoch: %d / %d Max Fid: %.6f Avg Fid: %.6f Max dFid: %.6f Avg dFid: %.6f"
+                    % (
+                        epoch,
+                        epochs,
+                        max_fid,
+                        avg_fid,
+                        max_dfid,
+                        avg_dfid,
+                    )
+                    + " Elapsed time: "
+                    + str(datetime.timedelta(seconds=elapsed_time_s)),
                     end="",
                 )
 
@@ -456,13 +532,8 @@ class BatchOptimizer:
             self.phis,
             self.thetas,
         )
-        initial_loss = loss_fun(initial_fids)
-        # callback_fun(self, initial_loss.numpy(), 0, 0)
-
-        losses = []
-        losses.append(initial_loss.numpy())
         fids = initial_fids
-        all_fids = []
+        callback_fun(self, fids, 0, 0)
         for epoch in range(epochs + 1)[1:]:
             for _ in range(epoch_size):
                 with tf.GradientTape() as tape:
@@ -489,37 +560,133 @@ class BatchOptimizer:
                     new_loss = loss_fun(new_fids)
                     dloss_dvar = tape.gradient(new_loss, variables)
                 optimizer.apply_gradients(zip(dloss_dvar, variables))
-            all_fids.append(new_fids)
             dfids = new_fids - fids
             fids = new_fids
-            # print(fids)
             callback_fun(self, fids, dfids, epoch)
             condition_fid = tf.greater(fids, self.term_fid)
             condition_dfid = tf.greater(dfids, self.dfid_stop)
             if tf.reduce_any(condition_fid):
-                print("\n\n Optimization stopped. Term fidelity reached!\n\n")
-                # self.normalize_angles()
-                self.print_info()
-                return np.squeeze(np.array(all_fids)).T
+                print("\n\n Optimization stopped. Term fidelity reached.\n\n")
+                break
             if not tf.reduce_any(condition_dfid):
                 print("\n max dFid: %6f" % tf.reduce_max(dfids).numpy())
                 print("dFid stop: %6f" % self.dfid_stop)
                 print(
                     "\n\n Optimization stopped.  No dfid is greater than dfid_stop\n\n"
                 )
-                self.print_info()
-                return np.squeeze(np.array(all_fids)).T
-            # if np.abs(dloss) < dloss_stop:
-            # self.normalize_angles()
-            # self.print_info()
-            # return np.squeeze(np.array(losses))
-        # self.normalize_angles()
-        # self.print_info()
-        print(
-            "\n\n Optimization stopped.  Reached maximum number of epochs. Terminal fidelity not reached.\n\n"
-        )
-        self.print_info()
+                break
+
+        if epoch == epochs:
+            print(
+                "\n\n Optimization stopped.  Reached maximum number of epochs. Terminal fidelity not reached.\n\n"
+            )
+        self.print_best_info()
         return np.squeeze(np.array(all_fids)).T
+
+    # if append is True, it will assume the dataset is already created and append only the
+    # last aquired values to it
+    def save_optimization_data(self, timestamp, append=False):
+        if not append:
+            with h5py.File(self.filename, "a") as f:
+                grp = f.create_group(timestamp)
+                attributes = [
+                    "leaning_rate",
+                    "epoch_size",
+                    "epochs",
+                    "save_all_parameters",
+                    "comments",
+                    "name",
+                    "optimization_type",
+                    "use_displacements",
+                    "N_blocks",
+                    "N_multistart",
+                    "no_CD_end",
+                    "N_cav",
+                    "term_fid",
+                    "dfid_stop",
+                    "beta_mask",
+                    "alpha_mask",
+                    "phi_mask",
+                    "theta_mask",
+                ]
+                for attribute in attributes:
+                    grp.attrs[attribute] = self.opt_data[timestamp][attribute]
+                grp.create_dataset(
+                    "fidelities",
+                    chunks=True,
+                    data=self.opt_data[timestamp]["fidelities"],
+                    maxshape=(None, self.opt_data[timestamp]["N_multistart"]),
+                )
+                grp.create_dataset(
+                    "betas",
+                    data=self.opt_data[timestamp]["betas"],
+                    chunks=True,
+                    maxshape=(
+                        None,
+                        self.opt_data[timestamp]["N_multistart"],
+                        self.opt_data[timestamp]["N_blocks"],
+                    ),
+                )
+                grp.create_dataset(
+                    "alphas",
+                    data=self.opt_data[timestamp]["alphas"],
+                    chunks=True,
+                    maxshape=(
+                        None,
+                        self.opt_data[timestamp]["N_multistart"],
+                        self.opt_data[timestamp]["N_blocks"],
+                    ),
+                )
+                grp.create_dataset(
+                    "phis",
+                    data=self.opt_data[timestamp]["phis"],
+                    chunks=True,
+                    maxshape=(
+                        None,
+                        self.opt_data[timestamp]["N_multistart"],
+                        self.opt_data[timestamp]["N_blocks"],
+                    ),
+                )
+                grp.create_dataset(
+                    "thetas",
+                    data=self.opt_data[timestamp]["thetas"],
+                    chunks=True,
+                    maxshape=(
+                        None,
+                        self.opt_data[timestamp]["N_multistart"],
+                        self.opt_data[timestamp]["N_blocks"],
+                    ),
+                )
+                grp.create_dataset(
+                    "elapsed_time_s",
+                    data=self.opt_data[timestamp]["elapsed_time_s"],
+                    chunks=True,
+                    maxshape=(None,),
+                )
+        else:  # just append the data
+            with h5py.File(self.filename, "a") as f:
+                f[timestamp]["fidelities"].resize(
+                    f[timestamp]["fidelities"].shape[0] + 1, axis=0
+                )
+                f[timestamp]["betas"].resize(f[timestamp]["betas"].shape[0] + 1, axis=0)
+                f[timestamp]["alphas"].resize(
+                    f[timestamp]["alphas"].shape[0] + 1, axis=0
+                )
+                f[timestamp]["phis"].resize(f[timestamp]["phis"].shape[0] + 1, axis=0)
+                f[timestamp]["thetas"].resize(
+                    f[timestamp]["thetas"].shape[0] + 1, axis=0
+                )
+
+                f[timestamp]["fidelities"][-1] = self.opt_data[timestamp]["fidelities"][
+                    -1
+                ]
+                f[timestamp]["betas"][-1] = self.opt_data[timestamp]["betas"][-1]
+                f[timestamp]["alphas"][-1] = self.opt_data[timestamp]["alphas"][-1]
+                f[timestamp]["phis"][-1] = self.opt_data[timestamp]["phis"][-1]
+                f[timestamp]["thetas"][-1] = self.opt_data[timestamp]["thetas"][-1]
+                f[timestamp]["elapsed_time_s"][-1] = self.opt_data[timestamp][
+                    "elapsed_time_s"
+                ][-1]
 
     # TODO: update for tf
     def randomize_and_set_vars(self, beta_scale=None, alpha_scale=None):
@@ -659,112 +826,26 @@ class BatchOptimizer:
             else tf.Variable(tf.zeros(self.N_blocks, dtype=tf.float32), trainable=True)
         )
 
-    # when parameters is specificed, normalize_angles is being used
-    # during the optimization. In this case, it normalizes the parameters
-    # and returns the parameters without updating self.
-    # if parameters not specified, just normalize self's angles.
-    # todo: make faster with numpy...
-    def normalize_angles(self):
-        betas, alphas, phis, thetas = self.get_numpy_vars()
-        thetas_new = []
-        for theta in thetas:
-            while theta < -np.pi:
-                theta = theta + 2 * np.pi
-            while theta > np.pi:
-                theta = theta - 2 * np.pi
-            thetas_new.append(theta)
-        thetas = np.array(thetas_new)
-        phis_new = []
-        for phi in phis:
-            while phi < -np.pi:
-                phi = phi + 2 * np.pi
-            while phi > np.pi:
-                phi = phi - 2 * np.pi
-            phis_new.append(phi)
-        phis = np.array(phis_new)
-        self.set_tf_vars(betas, alphas, phis, thetas)
-
-    """
-    def save(self):
-        datestr = datetime.now().strftime("%Y%m%d_%H_%M_%S")
-        filestring = self.saving_directory + self.name + "_" + datestr
-        filename_np = filestring + ".npz"
-        filename_qt = filestring + ".qt"
-        betas, phis, thetas = self.get_numpy_vars(betas_rho, betas_angle, phis, thetas)
-        np.savez(
-            filename_np,
-            betas=betas,
-            phis=phis,
-            thetas=thetas,
-            max_alpha=self.max_alpha,
-            max_beta=self.max_beta,
-            name=self.name,
-            circuits=self.circuits,
-        )
-        print("\n\nparameters saved as: " + filename_np)
-        qt.qsave([self.initial_state, self.target_state], filename_qt)
-        print("states saved as: " + filename_qt)
-        self.print_info()
-        # print('name for loading:' + filestring)
-        return filestring
-
-    def load(self, filestring):
-        filename_np = filestring + ".npz"
-        filename_qt = filestring + ".qt"
-        f = np.load(filename_np)
-        betas, alphas, phis, thetas, max_alpha, max_beta, name = (
-            f["betas"],
-            f["alphas"],
-            f["phis"],
-            f["thetas"],
-            f["max_alpha"],
-            f["max_beta"],
-            str(f["name"]),
-        )
-        circuits = f["circuits"] if ["circuits"] in f else []
-        print("loaded parameters from:" + filename_np)
-        f.close()
-        states = qt.qload(filename_qt)
-        initial_state, target_state = states[0], states[1]
-        print("loaded states from:" + filename_qt)
-        self.__init__(
-            initial_state=initial_state,
-            target_state=target_state,
-            N_blocks=len(betas),
-            betas=betas,
-            alphas=alphas,
-            phis=phis,
-            thetas=thetas,
-            max_alpha=max_alpha,
-            max_beta=max_beta,
-            name=name,
-            circuits=circuits,
-        )
-        self.print_info()
-    """
-
-    def print_info(
+    def print_best_info(
         self,
-        betas_rho=None,
-        betas_angle=None,
-        alphas_rho=None,
-        alphas_angle=None,
-        phis=None,
-        thetas=None,
         human=True,
     ):
-        betas_rho = self.betas_rho if betas_rho is None else betas_rho
-        betas_angle = self.betas_angle if betas_angle is None else betas_angle
-        alphas_rho = self.alphas_rho if alphas_rho is None else alphas_rho
-        alphas_angle = self.alphas_angle if alphas_angle is None else alphas_angle
-        phis = self.phis if phis is None else phis
-        thetas = self.thetas if thetas is None else thetas
         fids = self.batch_state_fidelities(
-            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+            self.betas_rho,
+            self.betas_angle,
+            self.alphas_rho,
+            self.alphas_angle,
+            self.phis,
+            self.thetas,
         )
         max_idx = tf.argmax(fids)[0, 0].numpy()
         all_betas, all_alphas, all_phis, all_thetas = self.get_numpy_vars(
-            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+            self.betas_rho,
+            self.betas_angle,
+            self.alphas_rho,
+            self.alphas_angle,
+            self.phis,
+            self.thetas,
         )
         max_fid = fids[max_idx][0, 0].numpy()
         betas = all_betas[max_idx]
@@ -802,6 +883,3 @@ class BatchOptimizer:
             print("thetas: " + repr(thetas))
             print("Max Fidelity: " + repr(max_fid))
             print("\n")
-
-
-# %%
