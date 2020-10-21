@@ -139,10 +139,8 @@ class BatchOptimizer:
             if "target_states" in parameters
             else [self.target_state]
         )
-        parameters["saving_directory"] = (
-            parameters["saving_directory"]
-            if "saving_directory" in parameters
-            else self.saving_directory
+        parameters["filename"] = (
+            parameters["filename"] if "filename" in parameters else self.filename
         )
         parameters["timestamps"] = (
             parameters["timestamps"] if "timestamps" in parameters else self.timestamps
@@ -954,7 +952,6 @@ class BatchOptimizer:
         with np.printoptions(precision=5, suppress=True):
             for parameter, value in self.parameters.items():
                 print(parameter + ": " + str(value))
-            print("saving directory: " + self.saving_directory)
             print("filename: " + self.filename)
             print("\nBest circuit parameters found:")
             print("betas:         " + str(best_circuit["betas"]))
