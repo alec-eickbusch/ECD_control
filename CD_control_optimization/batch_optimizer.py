@@ -43,6 +43,8 @@ class BatchOptimizer:
         learning_rate=0.01,
         epoch_size=10,
         epochs=100,
+        beta_scale=1.0,
+        alpha_scale=1.0,
         use_displacements=True,
         no_CD_end=True,
         beta_mask=None,
@@ -65,6 +67,8 @@ class BatchOptimizer:
             "learning_rate": learning_rate,
             "epoch_size": epoch_size,
             "epochs": epochs,
+            "beta_scale": beta_scale,
+            "alpha_scale": alpha_scale,
             "use_displacements": use_displacements,
             "name": name,
             "comment": comment,
@@ -704,9 +708,9 @@ class BatchOptimizer:
             f[timestamp].attrs["termination_reason"] = termination_reason
 
     # TODO: update for tf
-    def randomize_and_set_vars(self, beta_scale=None, alpha_scale=None):
-        beta_scale = 1.0 if beta_scale is None else beta_scale
-        alpha_scale = 1.0 if alpha_scale is None else alpha_scale
+    def randomize_and_set_vars(self):
+        beta_scale = self.parameters["beta_scale"]
+        alpha_scale = self.parameters["alpha_scale"]
         betas_rho = np.random.uniform(
             0,
             beta_scale,
