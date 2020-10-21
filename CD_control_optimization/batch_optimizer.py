@@ -1,9 +1,4 @@
 #%%
-# a minimial implementation of a discrete version of grape
-# consisting of a sequence of conditional displacement,
-# displacement, and rotation pulses, with
-# tuneable parameters
-
 # note: timestamp can't use "/" character for h5 saving.
 TIMESTAMP_FORMAT = "%Y-%m-%d %I:%M:%S %p"
 import numpy as np
@@ -17,13 +12,12 @@ print(
     + tf.__version__
     + "\n"
 )
-#%%
 import CD_control_optimization.tf_quantum as tfq
 import qutip as qt
 import datetime
 import time
 
-#%%
+
 class BatchOptimizer:
 
     # a block is defined as the unitary: CD(beta)D(alpha)R_phi(theta)
@@ -707,7 +701,6 @@ class BatchOptimizer:
         with h5py.File(self.filename, "a") as f:
             f[timestamp].attrs["termination_reason"] = termination_reason
 
-    # TODO: update for tf
     def randomize_and_set_vars(self):
         beta_scale = self.parameters["beta_scale"]
         alpha_scale = self.parameters["alpha_scale"]
