@@ -414,7 +414,19 @@ class BatchOptimizer:
             variables = [self.betas_rho, self.betas_angle, self.phis, self.thetas]
 
         @tf.function
-        def entry_stop_gradients(target, mask):
+        def entry_stop_gradients_betas_rho(target, mask):
+            mask_h = tf.abs(mask - 1)
+            return tf.stop_gradient(mask_h * target) + mask * target
+        @tf.function
+        def entry_stop_gradients_betas_angle(target, mask):
+            mask_h = tf.abs(mask - 1)
+            return tf.stop_gradient(mask_h * target) + mask * target
+        @tf.function
+        def entry_stop_gradients_betas(target, mask):
+            mask_h = tf.abs(mask - 1)
+            return tf.stop_gradient(mask_h * target) + mask * target
+        @tf.function
+        def entry_stop_gradients_betas(target, mask):
             mask_h = tf.abs(mask - 1)
             return tf.stop_gradient(mask_h * target) + mask * target
 
@@ -480,6 +492,9 @@ class BatchOptimizer:
 
         def callback_fun(obj, fids, dfids, epoch):
             elapsed_time_s = time.time() - start_time
+            time_per_epoch = elapsed_time_s/epoch if epoch is not 0 else 0.0
+            epochs_left = self.parameters['epochs'] - epoch
+            expected_time_remaining = epochs_left*time_per_epoch
             fidelities_np = np.squeeze(np.array(fids))
             betas_np, alphas_np, phis_np, thetas_np = self.get_numpy_vars()
             if epoch == 0:
@@ -519,9 +534,17 @@ class BatchOptimizer:
                     avg_dfid,
                 )
                 + " Elapsed time: "
-                + str(datetime.timedelta(seconds=elapsed_time_s)),
+                + str(datetime.timedelta(seconds=elapsed_time_s))
+                + " Remaing time: "
+                + str(datetime.timedelta(seconds=expected_time_remaining)),
                 end="",
             )
+        
+        #using individual masks instead of a single function for all to avoid raytracing issues
+        opt_beta_mask = tf.abs(self.beta_mask - 1)
+        opt_alpha_mask = tf.abs(self.beta_mask - 1)
+        opt_phi_mask = tf.abs(self.phi_mask - 1)
+        opt_theta_mask = tf.abs(self.theta_mask - 1)
 
         initial_fids = self.batch_state_fidelities(
             self.betas_rho,
@@ -536,20 +559,16 @@ class BatchOptimizer:
         for epoch in range(self.parameters["epochs"] + 1)[1:]:
             for _ in range(self.parameters["epoch_size"]):
                 with tf.GradientTape() as tape:
-                    betas_rho = entry_stop_gradients(self.betas_rho, self.beta_mask)
-                    betas_angle = entry_stop_gradients(self.betas_angle, self.beta_mask)
+                    betas_rho = tf.stop_gradient(opt_beta_mask * self.betas_rho) + opt_beta_mask * self.betas_rho
+                    betas_angle =tf.stop_gradient(opt_beta_mask * self.betas_angle) + opt_beta_mask * self.betas_angle
                     if self.parameters["use_displacements"]:
-                        alphas_rho = entry_stop_gradients(
-                            self.alphas_rho, self.alpha_mask
-                        )
-                        alphas_angle = entry_stop_gradients(
-                            self.alphas_angle, self.alpha_mask
-                        )
+                        alphas_rho = tf.stop_gradient(opt_alpha_mask * self.alphas_rho) + opt_alpha_mask * self.alphas_rho
+                        alphas_angle =tf.stop_gradient(opt_alpha_mask * self.alphas_angle) + opt_alpha_mask * self.alphas_angle
                     else:
                         alphas_rho = self.alphas_rho
                         alphas_angle = self.alphas_angle
-                    phis = entry_stop_gradients(self.phis, self.phi_mask)
-                    thetas = entry_stop_gradients(self.thetas, self.theta_mask)
+                    phis = tf.stop_gradient(opt_phi_mask * self.phis) + opt_phi_mask * self.phis
+                    thetas =tf.stop_gradient(opt_theta_mask * self.thetas) + opt_theta_mask * self.thetas
                     new_fids = self.batch_state_fidelities(
                         betas_rho,
                         betas_angle,
@@ -618,6 +637,8 @@ class BatchOptimizer:
                 grp = f.create_group(timestamp)
                 for parameter, value in self.parameters.items():
                     grp.attrs[parameter] = value
+                grp.attrs['termination_reason'] = 'outside termination'
+                grp.attrs['elapsed_time_s'] = elapsed_time_s
                 grp.create_dataset(
                     "fidelities",
                     chunks=True,
@@ -664,12 +685,6 @@ class BatchOptimizer:
                         self.parameters["N_blocks"],
                     ),
                 )
-                grp.create_dataset(
-                    "elapsed_time_s",
-                    data=[elapsed_time_s],
-                    chunks=True,
-                    maxshape=(None,),
-                )
         else:  # just append the data
             with h5py.File(self.filename, "a") as f:
                 f[timestamp]["fidelities"].resize(
@@ -689,7 +704,7 @@ class BatchOptimizer:
                 f[timestamp]["alphas"][-1] = alphas_np
                 f[timestamp]["phis"][-1] = phis_np
                 f[timestamp]["thetas"][-1] = thetas_np
-                f[timestamp]["elapsed_time_s"][-1] = elapsed_time_s
+                f[timestamp].attrs["elapsed_time_s"] = elapsed_time_s
     
     def _save_termination_reason(self, timestamp, termination_reason):
         with h5py.File(self.filename, "a") as f:
