@@ -151,3 +151,60 @@ class OptimizationAnalysis:
             axs[circuit_block].set_ylabel(r"arg$(\alpha)$ (deg)")
             axs[circuit_block].set_title(r"$D_{%d}(\alpha)$" % circuit_block)
         fig.tight_layout()
+
+
+class OptimizationSweepsAnalysis:
+    def __init__(self, filename):
+        self.filename = filename
+        with h5py.File(self.filename, "a") as f:
+            group_names = list(f.keys())
+        self.sweep_names = []
+        for group_name in group_names:
+            if group_name.split(" ")[0] == "sweep":
+                self.sweep_names.append(group_name)
+        self.data = {}
+
+    def _load_data(self, sweep_name=None):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        if sweep_name in self.data:
+            return
+        self.data[sweep_name] = {}
+        with h5py.File(self.filename, "a") as f:
+            self.data[sweep_name]["sweep_param_name"] = f[sweep_name].attrs[
+                "sweep_param_name"
+            ]
+            self.data[sweep_name]["timestamps"] = str(
+                f[sweep_name].attrs["timestamps"]
+            ).split(",")
+            self.data[sweep_name]["fidelities"] = f[sweep_name]["fidelities"].value
+            self.data[sweep_name]["sweep_param_values"] = f[sweep_name][
+                "sweep_param_values"
+            ].value
+
+    def fidelities(self, sweep_name=None):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        self._load_data(sweep_name)
+        return self.data[sweep_name]["fidelities"]
+
+    def plot_sweep_fidelities(self, sweep_name=None, fig=None, ax=None, log=False):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        fids = self.fidelities(sweep_name)
+        sweep_param_values = self.data[sweep_name]["sweep_param_values"]
+        sweep_param_name = self.data[sweep_name]["sweep_param_name"]
+        if fig is None:
+            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+        if ax is None:
+            ax = fig.subplots()
+        if log:
+            ax.semilogy(sweep_param_values, 1 - fids, "--.", color="black")
+        else:
+            ax.plot(sweep_param_values, fids, ":.", color="black")
+        ax.set_xlabel(sweep_param_name)
+        if log:
+            ax.set_ylabel("infidelity")
+        else:
+            ax.set_ylabel("fidelity")
+        fig.tight_layout()
