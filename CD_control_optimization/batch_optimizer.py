@@ -4,6 +4,8 @@
 # displacement, and rotation pulses, with
 # tuneable parameters
 
+# note: timestamp can't use "/" character for h5 saving.
+TIMESTAMP_FORMAT = "%Y-%m-%d %I:%M:%S %p"
 import numpy as np
 import tensorflow as tf
 import h5py
@@ -36,78 +38,144 @@ class BatchOptimizer:
         N_blocks=20,
         term_fid=0.99,
         dfid_stop=1e-4,
+        learning_rate=0.01,
+        epoch_size=10,
+        epochs=100,
         use_displacements=True,
         no_CD_end=True,
+        beta_mask=None,
+        phi_mask=None,
+        theta_mask=None,
+        alpha_mask=None,
         name="CD_control",
         saving_directory="",
+        comment="",
+        metadata={},
     ):
-        self.optimization_type = optimization_type
-        if self.optimization_type == "state transfer":
+        self.parameters = {
+            "optimization_type": optimization_type,
+            "N_multistart": N_multistart,
+            "N_blocks": N_blocks,
+            "term_fid": term_fid,
+            "dfid_stop": dfid_stop,
+            "no_CD_end": no_CD_end,
+            "name": name,
+            "learning_rate": learning_rate,
+            "epoch_size": epoch_size,
+            "epochs": epochs,
+            "use_displacements": use_displacements,
+            "name": name,
+            "comment": comment,
+        }
+        self.parameters.update(metadata)
+        if self.parameters["optimization_type"] == "state transfer":
             # self.initial_states = tf.stack(
             #    [tfq.qt2tf(state) for state in initial_states]
             # )
             # todo: can instead store dag of target states
             # self.target_states = tf.stack([tfq.qt2tf(state) for state in target_states])
+            if len(initial_states) > 1:
+                raise Exception("Need to implementat multi-state optimization")
             self.initial_state = tfq.qt2tf(initial_states[0])
             self.target_state = tfq.qt2tf(target_states[0])
-            self.N_cav = self.initial_state.numpy().shape[0] // 2
-        elif self.optimization_type == "unitary":
+            N_cav = self.initial_state.numpy().shape[0] // 2
+        elif self.parameters["optimization_type"] == "unitary":
             self.target_unitary = tfq.qt2tf(target_unitary)
-            self.N_cav = self.target_unitary.numpy().shape[0] // 2
-            self.P_cav = P_cav if P_cav is not None else self.N_cav
-        elif self.optimization_type == "expectation":
-            pass
-            # todo: handle this case.
+            N_cav = self.target_unitary.numpy().shape[0] // 2
+            P_cav = P_cav if P_cav is not None else N_cav
+            raise Exception("Need to implement unitary optimization")
+        elif self.parameters["optimization_type"] == "expectation":
+            raise Exception("Need to implement expectation optimization")
         else:
             raise ValueError(
                 "optimization_type must be one of \{'state transfer', 'unitary', 'expectation'\}"
             )
-        self.N_blocks = N_blocks
-        self.N_multistart = N_multistart
-        self.use_displacements = use_displacements
-        self.betas_rho = []
-        self.betas_angle = []
-        self.alphas_rho = []
-        self.alphas_angle = []
-        self.phis = []
-        self.thetas = []
-        self.term_fid = term_fid
-        self.dfid_stop = dfid_stop
-        self.no_CD_end = no_CD_end
+        self.parameters["N_cav"] = N_cav
+        if P_cav is not None:
+            self.parameters["P_cav"] = P_cav
+
+        # TODO: handle case when you pass initial params. In that case, don't randomize, but use "set_tf_vars()"
         self.randomize_and_set_vars()
         # self.set_tf_vars(betasG=betas, alphas=alphas, phis=phis, thetas=thetas)
 
-        self.a = tfq.destroy(self.N_cav)
-        self.adag = tfq.create(self.N_cav)
-        self.q = tfq.position(self.N_cav)
-        self.p = tfq.momentum(self.N_cav)
-        self.n = tfq.num(self.N_cav)
-        self.I = tfq.qt2tf(qt.tensor(qt.identity(2), qt.identity(self.N_cav)))
-
-        # Pre-diagonalize
-        (self._eig_q, self._U_q) = tf.linalg.eigh(self.q)
-        (self._eig_p, self._U_p) = tf.linalg.eigh(self.p)
-        (self._eig_n, self._U_n) = tf.linalg.eigh(self.n)
-
-        self._qp_comm = tf.linalg.diag_part(self.q @ self.p - self.p @ self.q)
-
-        if self.optimization_type == "unitary":
-            partial_I = np.array(qt.identity(self.N_cav))
-            for j in range(self.P_cav, self.N_cav):
-                partial_I[j, j] = 0
-            partial_I = qt.Qobj(partial_I)
-            self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
+        self._construct_needed_matrices()
+        self._construct_optimization_masks(beta_mask, alpha_mask, phi_mask, theta_mask)
 
         # opt data will be a dictionary of dictonaries used to store optimization data
         # the dictionary will be addressed by timestamps of optmization.
         # each opt will append to opt_data a dictionary
         # this dictionary will contain optimization parameters and results
 
-        self.opt_data = {}
         self.timestamps = []
         self.saving_directory = saving_directory
-        self.name = name
-        self.filename = self.saving_directory + self.name + ".h5"
+        self.filename = self.saving_directory + name + ".h5"
+
+    def _construct_needed_matrices(self):
+        N_cav = self.parameters["N_cav"]
+        q = tfq.position(N_cav)
+        p = tfq.momentum(N_cav)
+
+        # Pre-diagonalize
+        (self._eig_q, self._U_q) = tf.linalg.eigh(q)
+        (self._eig_p, self._U_p) = tf.linalg.eigh(p)
+
+        self._qp_comm = tf.linalg.diag_part(q @ p - p @ q)
+
+        if self.parameters["optimization_type"] == "unitary":
+            P_cav = self.parameters["P_cav"]
+            partial_I = np.array(qt.identity(N_cav))
+            for j in range(P_cav, N_cav):
+                partial_I[j, j] = 0
+            partial_I = qt.Qobj(partial_I)
+            self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
+
+    def _construct_optimization_masks(
+        self, beta_mask=None, alpha_mask=None, phi_mask=None, theta_mask=None
+    ):
+        if beta_mask is None:
+            beta_mask = np.ones(
+                shape=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+                dtype=np.float32,
+            )
+            if self.parameters["no_CD_end"]:
+                beta_mask[-1, :] = 0  # don't optimize final CD
+        else:
+            # TODO: add mask to self.parameters for saving if it's non standard!
+            raise Exception(
+                "need to implement non-standard masks for batch optimization"
+            )
+        if alpha_mask is None:
+            alpha_mask = np.ones(
+                shape=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+                dtype=np.float32,
+            )
+        else:
+            raise Exception(
+                "need to implement non-standard masks for batch optimization"
+            )
+        if phi_mask is None:
+            phi_mask = np.ones(
+                shape=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+                dtype=np.float32,
+            )
+            phi_mask[0, :] = 0  # stop gradient on first phi entry
+        else:
+            raise Exception(
+                "need to implement non-standard masks for batch optimization"
+            )
+        if theta_mask is None:
+            theta_mask = np.ones(
+                shape=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+                dtype=np.float32,
+            )
+        else:
+            raise Exception(
+                "need to implement non-standard masks for batch optimization"
+            )
+        self.beta_mask = beta_mask
+        self.alpha_mask = alpha_mask
+        self.phi_mask = phi_mask
+        self.theta_mask = theta_mask
 
     @tf.function
     def batch_construct_displacement_operators(self, alphas):
@@ -219,7 +287,7 @@ class BatchOptimizer:
         alphas_angle = self.alphas_angle if alphas_angle is None else alphas_angle
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
-        if self.use_displacements:
+        if self.parameters["use_displacements"]:
             bs = self.construct_block_operators_with_displacements(
                 betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
             )
@@ -238,7 +306,7 @@ class BatchOptimizer:
         bs = self.batch_construct_block_operators(
             betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
         )
-        psis = tf.stack([self.initial_state] * self.N_multistart)
+        psis = tf.stack([self.initial_state] * self.parameters["N_multistart"])
         # note: might be able to use tf.einsum or tf.scan (as done in U_tot) here.
         for U in bs:
             psis = U @ psis
@@ -252,7 +320,7 @@ class BatchOptimizer:
             betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
         )
         # todo: could be batched beforehand
-        psits = tf.stack([self.target_state] * self.N_multistart)
+        psits = tf.stack([self.target_state] * self.parameters["N_multistart"])
         psi_ts_dag = tf.linalg.adjoint(psits)
         overlaps = psi_ts_dag @ psifs
         return overlaps
@@ -279,7 +347,7 @@ class BatchOptimizer:
 
     @tf.function
     def U_tot(self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas):
-        if self.use_displacements:
+        if self.parameters["use_displacements"]:
             bs = self.construct_block_operators_with_displacements(
                 betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
             )
@@ -301,7 +369,7 @@ class BatchOptimizer:
         U_circuit = self.U_tot(
             betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
         )
-        D = tf.constant(self.P_cav * 2, dtype=tf.complex64)
+        D = tf.constant(self.parameters["P_cav"] * 2, dtype=tf.complex64)
         overlap = tf.linalg.trace(
             tf.linalg.adjoint(self.target_unitary) @ self.P_matrix @ U_circuit
         )
@@ -325,61 +393,15 @@ class BatchOptimizer:
         expect = psif_dag @ O @ psif
         return expect
 
-    def optimize(
-        self,
-        learning_rate=0.01,
-        epoch_size=100,
-        epochs=100,
-        beta_mask=None,
-        phi_mask=None,
-        theta_mask=None,
-        alpha_mask=None,
-        callback_fun=None,
-        save_all_parameters=False,
-        comments="",
-    ):
+    def optimize(self):
 
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%I:%M:%S %p")
+        timestamp = datetime.datetime.now().strftime(TIMESTAMP_FORMAT)
         self.timestamps.append(timestamp)
         print("Start time: " + timestamp)
         # start time
         start_time = time.time()
-        self.opt_data[timestamp] = {}
-        # data local to this function
-        self.opt_data[timestamp]["timestamp"] = timestamp
-        self.opt_data[timestamp]["leaning_rate"] = learning_rate
-        self.opt_data[timestamp]["epoch_size"] = epoch_size
-        self.opt_data[timestamp]["epochs"] = epochs
-        self.opt_data[timestamp]["save_all_parameters"] = save_all_parameters
-        self.opt_data[timestamp]["comments"] = comments
-        # data as part of the current object
-        self.opt_data[timestamp]["name"] = self.name
-        self.opt_data[timestamp]["optimization_type"] = self.optimization_type
-        self.opt_data[timestamp]["use_displacements"] = self.use_displacements
-        self.opt_data[timestamp]["N_blocks"] = self.N_blocks
-        self.opt_data[timestamp]["N_multistart"] = self.N_multistart
-        self.opt_data[timestamp]["no_CD_end"] = self.no_CD_end
-        self.opt_data[timestamp]["N_cav"] = self.N_cav
-        self.opt_data[timestamp]["term_fid"] = self.term_fid
-        self.opt_data[timestamp]["dfid_stop"] = self.dfid_stop
-        if self.optimization_type == "state_transfer":
-            self.opt_data[timestamp]["initial_states"] = self.initial_states
-            self.opt_data[timestamp]["final_states"] = self.final_states
-        elif self.optimization_type == "unitary":
-            self.opt_data[timestamp]["target_unitary"] = self.target_unitary
-            self.opt_data[timestamp]["P_cav"] = self.P_cav
-        elif self.optimization_type == "expectation":
-            pass
-            # todo: handle this case
-        # data which will accumulate during optimization
-        self.opt_data[timestamp]["fidelities"] = []
-        self.opt_data[timestamp]["betas"] = []
-        self.opt_data[timestamp]["alphas"] = []
-        self.opt_data[timestamp]["phis"] = []
-        self.opt_data[timestamp]["thetas"] = []
-        self.opt_data[timestamp]["elapsed_time_s"] = [0.0]
-        optimizer = tf.optimizers.Adam(learning_rate)
-        if self.use_displacements:
+        optimizer = tf.optimizers.Adam(self.parameters["learning_rate"])
+        if self.parameters["use_displacements"]:
             variables = [
                 self.betas_rho,
                 self.betas_angle,
@@ -390,35 +412,6 @@ class BatchOptimizer:
             ]
         else:
             variables = [self.betas_rho, self.betas_angle, self.phis, self.thetas]
-
-        if beta_mask is None:
-            beta_mask = np.ones(
-                shape=(self.N_blocks, self.N_multistart), dtype=np.int32
-            )
-            if self.no_CD_end:
-                beta_mask[-1, :] = 0  # don't optimize final CD
-
-        if phi_mask is None:
-            phi_mask = np.ones(shape=(self.N_blocks, self.N_multistart), dtype=np.int32)
-            phi_mask[0, :] = 0  # stop gradient on first phi entry
-
-        if theta_mask is None:
-            theta_mask = np.ones(
-                shape=(self.N_blocks, self.N_multistart), dtype=np.int32
-            )
-        if alpha_mask is None:
-            alpha_mask = np.ones(
-                shape=(self.N_blocks, self.N_multistart), dtype=np.int32
-            )
-
-        self.opt_data[timestamp]["beta_mask"] = beta_mask
-        self.opt_data[timestamp]["alpha_mask"] = alpha_mask
-        self.opt_data[timestamp]["phi_mask"] = phi_mask
-        self.opt_data[timestamp]["theta_mask"] = theta_mask
-        beta_mask = tf.constant(beta_mask, dtype=tf.float32)
-        alpha_mask = tf.constant(alpha_mask, dtype=tf.float32)
-        phi_mask = tf.constant(phi_mask, dtype=tf.float32)
-        theta_mask = tf.constant(theta_mask, dtype=tf.float32)
 
         @tf.function
         def entry_stop_gradients(target, mask):
@@ -482,47 +475,53 @@ class BatchOptimizer:
         def loss_fun(fids):
             # I think it's important that the log is taken before the avg
             losses = tf.math.log(1 - fids)
-            avg_loss = tf.reduce_sum(losses) / self.N_multistart
+            avg_loss = tf.reduce_sum(losses) / self.parameters["N_multistart"]
             return avg_loss
 
-        # format of callback will always be
-        # callback_fun(self, loss, dloss, epoch)
-        # passing self to callback will allow one to print any values of the variables
-        if callback_fun is None:
-
-            def callback_fun(obj, fids, dfids, epoch):
-                elapsed_time_s = time.time() - start_time
-                self.opt_data[timestamp]["fidelities"].append(
-                    np.squeeze(np.array(fids))
+        def callback_fun(obj, fids, dfids, epoch):
+            elapsed_time_s = time.time() - start_time
+            fidelities_np = np.squeeze(np.array(fids))
+            betas_np, alphas_np, phis_np, thetas_np = self.get_numpy_vars()
+            if epoch == 0:
+                self._save_optimization_data(
+                    timestamp,
+                    fidelities_np,
+                    betas_np,
+                    alphas_np,
+                    phis_np,
+                    thetas_np,
+                    elapsed_time_s,
+                    append=False,
                 )
-                betas, alphas, phis, thetas = self.get_numpy_vars()
-                self.opt_data[timestamp]["betas"].append(betas)
-                self.opt_data[timestamp]["alphas"].append(alphas)
-                self.opt_data[timestamp]["phis"].append(phis)
-                self.opt_data[timestamp]["thetas"].append(thetas)
-                self.opt_data[timestamp]["elapsed_time_s"].append(elapsed_time_s)
-                if epoch == 0:
-                    self.save_optimization_data(timestamp, append=False)
-                else:
-                    self.save_optimization_data(timestamp, append=True)
-                avg_fid = tf.reduce_sum(fids) / self.N_multistart
-                max_fid = tf.reduce_max(fids)
-                avg_dfid = tf.reduce_sum(dfids) / self.N_multistart
-                max_dfid = tf.reduce_max(dfids)
-                print(
-                    "\r Epoch: %d / %d Max Fid: %.6f Avg Fid: %.6f Max dFid: %.6f Avg dFid: %.6f"
-                    % (
-                        epoch,
-                        epochs,
-                        max_fid,
-                        avg_fid,
-                        max_dfid,
-                        avg_dfid,
-                    )
-                    + " Elapsed time: "
-                    + str(datetime.timedelta(seconds=elapsed_time_s)),
-                    end="",
+            else:
+                self._save_optimization_data(
+                    timestamp,
+                    fidelities_np,
+                    betas_np,
+                    alphas_np,
+                    phis_np,
+                    thetas_np,
+                    elapsed_time_s,
+                    append=True,
                 )
+            avg_fid = tf.reduce_sum(fids) / self.parameters["N_multistart"]
+            max_fid = tf.reduce_max(fids)
+            avg_dfid = tf.reduce_sum(dfids) / self.parameters["N_multistart"]
+            max_dfid = tf.reduce_max(dfids)
+            print(
+                "\r Epoch: %d / %d Max Fid: %.6f Avg Fid: %.6f Max dFid: %.6f Avg dFid: %.6f"
+                % (
+                    epoch,
+                    self.parameters["epochs"],
+                    max_fid,
+                    avg_fid,
+                    max_dfid,
+                    avg_dfid,
+                )
+                + " Elapsed time: "
+                + str(datetime.timedelta(seconds=elapsed_time_s)),
+                end="",
+            )
 
         initial_fids = self.batch_state_fidelities(
             self.betas_rho,
@@ -534,21 +533,23 @@ class BatchOptimizer:
         )
         fids = initial_fids
         callback_fun(self, fids, 0, 0)
-        for epoch in range(epochs + 1)[1:]:
-            for _ in range(epoch_size):
+        for epoch in range(self.parameters["epochs"] + 1)[1:]:
+            for _ in range(self.parameters["epoch_size"]):
                 with tf.GradientTape() as tape:
-                    betas_rho = entry_stop_gradients(self.betas_rho, beta_mask)
-                    betas_angle = entry_stop_gradients(self.betas_angle, beta_mask)
-                    if self.use_displacements:
-                        alphas_rho = entry_stop_gradients(self.alphas_rho, alpha_mask)
+                    betas_rho = entry_stop_gradients(self.betas_rho, self.beta_mask)
+                    betas_angle = entry_stop_gradients(self.betas_angle, self.beta_mask)
+                    if self.parameters["use_displacements"]:
+                        alphas_rho = entry_stop_gradients(
+                            self.alphas_rho, self.alpha_mask
+                        )
                         alphas_angle = entry_stop_gradients(
-                            self.alphas_angle, alpha_mask
+                            self.alphas_angle, self.alpha_mask
                         )
                     else:
                         alphas_rho = self.alphas_rho
                         alphas_angle = self.alphas_angle
-                    phis = entry_stop_gradients(self.phis, phi_mask)
-                    thetas = entry_stop_gradients(self.thetas, theta_mask)
+                    phis = entry_stop_gradients(self.phis, self.phi_mask)
+                    thetas = entry_stop_gradients(self.thetas, self.theta_mask)
                     new_fids = self.batch_state_fidelities(
                         betas_rho,
                         betas_angle,
@@ -563,103 +564,109 @@ class BatchOptimizer:
             dfids = new_fids - fids
             fids = new_fids
             callback_fun(self, fids, dfids, epoch)
-            condition_fid = tf.greater(fids, self.term_fid)
-            condition_dfid = tf.greater(dfids, self.dfid_stop)
+            condition_fid = tf.greater(fids, self.parameters["term_fid"])
+            condition_dfid = tf.greater(dfids, self.parameters["dfid_stop"])
             if tf.reduce_any(condition_fid):
-                print("\n\n Optimization stopped. Term fidelity reached.\n\n")
+                print("\n\n Optimization stopped. Term fidelity reached.\n")
+                termination_reason = 'term_fid'
                 break
             if not tf.reduce_any(condition_dfid):
                 print("\n max dFid: %6f" % tf.reduce_max(dfids).numpy())
-                print("dFid stop: %6f" % self.dfid_stop)
+                print("dFid stop: %6f" % self.parameters["dfid_stop"])
                 print(
-                    "\n\n Optimization stopped.  No dfid is greater than dfid_stop\n\n"
+                    "\n\n Optimization stopped.  No dfid is greater than dfid_stop\n"
                 )
+                termination_reason = 'dfid'
                 break
 
-        if epoch == epochs:
+        if epoch == self.parameters["epochs"]:
+            termination_reason = 'epochs'
             print(
-                "\n\n Optimization stopped.  Reached maximum number of epochs. Terminal fidelity not reached.\n\n"
+                "\n\nOptimization stopped.  Reached maximum number of epochs. Terminal fidelity not reached.\n"
             )
+        self._save_termination_reason(timestamp, termination_reason)
+        timestamp_end = datetime.datetime.now().strftime(TIMESTAMP_FORMAT)
+        elapsed_time_s = time.time() - start_time
+        epoch_time_s = elapsed_time_s / epoch
+        step_time_s = epoch_time_s / self.parameters["epochs"]
         self.print_best_info()
-        return np.squeeze(np.array(all_fids)).T
+        print("all data saved as: " + self.filename)
+        print("termination reason: " + termination_reason)
+        print("optimization timestamp (start time): " + timestamp)
+        print("timestamp (end time): " + timestamp_end)
+        print("elapsed time: " + str(datetime.timedelta(seconds=elapsed_time_s)))
+        print("Time per epoch (epoch size = %d): " % self.parameters['epoch_size'] + str(datetime.timedelta(seconds=epoch_time_s)))
+        print("Time per Adam step (N_multistart = %d, N_cav = %d): " % (self.parameters['N_multistart'], self.parameters['N_cav']) + str(datetime.timedelta(seconds=step_time_s)))
+        return timestamp
 
     # if append is True, it will assume the dataset is already created and append only the
-    # last aquired values to it
-    def save_optimization_data(self, timestamp, append=False):
+    # last aquired values to it.
+    # TODO: if needed, could use compression when saving data.
+    def _save_optimization_data(
+        self,
+        timestamp,
+        fidelities_np,
+        betas_np,
+        alphas_np,
+        phis_np,
+        thetas_np,
+        elapsed_time_s,
+        append,
+    ):
         if not append:
             with h5py.File(self.filename, "a") as f:
                 grp = f.create_group(timestamp)
-                attributes = [
-                    "leaning_rate",
-                    "epoch_size",
-                    "epochs",
-                    "save_all_parameters",
-                    "comments",
-                    "name",
-                    "optimization_type",
-                    "use_displacements",
-                    "N_blocks",
-                    "N_multistart",
-                    "no_CD_end",
-                    "N_cav",
-                    "term_fid",
-                    "dfid_stop",
-                    "beta_mask",
-                    "alpha_mask",
-                    "phi_mask",
-                    "theta_mask",
-                ]
-                for attribute in attributes:
-                    grp.attrs[attribute] = self.opt_data[timestamp][attribute]
+                for parameter, value in self.parameters.items():
+                    grp.attrs[parameter] = value
                 grp.create_dataset(
                     "fidelities",
                     chunks=True,
-                    data=self.opt_data[timestamp]["fidelities"],
-                    maxshape=(None, self.opt_data[timestamp]["N_multistart"]),
+                    data=[fidelities_np],
+                    maxshape=(None, self.parameters["N_multistart"]),
                 )
                 grp.create_dataset(
                     "betas",
-                    data=self.opt_data[timestamp]["betas"],
+                    data=[betas_np],
                     chunks=True,
                     maxshape=(
                         None,
-                        self.opt_data[timestamp]["N_multistart"],
-                        self.opt_data[timestamp]["N_blocks"],
+                        self.parameters["N_multistart"],
+                        self.parameters["N_blocks"],
                     ),
                 )
                 grp.create_dataset(
                     "alphas",
-                    data=self.opt_data[timestamp]["alphas"],
+                    data=[alphas_np],
                     chunks=True,
                     maxshape=(
                         None,
-                        self.opt_data[timestamp]["N_multistart"],
-                        self.opt_data[timestamp]["N_blocks"],
+                        self.parameters["N_multistart"],
+                        self.parameters["N_blocks"],
                     ),
                 )
                 grp.create_dataset(
                     "phis",
-                    data=self.opt_data[timestamp]["phis"],
+                    data=[phis_np],
                     chunks=True,
                     maxshape=(
                         None,
-                        self.opt_data[timestamp]["N_multistart"],
-                        self.opt_data[timestamp]["N_blocks"],
+                        self.parameters["N_multistart"],
+                        self.parameters["N_blocks"],
                     ),
                 )
                 grp.create_dataset(
                     "thetas",
-                    data=self.opt_data[timestamp]["thetas"],
+                    data=[thetas_np],
                     chunks=True,
                     maxshape=(
                         None,
-                        self.opt_data[timestamp]["N_multistart"],
-                        self.opt_data[timestamp]["N_blocks"],
+                        self.parameters["N_multistart"],
+                        self.parameters["N_blocks"],
                     ),
                 )
                 grp.create_dataset(
                     "elapsed_time_s",
-                    data=self.opt_data[timestamp]["elapsed_time_s"],
+                    data=[elapsed_time_s],
                     chunks=True,
                     maxshape=(None,),
                 )
@@ -677,40 +684,54 @@ class BatchOptimizer:
                     f[timestamp]["thetas"].shape[0] + 1, axis=0
                 )
 
-                f[timestamp]["fidelities"][-1] = self.opt_data[timestamp]["fidelities"][
-                    -1
-                ]
-                f[timestamp]["betas"][-1] = self.opt_data[timestamp]["betas"][-1]
-                f[timestamp]["alphas"][-1] = self.opt_data[timestamp]["alphas"][-1]
-                f[timestamp]["phis"][-1] = self.opt_data[timestamp]["phis"][-1]
-                f[timestamp]["thetas"][-1] = self.opt_data[timestamp]["thetas"][-1]
-                f[timestamp]["elapsed_time_s"][-1] = self.opt_data[timestamp][
-                    "elapsed_time_s"
-                ][-1]
+                f[timestamp]["fidelities"][-1] = fidelities_np
+                f[timestamp]["betas"][-1] = betas_np
+                f[timestamp]["alphas"][-1] = alphas_np
+                f[timestamp]["phis"][-1] = phis_np
+                f[timestamp]["thetas"][-1] = thetas_np
+                f[timestamp]["elapsed_time_s"][-1] = elapsed_time_s
+    
+    def _save_termination_reason(self, timestamp, termination_reason):
+        with h5py.File(self.filename, "a") as f:
+            f[timestamp].attrs['termination_reason'] = termination_reason
 
     # TODO: update for tf
     def randomize_and_set_vars(self, beta_scale=None, alpha_scale=None):
         beta_scale = 1.0 if beta_scale is None else beta_scale
         alpha_scale = 1.0 if alpha_scale is None else alpha_scale
         betas_rho = np.random.uniform(
-            0, beta_scale, size=(self.N_blocks, self.N_multistart)
+            0,
+            beta_scale,
+            size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
         )
         betas_angle = np.random.uniform(
-            -np.pi, np.pi, size=(self.N_blocks, self.N_multistart)
+            -np.pi,
+            np.pi,
+            size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
         )
-        if self.use_displacements:
+        if self.parameters["use_displacements"]:
             alphas_rho = np.random.uniform(
-                0, beta_scale, size=(self.N_blocks, self.N_multistart)
+                0,
+                beta_scale,
+                size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
             )
             alphas_angle = np.random.uniform(
-                -np.pi, np.pi, size=(self.N_blocks, self.N_multistart)
+                -np.pi,
+                np.pi,
+                size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
             )
-        phis = np.random.uniform(-np.pi, np.pi, size=(self.N_blocks, self.N_multistart))
+        phis = np.random.uniform(
+            -np.pi,
+            np.pi,
+            size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+        )
         thetas = np.random.uniform(
-            -np.pi, np.pi, size=(self.N_blocks, self.N_multistart)
+            -np.pi,
+            np.pi,
+            size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
         )
         phis[0] = 0  # everything is relative to first phi
-        if self.no_CD_end:
+        if self.parameters["no_CD_end"]:
             betas_rho[-1] = 0
             betas_angle[-1] = 0
         self.betas_rho = tf.Variable(
@@ -725,7 +746,7 @@ class BatchOptimizer:
             trainable=True,
             name="betas_angle",
         )
-        if self.use_displacements:
+        if self.parameters["use_displacements"]:
             self.alphas_rho = tf.Variable(
                 alphas_rho,
                 dtype=tf.float32,
@@ -740,10 +761,20 @@ class BatchOptimizer:
             )
         else:
             self.alphas_rho = tf.constant(
-                np.zeros(shape=((self.N_blocks, self.N_multistart))), dtype=tf.float32
+                np.zeros(
+                    shape=(
+                        (self.parameters["N_blocks"], self.parameters["N_multistart"])
+                    )
+                ),
+                dtype=tf.float32,
             )
             self.alphas_angle = tf.constant(
-                np.zeros(shape=((self.N_blocks, self.N_multistart))), dtype=tf.float32
+                np.zeros(
+                    shape=(
+                        (self.parameters["N_blocks"], self.parameters["N_multistart"])
+                    )
+                ),
+                dtype=tf.float32,
             )
         self.phis = tf.Variable(
             phis,
@@ -787,19 +818,24 @@ class BatchOptimizer:
         self.betas_rho = (
             tf.Variable(np.abs(np.array(betas)), dtype=tf.float32, trainable=True)
             if betas is not None
-            else tf.Variable(tf.zeros(self.N_blocks, dtype=tf.float32), trainable=True)
+            else tf.Variable(
+                tf.zeros(self.parameters["N_blocks"], dtype=tf.float32), trainable=True
+            )
         )
         self.betas_angle = (
             tf.Variable(np.angle(np.array(betas)), dtype=tf.float32, trainable=True)
             if betas is not None
-            else tf.Variable(tf.zeros(self.N_blocks, dtype=tf.float32), trainable=True)
+            else tf.Variable(
+                tf.zeros(self.parameters["N_blocks"], dtype=tf.float32), trainable=True
+            )
         )
-        if self.use_displacements:
+        if self.parameters["use_displacements"]:
             self.alphas_rho = (
                 tf.Variable(np.abs(np.array(alphas)), dtype=tf.float32, trainable=True)
                 if alphas is not None
                 else tf.Variable(
-                    tf.zeros(self.N_blocks, dtype=tf.float32), trainable=True
+                    tf.zeros(self.parameters["N_blocks"], dtype=tf.float32),
+                    trainable=True,
                 )
             )
             self.alphas_angle = (
@@ -808,28 +844,34 @@ class BatchOptimizer:
                 )
                 if alphas is not None
                 else tf.Variable(
-                    tf.zeros(self.N_blocks, dtype=tf.float32), trainable=True
+                    tf.zeros(self.parameters["N_blocks"], dtype=tf.float32),
+                    trainable=True,
                 )
             )
         else:
-            self.alphas_rho = tf.constant(tf.zeros(self.N_blocks, dtype=tf.float32))
-            self.alphas_angle = tf.constant(tf.zeros(self.N_blocks, dtype=tf.float32))
+            self.alphas_rho = tf.constant(
+                tf.zeros(self.parameters["N_blocks"], dtype=tf.float32)
+            )
+            self.alphas_angle = tf.constant(
+                tf.zeros(self.parameters["N_blocks"], dtype=tf.float32)
+            )
 
         self.phis = (
             tf.Variable(phis, dtype=tf.float32, trainable=True)
             if phis is not None
-            else tf.Variable(tf.zeros(self.N_blocks, dtype=tf.float32), trainable=True)
+            else tf.Variable(
+                tf.zeros(self.parameters["N_blocks"], dtype=tf.float32), trainable=True
+            )
         )
         self.thetas = (
             tf.Variable(thetas, dtype=tf.float32, trainable=True)
             if phis is not None
-            else tf.Variable(tf.zeros(self.N_blocks, dtype=tf.float32), trainable=True)
+            else tf.Variable(
+                tf.zeros(self.parameters["N_blocks"], dtype=tf.float32), trainable=True
+            )
         )
 
-    def print_best_info(
-        self,
-        human=True,
-    ):
+    def print_best_info(self):
         fids = self.batch_state_fidelities(
             self.betas_rho,
             self.betas_angle,
@@ -852,34 +894,15 @@ class BatchOptimizer:
         alphas = all_alphas[max_idx]
         phis = all_phis[max_idx]
         thetas = all_thetas[max_idx]
-        if human:
-            with np.printoptions(precision=5, suppress=True):
-                # print("\n\n" + str(self.name))
-                print("N_blocks:      " + str(self.N_blocks))
-                # print("Unitary opt :  " + str(self.unitary_optimization))
-                # todo: add expectation optimization info
-                print("N_cav:         " + str(self.N_cav))
-                # print("P_cav:         " + str(self.P_cav))
-                print("Term fid:      %.6f" % self.term_fid)
-                print("displacements: " + str(self.use_displacements))
-                print("betas:         " + str(betas))
-                print("alphas:        " + str(alphas))
-                print("phis (deg):    " + str(phis * 180.0 / np.pi))
-                print("thetas (deg):  " + str(thetas * 180.0 / np.pi))
-                print("Max Fidelity:  %.6f" % max_fid)
-                print("\n")
-        else:
-            print("\n\n" + str(self.name))
-            print("N_blocks: " + repr(self.N_blocks))
-            print("Unitary optimization: " + str(self.unitary_optimization))
-            # todo: add expectation optimization info
-            print("N_cav:         " + str(self.N_cav))
-            print("P_cav: " + str(self.P_cav))
-            print("Term fid: %.6f" % self.term_fid)
-            print("Use displacements: " + str(self.use_displacements))
-            print("betas: " + repr(betas))
-            print("alphas: " + repr(alphas))
-            print("phis: " + repr(phis))
-            print("thetas: " + repr(thetas))
-            print("Max Fidelity: " + repr(max_fid))
+        with np.printoptions(precision=5, suppress=True):
+            for parameter, value in self.parameters.items():
+                print(parameter + ": " + str(value))
+            print("saving directory: " + self.saving_directory)
+            print("filename: " + self.filename)
+            print("\nBest circuit parameters found:")
+            print("betas:         " + str(betas))
+            print("alphas:        " + str(alphas))
+            print("phis (deg):    " + str(phis * 180.0 / np.pi))
+            print("thetas (deg):  " + str(thetas * 180.0 / np.pi))
+            print("Max Fidelity:  %.6f" % max_fid)
             print("\n")
