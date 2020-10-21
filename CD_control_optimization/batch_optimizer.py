@@ -46,10 +46,10 @@ class BatchOptimizer:
         theta_mask=None,
         alpha_mask=None,
         name="CD_control",
-        saving_directory="",
+        filename=None,
         comment="",
-        metadata={},
         timestamps=[],
+        **kwargs
     ):
         self.parameters = {
             "optimization_type": optimization_type,
@@ -68,7 +68,7 @@ class BatchOptimizer:
             "name": name,
             "comment": comment,
         }
-        self.parameters.update(metadata)
+        self.parameters.update(kwargs)
         if self.parameters["optimization_type"] == "state transfer":
             # self.initial_states = tf.stack(
             #    [tfq.qt2tf(state) for state in initial_states]
@@ -116,14 +116,19 @@ class BatchOptimizer:
         # this dictionary will contain optimization parameters and results
 
         self.timestamps = timestamps
-        self.saving_directory = saving_directory
-        self.filename = self.saving_directory + name + ".h5"
+        self.filename = filename if filename is not None else self.parameters["name"]
+        path = self.filename.split(".")
+        if len(path) < 2 or (len(path) == 2 and path[-1] != ".h5"):
+            self.filename = path[0] + ".h5"
 
     def modify_parameters(self, **kwargs):
         # currently, does not support changing optimization type.
         # todo: update for multi-state optimization and unitary optimziation
-        # handle things that are not in self.parameters:
         parameters = kwargs
+        for param, value in self.parameters.items():
+            if param not in parameters:
+                parameters[param] = value
+        # handle things that are not in self.parameters:
         parameters["initial_states"] = (
             parameters["initial_states"]
             if "initial_states" in parameters
@@ -626,7 +631,7 @@ class BatchOptimizer:
         elapsed_time_s = time.time() - start_time
         epoch_time_s = elapsed_time_s / epoch
         step_time_s = epoch_time_s / self.parameters["epochs"]
-        self.print_best_info()
+        self.print_info()
         print("all data saved as: " + self.filename)
         print("termination reason: " + termination_reason)
         print("optimization timestamp (start time): " + timestamp)
@@ -933,40 +938,28 @@ class BatchOptimizer:
         alphas = all_alphas[max_idx]
         phis = all_phis[max_idx]
         thetas = all_thetas[max_idx]
-        return dict(max_fid, betas, alphas, phis, thetas)
+        return {
+            "fidelity": max_fid,
+            "betas": betas,
+            "alphas": alphas,
+            "phis": phis,
+            "thetas": thetas,
+        }
 
-    def print_best_info(self):
-        fids = self.batch_state_fidelities(
-            self.betas_rho,
-            self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
-            self.phis,
-            self.thetas,
-        )
-        max_idx = tf.argmax(fids)[0, 0].numpy()
-        all_betas, all_alphas, all_phis, all_thetas = self.get_numpy_vars(
-            self.betas_rho,
-            self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
-            self.phis,
-            self.thetas,
-        )
-        max_fid = fids[max_idx][0, 0].numpy()
-        betas = all_betas[max_idx]
-        alphas = all_alphas[max_idx]
-        phis = all_phis[max_idx]
-        thetas = all_thetas[max_idx]
+    def best_fidelity(self):
+        return self.best_circuit()["fidelity"]
+
+    def print_info(self):
+        best_circuit = self.best_circuit()
         with np.printoptions(precision=5, suppress=True):
             for parameter, value in self.parameters.items():
                 print(parameter + ": " + str(value))
             print("saving directory: " + self.saving_directory)
             print("filename: " + self.filename)
             print("\nBest circuit parameters found:")
-            print("betas:         " + str(betas))
-            print("alphas:        " + str(alphas))
-            print("phis (deg):    " + str(phis * 180.0 / np.pi))
-            print("thetas (deg):  " + str(thetas * 180.0 / np.pi))
-            print("Max Fidelity:  %.6f" % max_fid)
+            print("betas:         " + str(best_circuit["betas"]))
+            print("alphas:        " + str(best_circuit["alphas"]))
+            print("phis (deg):    " + str(best_circuit["phis"] * 180.0 / np.pi))
+            print("thetas (deg):  " + str(best_circuit["thetas"] * 180.0 / np.pi))
+            print("Max Fidelity:  %.6f" % best_circuit["fidelity"])
             print("\n")
