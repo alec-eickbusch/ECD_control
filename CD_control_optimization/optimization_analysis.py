@@ -33,6 +33,44 @@ class OptimizationAnalysis:
         self._load_data(timestamp)
         return self.data[timestamp]["fidelities"]
 
+    def idx_of_best_circuit(self, timestamp=None):
+        fidelities = self.fidelities(timestamp)[-1]
+        idx = np.argmax(fidelities)
+        return idx
+
+    def best_circuit(self, timestamp=None):
+        if timestamp is None:
+            timestamp = self.timestamps[-1]
+        idx = self.idx_of_best_circuit(timestamp)
+        betas = self.data[timestamp]["betas"][-1][idx]
+        alphas = self.data[timestamp]["betas"][-1][idx]
+        phis = self.data[timestamp]["betas"][-1][idx]
+        thetas = self.data[timestamp]["betas"][-1][idx]
+        max_fid = self.data[timestamp]["fidelities"][-1][idx]
+        return {
+            "fidelity": max_fid,
+            "betas": betas,
+            "alphas": alphas,
+            "phis": phis,
+            "thetas": thetas,
+        }
+
+    def print_info(self, timestamp=None):
+        if timestamp is None:
+            timestamp = self.timestamps[-1]
+        best_circuit = self.best_circuit(timestamp)
+        with np.printoptions(precision=5, suppress=True):
+            for parameter, value in self.data[timestamp]['parameters'].items():
+                print(parameter + ": " + str(value))
+            print("filename: " + self.filename)
+            print("\nBest circuit parameters found:")
+            print("betas:         " + str(best_circuit["betas"]))
+            print("alphas:        " + str(best_circuit["alphas"]))
+            print("phis (deg):    " + str(best_circuit["phis"] * 180.0 / np.pi))
+            print("thetas (deg):  " + str(best_circuit["thetas"] * 180.0 / np.pi))
+            print("Max Fidelity:  %.6f" % best_circuit["fidelity"])
+            print("\n")
+
     def betas(self, timestamp=None):
         if timestamp is None:
             timestamp = self.timestamps[-1]
@@ -204,7 +242,7 @@ class OptimizationSweepsAnalysis:
             ax.plot(sweep_param_values, fids, ":.", color="black")
         ax.set_xlabel(sweep_param_name)
         if log:
-            ax.set_ylabel("infidelity")
+            ax.set_ylabel("best infidelity")
         else:
-            ax.set_ylabel("fidelity")
+            ax.set_ylabel("best fidelity")
         fig.tight_layout()
