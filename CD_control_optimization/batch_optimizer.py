@@ -110,6 +110,22 @@ class BatchOptimizer:
         self.saving_directory = saving_directory
         self.filename = self.saving_directory + name + ".h5"
 
+    def modify_parameters(self, parameters={}):
+        # currently, does not support changing optimization type.
+        if "optimization_type" in parameters:
+            raise Exception("Need to implement changing optimization type")
+        # First, handle any parameters which need additional processing to change
+        if "initial_states" in parameters:
+            if len(parameters["initial_states"][0]) > 1:
+                raise Exception("Need to implementat multi-state optimization")
+            self.initial_state = tfq.qt2tf(parameters["initial_states"][0])
+        if "final_states" in parameters:
+            if len(parameters["final_states"][0]) > 1:
+                raise Exception("Need to implementat multi-state optimization")
+            self.final_state = tfq.qt2tf(parameters["final_states"][0])
+        N_cav = self.initial_state.numpy().shape[0] // 2
+        self.parameters.update(parameters)
+
     def _construct_needed_matrices(self):
         N_cav = self.parameters["N_cav"]
         q = tfq.position(N_cav)
