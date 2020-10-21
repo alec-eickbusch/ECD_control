@@ -49,6 +49,7 @@ class BatchOptimizer:
         saving_directory="",
         comment="",
         metadata={},
+        timestamps=[],
     ):
         self.parameters = {
             "optimization_type": optimization_type,
@@ -76,8 +77,16 @@ class BatchOptimizer:
             # self.target_states = tf.stack([tfq.qt2tf(state) for state in target_states])
             if len(initial_states) > 1:
                 raise Exception("Need to implementat multi-state optimization")
-            self.initial_state = tfq.qt2tf(initial_states[0])
-            self.target_state = tfq.qt2tf(target_states[0])
+            self.initial_state = (
+                tfq.qt2tf(initial_states[0])
+                if not tf.is_tensor(initial_states[0])
+                else initial_states[0]
+            )
+            self.target_state = (
+                tfq.qt2tf(target_states[0])
+                if not tf.is_tensor(target_states[0])
+                else target_states[0]
+            )
             N_cav = self.initial_state.numpy().shape[0] // 2
         elif self.parameters["optimization_type"] == "unitary":
             self.target_unitary = tfq.qt2tf(target_unitary)
@@ -106,25 +115,34 @@ class BatchOptimizer:
         # each opt will append to opt_data a dictionary
         # this dictionary will contain optimization parameters and results
 
-        self.timestamps = []
+        self.timestamps = timestamps
         self.saving_directory = saving_directory
         self.filename = self.saving_directory + name + ".h5"
 
-    def modify_parameters(self, parameters={}):
+    def modify_parameters(self, **kwargs):
         # currently, does not support changing optimization type.
-        if "optimization_type" in parameters:
-            raise Exception("Need to implement changing optimization type")
-        # First, handle any parameters which need additional processing to change
-        if "initial_states" in parameters:
-            if len(parameters["initial_states"][0]) > 1:
-                raise Exception("Need to implementat multi-state optimization")
-            self.initial_state = tfq.qt2tf(parameters["initial_states"][0])
-        if "final_states" in parameters:
-            if len(parameters["final_states"][0]) > 1:
-                raise Exception("Need to implementat multi-state optimization")
-            self.final_state = tfq.qt2tf(parameters["final_states"][0])
-        N_cav = self.initial_state.numpy().shape[0] // 2
-        self.parameters.update(parameters)
+        # todo: update for multi-state optimization and unitary optimziation
+        # handle things that are not in self.parameters:
+        parameters = kwargs
+        parameters["initial_states"] = (
+            parameters["initial_states"]
+            if "initial_states" in parameters
+            else [self.initial_state]
+        )
+        parameters["target_states"] = (
+            parameters["target_states"]
+            if "target_states" in parameters
+            else [self.target_state]
+        )
+        parameters["saving_directory"] = (
+            parameters["saving_directory"]
+            if "saving_directory" in parameters
+            else self.saving_directory
+        )
+        parameters["timestamps"] = (
+            parameters["timestamps"] if "timestamps" in parameters else self.timestamps
+        )
+        self.__init__(**parameters)
 
     def _construct_needed_matrices(self):
         N_cav = self.parameters["N_cav"]
@@ -733,7 +751,7 @@ class BatchOptimizer:
         if self.parameters["use_displacements"]:
             alphas_rho = np.random.uniform(
                 0,
-                beta_scale,
+                alpha_scale,
                 size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
             )
             alphas_angle = np.random.uniform(
@@ -891,6 +909,31 @@ class BatchOptimizer:
                 tf.zeros(self.parameters["N_blocks"], dtype=tf.float32), trainable=True
             )
         )
+
+    def best_circuit(self):
+        fids = self.batch_state_fidelities(
+            self.betas_rho,
+            self.betas_angle,
+            self.alphas_rho,
+            self.alphas_angle,
+            self.phis,
+            self.thetas,
+        )
+        max_idx = tf.argmax(fids)[0, 0].numpy()
+        all_betas, all_alphas, all_phis, all_thetas = self.get_numpy_vars(
+            self.betas_rho,
+            self.betas_angle,
+            self.alphas_rho,
+            self.alphas_angle,
+            self.phis,
+            self.thetas,
+        )
+        max_fid = fids[max_idx][0, 0].numpy()
+        betas = all_betas[max_idx]
+        alphas = all_alphas[max_idx]
+        phis = all_phis[max_idx]
+        thetas = all_thetas[max_idx]
+        return dict(max_fid, betas, alphas, phis, thetas)
 
     def print_best_info(self):
         fids = self.batch_state_fidelities(
