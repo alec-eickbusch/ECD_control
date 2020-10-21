@@ -38,8 +38,8 @@ class BatchOptimizer:
         target_expectation_values=None,
         N_multistart=10,
         N_blocks=20,
-        term_fid=0.99,
-        dfid_stop=1e-4,
+        term_fid=0.99,  # can set >1 to force run all epochs
+        dfid_stop=1e-4,  # can be set= -1 to force run all epochs
         learning_rate=0.01,
         epoch_size=10,
         epochs=100,
