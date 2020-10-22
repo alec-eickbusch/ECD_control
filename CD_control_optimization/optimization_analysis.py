@@ -27,10 +27,11 @@ class OptimizationAnalysis:
             self.data[timestamp]["phis"] = f[timestamp]["phis"].value
             self.data[timestamp]["thetas"] = f[timestamp]["thetas"].value
             self.data[timestamp]["fidelities"] = f[timestamp]["fidelities"].value
-            initial_state = f[timestamp]["initial_state"].value
-            initial_state_dims = f[timestamp]["initial_state_dims"].value
-            target_state = f[timestamp]["target_state"].value
-            target_state_dims = f[timestamp]["target_state_dims"].value
+            if "initial_state" in f[timestamp]:
+                initial_state = f[timestamp]["initial_state"].value
+                initial_state_dims = f[timestamp]["initial_state_dims"].value
+                target_state = f[timestamp]["target_state"].value
+                target_state_dims = f[timestamp]["target_state_dims"].value
             self.data[timestamp]["initial_state"] = qt.Qobj(
                 initial_state, dims=initial_state_dims.tolist()
             )
