@@ -108,3 +108,7 @@ venv.bak/
 # vs code settings
 .json
 .vscode/settings.json
+
+#data files
+*.h5
+**/*.h5
