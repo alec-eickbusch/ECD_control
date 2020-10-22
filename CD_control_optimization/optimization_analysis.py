@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import h5py
 import matplotlib.pyplot as plt
+import qutip as qt
 
 plt.rcParams.update({"font.size": 14, "pdf.fonttype": 42, "ps.fonttype": 42})
 
@@ -26,6 +27,16 @@ class OptimizationAnalysis:
             self.data[timestamp]["phis"] = f[timestamp]["phis"].value
             self.data[timestamp]["thetas"] = f[timestamp]["thetas"].value
             self.data[timestamp]["fidelities"] = f[timestamp]["fidelities"].value
+            initial_state = f[timestamp]["initial_state"].value
+            initial_state_dims = f[timestamp]["initial_state_dims"].value
+            target_state = f[timestamp]["target_state"].value
+            target_state_dims = f[timestamp]["target_state_dims"].value
+            self.data[timestamp]["initial_state"] = qt.Qobj(
+                initial_state, dims=initial_state_dims.tolist()
+            )
+            self.data[timestamp]["target_state"] = qt.Qobj(
+                target_state, dims=target_state_dims.tolist()
+            )
 
     def fidelities(self, timestamp=None):
         if timestamp is None:
@@ -37,6 +48,18 @@ class OptimizationAnalysis:
         fidelities = self.fidelities(timestamp)[-1]
         idx = np.argmax(fidelities)
         return idx
+
+    def initial_state(self, timestamp=None):
+        if timestamp is None:
+            timestamp = self.timestamps[-1]
+        self._load_data(timestamp)
+        return self.data[timestamp]["initial_state"]
+
+    def target_state(self, timestamp=None):
+        if timestamp is None:
+            timestamp = self.timestamps[-1]
+        self._load_data(timestamp)
+        return self.data[timestamp]["target_state"]
 
     def best_circuit(self, timestamp=None):
         if timestamp is None:
@@ -60,7 +83,7 @@ class OptimizationAnalysis:
             timestamp = self.timestamps[-1]
         best_circuit = self.best_circuit(timestamp)
         with np.printoptions(precision=5, suppress=True):
-            for parameter, value in self.data[timestamp]['parameters'].items():
+            for parameter, value in self.data[timestamp]["parameters"].items():
                 print(parameter + ": " + str(value))
             print("filename: " + self.filename)
             print("\nBest circuit parameters found:")
