@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import unitary_decomposition_optimizer.tf_quantum as tfq
+import CD_control_optimization.tf_quantum as tfq
 import qutip as qt
 
 plt.rcParams.update({"font.size": 14, "pdf.fonttype": 42, "ps.fonttype": 42})

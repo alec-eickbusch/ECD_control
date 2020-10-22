@@ -77,6 +77,17 @@ class BatchOptimizer:
             # self.target_states = tf.stack([tfq.qt2tf(state) for state in target_states])
             if len(initial_states) > 1:
                 raise Exception("Need to implementat multi-state optimization")
+            # TODO: handle this better, could also pass numpy object or multiple states, tf2qt is very specific for my tensor product structure
+            self.initial_state_qutip = (
+                initial_states[0]
+                if not tf.is_tensor(initial_states[0])
+                else tfq.tf2qt(initial_states[0])
+            )
+            self.target_state_qutip = (
+                target_states[0]
+                if not tf.is_tensor(target_states[0])
+                else tfq.tf2qt(target_states[0])
+            )
             self.initial_state = (
                 tfq.qt2tf(initial_states[0])
                 if not tf.is_tensor(initial_states[0])
@@ -667,6 +678,17 @@ class BatchOptimizer:
                     grp.attrs[parameter] = value
                 grp.attrs["termination_reason"] = "outside termination"
                 grp.attrs["elapsed_time_s"] = elapsed_time_s
+                # TODO: saving of multiple states or unitary.
+                grp.create_dataset(
+                    "initial_state", data=self.initial_state_qutip.full()
+                )
+                grp.create_dataset(
+                    "initial_state_dims", data=self.initial_state_qutip.dims
+                )
+                grp.create_dataset("target_state", data=self.target_state_qutip.full())
+                grp.create_dataset(
+                    "target_state_dims", data=self.target_state_qutip.dims
+                )
                 grp.create_dataset(
                     "fidelities",
                     chunks=True,
