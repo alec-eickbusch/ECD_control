@@ -127,7 +127,11 @@ class BatchOptimizer:
         # this dictionary will contain optimization parameters and results
 
         self.timestamps = timestamps
-        self.filename = filename if filename is not None else self.parameters["name"]
+        self.filename = (
+            filename
+            if (filename is not None and filename is not "")
+            else self.parameters["name"]
+        )
         path = self.filename.split(".")
         if len(path) < 2 or (len(path) == 2 and path[-1] != ".h5"):
             self.filename = path[0] + ".h5"
