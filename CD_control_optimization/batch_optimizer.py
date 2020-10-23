@@ -1,6 +1,6 @@
 #%%
 # note: timestamp can't use "/" character for h5 saving.
-TIMESTAMP_FORMAT = "%Y-%m-%d %I:%M:%S %p"
+TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 import numpy as np
 import tensorflow as tf
 
