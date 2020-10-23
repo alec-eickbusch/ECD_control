@@ -12,6 +12,7 @@ class OptimizationAnalysis:
         self.filename = filename
         with h5py.File(self.filename, "a") as f:
             self.timestamps = list(f.keys())
+        # TODO: is it gaurenteed that the most recent timestamp will be [-1]?
         self.data = {}
 
     def _load_data(self, timestamp=None):
@@ -224,6 +225,7 @@ class OptimizationSweepsAnalysis:
         for group_name in group_names:
             if group_name.split(" ")[0] == "sweep":
                 self.sweep_names.append(group_name)
+            # TODO: is it gaurenteed that the most recent sweep will be [-1]?
         self.data = {}
 
     def _load_data(self, sweep_name=None):
