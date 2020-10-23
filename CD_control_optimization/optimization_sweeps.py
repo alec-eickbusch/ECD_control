@@ -29,12 +29,12 @@ class OptimizationSweeps:
         beta_scale_function = (
             beta_scale_function
             if beta_scale_function is not None
-            else lambda N_blocks: self.opt_object.beta_scale
+            else lambda N_blocks: self.opt_object.parameters["beta_scale"]
         )
         beta_scale_function = (
             alpha_scale_function
             if alpha_scale_function is not None
-            else lambda N_blocks: self.opt_object.beta_scale
+            else lambda N_blocks: self.opt_object.parameters["alpha_scale"]
         )
         print("\nstarting N blocks sweep")
         while (N_blocks <= max_N_blocks) and (
