@@ -441,7 +441,7 @@ class BatchOptimizer:
         expect = psif_dag @ O @ psif
         return expect
 
-    def optimize(self):
+    def optimize(self, do_prints=True):
 
         timestamp = datetime.datetime.now().strftime(TIMESTAMP_FORMAT)
         self.timestamps.append(timestamp)
@@ -559,22 +559,23 @@ class BatchOptimizer:
             max_fid = tf.reduce_max(fids)
             avg_dfid = tf.reduce_sum(dfids) / self.parameters["N_multistart"]
             max_dfid = tf.reduce_max(dfids)
-            print(
-                "\r Epoch: %d / %d Max Fid: %.6f Avg Fid: %.6f Max dFid: %.6f Avg dFid: %.6f"
-                % (
-                    epoch,
-                    self.parameters["epochs"],
-                    max_fid,
-                    avg_fid,
-                    max_dfid,
-                    avg_dfid,
+            if do_prints:
+                print(
+                    "\r Epoch: %d / %d Max Fid: %.6f Avg Fid: %.6f Max dFid: %.6f Avg dFid: %.6f"
+                    % (
+                        epoch,
+                        self.parameters["epochs"],
+                        max_fid,
+                        avg_fid,
+                        max_dfid,
+                        avg_dfid,
+                    )
+                    + " Elapsed time: "
+                    + str(datetime.timedelta(seconds=elapsed_time_s))
+                    + " Remaing time: "
+                    + str(datetime.timedelta(seconds=expected_time_remaining)),
+                    end="",
                 )
-                + " Elapsed time: "
-                + str(datetime.timedelta(seconds=elapsed_time_s))
-                + " Remaing time: "
-                + str(datetime.timedelta(seconds=expected_time_remaining)),
-                end="",
-            )
 
         initial_fids = self.batch_state_fidelities(
             self.betas_rho,
