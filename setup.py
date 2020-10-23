@@ -4,9 +4,9 @@ from setuptools import setup
 # TODO: include "analysis" package into setup.
 # TODO: move to public repo?
 setup(
-    name="CD_control",
+    name="CD control optimization",
     version="0.1",
-    packages=["CD_control", "analysis"],
+    packages=["CD_control_optimization", "experimental_analysis"],
     url="https://git.yale.edu/RSL/CD_control",
     license="MIT",
     author="Alec Eickbusch, Shantanu Jha",
