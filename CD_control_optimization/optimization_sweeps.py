@@ -11,7 +11,13 @@ class OptimizationSweeps:
         self.sweep_names = []
 
     def N_blocks_sweep(
-        self, min_N_blocks=2, max_N_blocks=12, terminate=True, do_prints=True
+        self,
+        min_N_blocks=2,
+        max_N_blocks=12,
+        beta_scale_function=None,
+        alpha_scale_function=None,
+        terminate=True,
+        do_prints=True,
     ):
         best_fid = 0.0
         N_blocks = min_N_blocks
@@ -20,7 +26,16 @@ class OptimizationSweeps:
         self.sweep_names.append(sweep_name)
         sweep_param_name = "Number of Blocks"
         timestamps = []
-
+        beta_scale_function = (
+            beta_scale_function
+            if beta_scale_function is not none
+            else lambda N_blocks: self.opt_object.beta_scale
+        )
+        beta_scale_function = (
+            alpha_scale_function
+            if alpha_scale_function is not none
+            else lambda N_blocks: self.opt_object.beta_scale
+        )
         print("\nstarting N blocks sweep")
         while (N_blocks <= max_N_blocks) and (
             best_fid < self.opt_object.parameters["term_fid"]
@@ -28,7 +43,11 @@ class OptimizationSweeps:
             print("\nN_blocks: %d" % N_blocks)
             print("N blocks sweep filename: " + self.filename)
             print("N blocks sweep name: " + sweep_name + "\n")
-            self.opt_object.modify_parameters(N_blocks=N_blocks)
+            beta_scale = beta_scale_function(N_blocks)
+            alpha_scale = alpha_scale_function(N_blocks)
+            self.opt_object.modify_parameters(
+                N_blocks=N_blocks, beta_scale=beta_scale, alpha_scale=alpha_scale
+            )
             timestamps.append(self.opt_object.optimize(do_prints=do_prints))
             best_circuit = self.opt_object.best_circuit()
             if N_blocks == min_N_blocks:
