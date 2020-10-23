@@ -11,10 +11,7 @@ class OptimizationSweeps:
         self.sweep_names = []
 
     def N_blocks_sweep(
-        self,
-        min_N_blocks=2,
-        max_N_blocks=12,
-        terminate=True,
+        self, min_N_blocks=2, max_N_blocks=12, terminate=True, do_prints=True
     ):
         best_fid = 0.0
         N_blocks = min_N_blocks
@@ -32,7 +29,7 @@ class OptimizationSweeps:
             print("N blocks sweep filename: " + self.filename)
             print("N blocks sweep name: " + sweep_name + "\n")
             self.opt_object.modify_parameters(N_blocks=N_blocks)
-            timestamps.append(self.opt_object.optimize())
+            timestamps.append(self.opt_object.optimize(do_prints=do_prints))
             best_circuit = self.opt_object.best_circuit()
             if N_blocks == min_N_blocks:
                 self.save_sweep_data(
