@@ -31,7 +31,7 @@ class OptimizationSweeps:
             if beta_scale_function is not None
             else lambda N_blocks: self.opt_object.parameters["beta_scale"]
         )
-        beta_scale_function = (
+        alpha_scale_function = (
             alpha_scale_function
             if alpha_scale_function is not None
             else lambda N_blocks: self.opt_object.parameters["alpha_scale"]
