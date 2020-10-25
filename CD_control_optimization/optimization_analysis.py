@@ -12,6 +12,12 @@ class OptimizationAnalysis:
         self.filename = filename
         with h5py.File(self.filename, "a") as f:
             self.timestamps = list(f.keys())
+        # remove the "sweep" data sets.
+        self.timestamps = [
+            timestamp
+            for timestamp in self.timestamps
+            if timestamp.split(" ")[0] != "sweep"
+        ]
         # TODO: is it gaurenteed that the most recent timestamp will be [-1]?
         self.data = {}
 
@@ -33,12 +39,12 @@ class OptimizationAnalysis:
                 initial_state_dims = f[timestamp]["initial_state_dims"].value
                 target_state = f[timestamp]["target_state"].value
                 target_state_dims = f[timestamp]["target_state_dims"].value
-            self.data[timestamp]["initial_state"] = qt.Qobj(
-                initial_state, dims=initial_state_dims.tolist()
-            )
-            self.data[timestamp]["target_state"] = qt.Qobj(
-                target_state, dims=target_state_dims.tolist()
-            )
+                self.data[timestamp]["initial_state"] = qt.Qobj(
+                    initial_state, dims=initial_state_dims.tolist()
+                )
+                self.data[timestamp]["target_state"] = qt.Qobj(
+                    target_state, dims=target_state_dims.tolist()
+                )
 
     def fidelities(self, timestamp=None):
         if timestamp is None:
@@ -46,8 +52,31 @@ class OptimizationAnalysis:
         self._load_data(timestamp)
         return self.data[timestamp]["fidelities"]
 
-    def idx_of_best_circuit(self, timestamp=None):
-        fidelities = self.fidelities(timestamp)[-1]
+    def parameters(self, timestamp=None):
+        if timestamp is None:
+            timestamp = self.timestamps[-1]
+        self._load_data(timestamp)
+        return self.data[timestamp]["parameters"]
+
+    # given a timestamp and epoch, return a list of epochs which have a fidelity larger than success_fid
+    def successful_idxs(self, timestamp=None, epoch=-1, success_fid=None):
+        if timestamp is None:
+            timestamp = self.timestamps[-1]
+        self._load_data(timestamp)
+        fidelities = self.fidelities(timestamp)[epoch]
+        success_fid = (
+            self.parameters(timestamp)["term_fid"]
+            if success_fid is None
+            else success_fid
+        )
+        return np.where(fidelities > success_fid)[0]
+
+    def success_fraction(self, timestamp=None, epoch=-1, success_fid=None):
+        num_success = len(self.successful_idxs(timestamp, epoch, success_fid))
+        return num_success / self.parameters(timestamp)["N_multistart"]
+
+    def idx_of_best_circuit(self, timestamp=None, epoch=-1):
+        fidelities = self.fidelities(timestamp)[epoch]
         idx = np.argmax(fidelities)
         return idx
 
@@ -238,13 +267,17 @@ class OptimizationSweepsAnalysis:
             self.data[sweep_name]["sweep_param_name"] = f[sweep_name].attrs[
                 "sweep_param_name"
             ]
-            self.data[sweep_name]["timestamps"] = str(
-                f[sweep_name].attrs["timestamps"]
-            ).split(",")
+            self.data[sweep_name]["timestamps"] = f[sweep_name].attrs["timestamps"]
             self.data[sweep_name]["fidelities"] = f[sweep_name]["fidelities"].value
             self.data[sweep_name]["sweep_param_values"] = f[sweep_name][
                 "sweep_param_values"
             ].value
+
+    def timestamps(self, sweep_name=None):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        self._load_data(sweep_name)
+        return self.data[sweep_name]["timestamps"]
 
     def fidelities(self, sweep_name=None):
         if sweep_name is None:
@@ -252,7 +285,60 @@ class OptimizationSweepsAnalysis:
         self._load_data(sweep_name)
         return self.data[sweep_name]["fidelities"]
 
-    def plot_sweep_fidelities(self, sweep_name=None, fig=None, ax=None, log=False):
+    def get_opt_object(
+        self,
+    ):
+        return OptimizationAnalysis(self.filename)
+
+    def success_fracs(self, success_fid=None, sweep_name=None):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        self._load_data(sweep_name)
+        fracs = []
+        for timestamp in self.timestamps(sweep_name):
+            fracs.append(
+                self.get_opt_object().success_fraction(
+                    timestamp=timestamp, success_fid=success_fid
+                )
+            )
+        return np.array(fracs)
+
+    def sweep_param_values(self, sweep_name=None):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        self._load_data(sweep_name)
+        return self.data[sweep_name]["sweep_param_values"]
+
+    # for each optimization in the sweep, find the best beta
+    def best_circuits(self, sweep_name=None):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        self._load_data(sweep_name)
+        circuits = []
+        for timestamp in self.timestamps(sweep_name):
+            circuits.append(self.get_opt_object().best_circuit(timestamp))
+        return circuits
+
+    def plot_best_mag_betas(self, sweep_name=None, fig=None, ax=None):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        sweep_param_values = self.data[sweep_name]["sweep_param_values"]
+        sweep_param_name = self.data[sweep_name]["sweep_param_name"]
+        if fig is None:
+            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+        if ax is None:
+            ax = fig.subplots()
+        circuits = self.best_circuits(sweep_name)
+        for i, value in enumerate(sweep_param_values):
+            betas = circuits[i]["betas"]
+            num = len(betas)
+            plt.scatter(value * np.ones(num), np.abs(betas))
+        sweep_param_name = self.data[sweep_name]["sweep_param_name"]
+        ax.set_xlabel(sweep_param_name)
+        ax.set_ylabel(r"$|\beta|$")
+        plt.tight_layout()
+
+    def plot_sweep_fidelities(self, sweep_name=None, fig=None, ax=None, log=True):
         if sweep_name is None:
             sweep_name = self.sweep_names[-1]
         fids = self.fidelities(sweep_name)
@@ -263,7 +349,7 @@ class OptimizationSweepsAnalysis:
         if ax is None:
             ax = fig.subplots()
         if log:
-            ax.semilogy(sweep_param_values, 1 - fids, "--.", color="black")
+            ax.semilogy(sweep_param_values, 1 - fids, ":.", color="black")
         else:
             ax.plot(sweep_param_values, fids, ":.", color="black")
         ax.set_xlabel(sweep_param_name)
@@ -271,4 +357,21 @@ class OptimizationSweepsAnalysis:
             ax.set_ylabel("best infidelity")
         else:
             ax.set_ylabel("best fidelity")
+        fig.tight_layout()
+
+    def plot_sweep_success_fraction(
+        self, success_fid=0.999, sweep_name=None, fig=None, ax=None
+    ):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        fracs = self.success_fracs(sweep_name=sweep_name, success_fid=success_fid)
+        sweep_param_values = self.data[sweep_name]["sweep_param_values"]
+        sweep_param_name = self.data[sweep_name]["sweep_param_name"]
+        if fig is None:
+            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+        if ax is None:
+            ax = fig.subplots()
+        ax.plot(sweep_param_values, fracs, ":.", color="black")
+        ax.set_xlabel(sweep_param_name)
+        ax.set_ylabel("Fraction with F > %.3f" % success_fid)
         fig.tight_layout()
