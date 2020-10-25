@@ -15,7 +15,7 @@ import tensorflow as tf
 from qutip.visualization import plot_fock_distribution
 #%%
 N = 50 #cavity hilbert space 
-N_blocks = 20 #5
+N_blocks = 8 #5
 targ = np.array(qt.tensor(qt.identity(2),qt.identity(N)))
 targ[0,0] = 1
 targ[1,1] = 0
@@ -53,20 +53,24 @@ CD_control_obj.plot_target_state()
 
 
 #%% Thermal State
-n_thermal = 0
+n_thermal = 0.1
 
-thermal_state_dm = tfq.qt2tf(qt.tensor(qt.ket2dm(qt.basis(2,0)),qt.thermal_dm(N,n_thermal)))
+thermal_state_dm_qt = qt.tensor(qt.ket2dm(qt.basis(2,0)),qt.thermal_dm(N,n_thermal))
+thermal_state_dm = tfq.qt2tf(thermal_state_dm_qt)
 U = CD_control_obj.U_tot(CD_control_obj.betas_rho, CD_control_obj.betas_angle, CD_control_obj.phis, CD_control_obj.thetas)
 final_state_dm =  U @ thermal_state_dm @ tf.linalg.adjoint(U)
-
+final_state_dm = tfq.tf2qt(final_state_dm, matrix=True)
 vacuum_state_dm  = qt.tensor(qt.ket2dm(qt.basis(2,0)),qt.ket2dm(qt.basis(N,0)))
-thermal_state_dm = tfq.tf2qt(thermal_state_dm)
-final_state_dm = tfq.tf2qt(final_state_dm)
+thermal_state_dm = thermal_state_dm_qt
+
 fig, axes = plt.subplots(1, 2, figsize=(12,3))
 plot_fock_distribution(thermal_state_dm, fig=fig, ax=axes[0], title="Thermal Cavity State");
 plot_fock_distribution(final_state_dm, fig=fig, ax=axes[1], title="Cooled Cavity State");
-print("Thermal State Fidelity with vacuum: " + str(qt.fidelity(vacuum_state_dm, thermal_state_dm)))
-print("Cooled State Fidelity with cooled: " + str(qt.fidelity(vacuum_state_dm, final_state_dm)))
+print("Qubit Thermal State Fidelity with vacuum: " + str(qt.fidelity(vacuum_state_dm.ptrace(0), thermal_state_dm.ptrace(0))))
+print("Cavity Thermal State Fidelity with vacuum: " + str(qt.fidelity(vacuum_state_dm.ptrace(1), thermal_state_dm.ptrace(1))))
+print("Qubit Cooled State Fidelity with cooled: " + str(qt.fidelity(vacuum_state_dm.ptrace(0), final_state_dm.ptrace(0))))
+print("Cavity Cooled State Fidelity with cooled: " + str(qt.fidelity(vacuum_state_dm.ptrace(1), final_state_dm.ptrace(1))))
+
 fig.tight_layout()
 plt.show()
 
@@ -148,15 +152,27 @@ def convert(control_obj):
     return sys, CD_control_analysis(control_obj, sys)
 
 #%%
-sys, analysis_obj = convert(CD_control_unitary_obj)
+sys, analysis_obj = convert(CD_control_obj)
 e, O = analysis_obj.composite_pulse()
 plt.figure(figsize=(8, 4), dpi=200)
 plot_pulse(e, O)
 
 
 #%%
-psif = sys.simulate_pulse_trotter(e, O, initial_state)
-fid = qt.fidelity(psif, target_state)
+final_state_dm_exp = sys.simulate_pulse_trotter(e, O, thermal_state_dm_qt, density_matrix=True)
+
+#%%
+final_state_dm_exp2 = sys.simulate_pulse_master_equation(e, O, thermal_state_dm_qt)
+# fid = qt.fidelity(psif, target_state)
+
+#%%
+print("Qubit Thermal State Fidelity with vacuum: " + str(qt.fidelity(vacuum_state_dm.ptrace(0), thermal_state_dm_qt.ptrace(0))))
+print("Cavity Thermal State Fidelity with vacuum: " + str(qt.fidelity(vacuum_state_dm.ptrace(1), thermal_state_dm_qt.ptrace(1))))
+print("Qubit Cooled State Fidelity with cooled: " + str(qt.fidelity(vacuum_state_dm.ptrace(0), final_state_dm_exp.ptrace(0))))
+print("Cavity Cooled State Fidelity with cooled: " + str(qt.fidelity(vacuum_state_dm.ptrace(1), final_state_dm_exp.ptrace(1))))
+print("Qubit Cooled State Fidelity with cooled (loss): " + str(qt.fidelity(vacuum_state_dm.ptrace(0), final_state_dm_exp2.ptrace(0))))
+print("Cavity Cooled State Fidelity with cooled (loss): " + str(qt.fidelity(vacuum_state_dm.ptrace(1), final_state_dm_exp2.ptrace(1))))
+
 
 #%%
 print("\n\nSimulated fidelity to target state: %.5f\n\n" % fid)

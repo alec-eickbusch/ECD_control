@@ -25,20 +25,20 @@ class System:
         chop,
         buffer_time=0,
         ring_up_time=8,
-        cavity_T1_us = 250.0,
-        qubit_T1_us = 60.0,
-        qubit_T2_us = 60.0,
+        cavity_T1_us=250.0,
+        qubit_T1_us=60.0,
+        qubit_T2_us=60.0,
     ):
         self.chi = chi
         self.Ec = Ec
         self.alpha0 = alpha0
-        self.kerr = chi ** 2. / (4. * Ec)
+        self.kerr = chi ** 2.0 / (4.0 * Ec)
         self.cavity_T1_us = cavity_T1_us
         self.qubit_T1_us = qubit_T1_us
         self.qubit_T2_us = qubit_T2_us
-        self.kappa_cavity = 1. / (self.cavity_T1_us*1e3)
-        self.gamma1_qubit = 1. / (self.qubit_T1_us*1e3)
-        self.gamma2_qubit = 1. / (self.qubit_T2_us*1e3)
+        self.kappa_cavity = 1.0 / (self.cavity_T1_us * 1e3)
+        self.gamma1_qubit = 1.0 / (self.qubit_T1_us * 1e3)
+        self.gamma2_qubit = 1.0 / (self.qubit_T2_us * 1e3)
         # sigma and chop for qubit pulse and displacements
 
         self.sigma = int(sigma)
@@ -89,6 +89,7 @@ class System:
         pad=20,
         stark_shift=True,
         return_all_psis=False,
+        density_matrix=False,
     ):
         # epsilon = np.pad(epsilon, 20)
         # Omega = np.pad(Omega, 20)
@@ -141,38 +142,38 @@ class System:
                 * q.dag()
                 * q
                 + -(self.Ec / 2.0) * q.dag() ** 2 * q ** 2
-                + O*q.dag()
-                + np.conj(O)*q
+                + O * q.dag()
+                + np.conj(O) * q
             )
 
         psi = psi0
         psis = []
         for H in tqdm(H_array, desc="trotterized simulation"):
             U = (-1j * H * dt).expm()
-            psi = U * psi
+            psi = U * psi if not density_matrix else U * psi * U.dag()
             if return_all_psis:
                 psis.append(psi)
         # finally, move psi to displaced frame
         D = qt.tensor(qt.identity(N2), qt.displace(N, alphas[-1]))
         if return_all_psis:
             return psis
-        return D * psi
+        return D * psi if not density_matrix else D * psi * D.dag()
 
     def simulate_pulse_master_equation(
-    self,
-    epsilon,
-    Omega,
-    psi0,
-    use_kerr=False,
-    use_chi_prime=False,
-    use_kappa=False,
-    use_qubit_T1 = False,
-    use_qubit_T2 = False,
-    dt=1,
-    pad=20,
-    stark_shift=True,
-    return_all_psis=False,
-):
+        self,
+        epsilon,
+        Omega,
+        psi0,
+        use_kerr=False,
+        use_chi_prime=False,
+        use_kappa=False,
+        use_qubit_T1=False,
+        use_qubit_T2=False,
+        dt=1,
+        pad=20,
+        stark_shift=True,
+        return_all_psis=False,
+    ):
         # epsilon = np.pad(epsilon, 20)
         # Omega = np.pad(Omega, 20)
         alphas = alpha_from_epsilon(epsilon)
@@ -205,47 +206,56 @@ class System:
         else:
             ss = 0.0
 
-        #TODO: add in kerr and photon loss to this simulation.
-        H0 = -(chi_qs / 2.0) * a.dag() * a * (2 * q.dag() * q - 1.0)\
-             -(self.Ec / 2.0) * q.dag() ** 2 * q ** 2
-        #alpha control
-        H_alpha = - (chi_qs / 2.0) * a.dag() * (2 * q.dag() * q - 1.0)
-        #alpha* control
-        H_alpha_star = - (chi_qs / 2.0) * a * (2 * q.dag() * q - 1.0)
-        #|alpha|^2 control
-        H_alpha_sq = -ss * (chi_qs / 2.0)* (2 * q.dag() * q - 1.0)
-        #Omega control
+        # TODO: add in kerr and photon loss to this simulation.
+        H0 = (
+            -(chi_qs / 2.0) * a.dag() * a * (2 * q.dag() * q - 1.0)
+            - (self.Ec / 2.0) * q.dag() ** 2 * q ** 2
+        )
+        # alpha control
+        H_alpha = -(chi_qs / 2.0) * a.dag() * (2 * q.dag() * q - 1.0)
+        # alpha* control
+        H_alpha_star = -(chi_qs / 2.0) * a * (2 * q.dag() * q - 1.0)
+        # |alpha|^2 control
+        H_alpha_sq = -ss * (chi_qs / 2.0) * (2 * q.dag() * q - 1.0)
+        # Omega control
         H_Omega = q.dag()
-        #Omega* control
+        # Omega* control
         H_Omega_star = q
 
-        ts = np.arange(0,len(epsilon))*1
+        ts = np.arange(0, len(epsilon)) * 1
         alpha_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], alphas)
         alpha_star_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], np.conj(alphas))
-        alpha_sq_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], np.abs(alphas)**2)
+        alpha_sq_spline = qt.interpolate.Cubic_Spline(
+            ts[0], ts[-1], np.abs(alphas) ** 2
+        )
         Omega_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], Omega)
         Omega_star_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], np.conj(Omega))
 
-        H = [H0,[H_alpha, alpha_spline],[H_alpha_star, alpha_star_spline],
-                [H_alpha_sq, alpha_sq_spline], [H_Omega, Omega_spline], 
-                [H_Omega_star, Omega_star_spline]]
+        H = [
+            H0,
+            [H_alpha, alpha_spline],
+            [H_alpha_star, alpha_star_spline],
+            [H_alpha_sq, alpha_sq_spline],
+            [H_Omega, Omega_spline],
+            [H_Omega_star, Omega_star_spline],
+        ]
 
         loss_ops = []
         if use_qubit_T1:
-            loss_ops.append(np.sqrt(self.gamma1_qubit)*q)
+            loss_ops.append(np.sqrt(self.gamma1_qubit) * q)
         if use_qubit_T2:
-            loss_ops.append(np.sqrt(self.gamma2_qubit)*q.dag()*q)
+            loss_ops.append(np.sqrt(self.gamma2_qubit) * q.dag() * q)
 
-        result = qt.mesolve(H,psi0,ts,loss_ops,[])
+        result = qt.mesolve(H, psi0, ts, loss_ops, [])
 
         if return_all_psis:
             return result.states
-        #move final psi to displaced frame
+        # move final psi to displaced frame
         D = qt.tensor(qt.identity(N2), qt.displace(N, alphas[-1]))
         if len(loss_ops) == 0:
             return D * result.states[-1]
         else:
-            return D * result.states[-1] *D.dag()
+            return D * result.states[-1] * D.dag()
 
 
 class CD_control_analysis:
@@ -270,8 +280,10 @@ class CD_control_analysis:
         if np.abs(beta) > 0:
             epsilon_CD, Omega_CD = self.system.CD_pulse(beta)
         else:
-            epsilon_CD, Omega_CD = self.system.rotate_displace_pulse(alpha=0, phi=0, theta=np.pi)
-            #CD optimization still thinks there will be a pi pulse here, so do it anyway.
+            epsilon_CD, Omega_CD = self.system.rotate_displace_pulse(
+                alpha=0, phi=0, theta=np.pi
+            )
+            # CD optimization still thinks there will be a pi pulse here, so do it anyway.
 
         # Case 1, both CD and rotate
         if len(epsilon_D) > 0 and len(epsilon_CD) > 0:
@@ -306,7 +318,7 @@ class CD_control_analysis:
 
         return epsilon, Omega
 
-    def composite_pulse(self, max_N_blocks = None):
+    def composite_pulse(self, max_N_blocks=None):
         e = []
         O = []
         if max_N_blocks is None:
