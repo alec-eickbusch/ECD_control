@@ -17,10 +17,14 @@ else:
 #%%
 # todo: handle case when passed an already tf object.
 def qt2tf(qt_object, dtype=tf.complex64):
+    if tf.is_tensor(qt_object) or qt_object is None:
+        return qt_object
     return tf.constant(qt_object.full(), dtype=dtype)
 
 
 def tf2qt(tf_object):
+    if not tf.is_tensor(tf_object):
+        return tf_object
     return qt.Qobj(
         tf_object.numpy(), dims=[[2, int(tf_object.numpy().shape[0] / 2)], [1, 1]]
     )

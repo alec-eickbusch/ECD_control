@@ -70,35 +70,26 @@ class BatchOptimizer:
         }
         self.parameters.update(kwargs)
         if self.parameters["optimization_type"] == "state transfer":
-            # self.initial_states = tf.stack(
-            #    [tfq.qt2tf(state) for state in initial_states]
-            # )
-            # todo: can instead store dag of target states
-            # self.target_states = tf.stack([tfq.qt2tf(state) for state in target_states])
-            if len(initial_states) > 1:
-                raise Exception("Need to implementat multi-state optimization")
-            # TODO: handle this better, could also pass numpy object or multiple states, tf2qt is very specific for my tensor product structure
-            self.initial_state_qutip = (
-                initial_states[0]
-                if not tf.is_tensor(initial_states[0])
-                else tfq.tf2qt(initial_states[0])
+            self.batch_fidelities = self.batch_multi_state_fidelities
+            self.initial_states = tf.stack(
+                [tfq.qt2tf(state) for state in initial_states]
             )
-            self.target_state_qutip = (
-                target_states[0]
-                if not tf.is_tensor(target_states[0])
-                else tfq.tf2qt(target_states[0])
+            self.target_unitary = tfq.qt2tf(target_unitary)
+            self.target_states = (  # store dag
+                [tfq.qt2tf(state) for state in target_states]
+                if self.target_unitary is None
+                else self.target_unitary @ self.initial_states
             )
-            self.initial_state = (
-                tfq.qt2tf(initial_states[0])
-                if not tf.is_tensor(initial_states[0])
-                else initial_states[0]
-            )
-            self.target_state = (
-                tfq.qt2tf(target_states[0])
-                if not tf.is_tensor(target_states[0])
-                else target_states[0]
-            )
-            N_cav = self.initial_state.numpy().shape[0] // 2
+            self.target_states_dag = tf.linalg.adjoint(self.target_states)
+            N_cav = self.initial_states[0].numpy().shape[0] // 2
+            if len(initial_states) == 1:
+                self.batch_fidelities = self.batch_state_fidelities
+                # why are we storing qutip states, when we can just retrieve dims from N_cav when it is time to save the h5py file?
+                # TODO: handle this better, could also pass numpy object or multiple states, tf2qt is very specific for my tensor product structure
+                self.initial_state_qutip = tfq.tf2qt(self.initial_states[0])
+                self.target_state_qutip = tfq.tf2qt(self.target_states[0])
+                self.initial_state = self.initial_states[0]
+                self.target_state = self.target_states[0]
         elif self.parameters["optimization_type"] == "unitary":
             self.target_unitary = tfq.qt2tf(target_unitary)
             N_cav = self.target_unitary.numpy().shape[0] // 2
@@ -371,10 +362,8 @@ class BatchOptimizer:
         psifs = self.batch_final_states(
             betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
         )
-        # todo: could be batched beforehand
-        psits = tf.stack([self.target_state] * self.parameters["N_multistart"])
-        psi_ts_dag = tf.linalg.adjoint(psits)
-        overlaps = psi_ts_dag @ psifs
+        psit_dag = tf.linalg.adjoint(self.target_state)
+        overlaps = psit_dag @ psifs  # broadcasting
         return overlaps
 
     @tf.function
@@ -384,6 +373,23 @@ class BatchOptimizer:
         overlaps = self.batch_state_overlaps(
             betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
         )
+        fids = tf.cast(overlaps * tf.math.conj(overlaps), dtype=tf.float32)
+        return fids
+
+    @tf.function
+    def batch_multi_state_fidelities(
+        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+    ):
+        bs = self.batch_construct_block_operators(
+            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+        )
+        psis = tf.stack([self.initial_states] * self.parameters["N_multistart"])
+        for U in bs:
+            psis = tf.einsum(
+                "mij,msjk->msik", U, psis
+            )  # m: multistart, s:multiple states
+        overlaps = tf.squeeze(self.target_states_dag @ psis)  # broadcasting
+        overlaps = tf.reduce_mean(overlaps, axis=1)
         fids = tf.cast(overlaps * tf.math.conj(overlaps), dtype=tf.float32)
         return fids
 
@@ -428,10 +434,6 @@ class BatchOptimizer:
         return tf.cast(
             (1.0 / D) ** 2 * overlap * tf.math.conj(overlap), dtype=tf.float32
         )
-
-    def set_unitary_fidelity_state_basis(self, states):
-        self.initial_unitary_states = states
-        self.target_unitary_states = self.target_unitary @ states  # using broadcasting
 
     # returns <psi_f | O | psi_f>
     @tf.function
@@ -581,7 +583,7 @@ class BatchOptimizer:
                     end="",
                 )
 
-        initial_fids = self.batch_state_fidelities(
+        initial_fids = self.batch_fidelities(
             self.betas_rho,
             self.betas_angle,
             self.alphas_rho,
@@ -608,13 +610,8 @@ class BatchOptimizer:
                         alphas_angle = self.alphas_angle
                     phis = entry_stop_gradients(self.phis, self.phi_mask)
                     thetas = entry_stop_gradients(self.thetas, self.theta_mask)
-                    new_fids = self.batch_state_fidelities(
-                        betas_rho,
-                        betas_angle,
-                        alphas_rho,
-                        alphas_angle,
-                        phis,
-                        thetas,
+                    new_fids = self.batch_fidelities(
+                        betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas,
                     )
                     new_loss = loss_fun(new_fids)
                     dloss_dvar = tape.gradient(new_loss, variables)
@@ -804,29 +801,17 @@ class BatchOptimizer:
             betas_rho[-1] = 0
             betas_angle[-1] = 0
         self.betas_rho = tf.Variable(
-            betas_rho,
-            dtype=tf.float32,
-            trainable=True,
-            name="betas_rho",
+            betas_rho, dtype=tf.float32, trainable=True, name="betas_rho",
         )
         self.betas_angle = tf.Variable(
-            betas_angle,
-            dtype=tf.float32,
-            trainable=True,
-            name="betas_angle",
+            betas_angle, dtype=tf.float32, trainable=True, name="betas_angle",
         )
         if self.parameters["use_displacements"]:
             self.alphas_rho = tf.Variable(
-                alphas_rho,
-                dtype=tf.float32,
-                trainable=True,
-                name="alphas_rho",
+                alphas_rho, dtype=tf.float32, trainable=True, name="alphas_rho",
             )
             self.alphas_angle = tf.Variable(
-                alphas_angle,
-                dtype=tf.float32,
-                trainable=True,
-                name="alphas_angle",
+                alphas_angle, dtype=tf.float32, trainable=True, name="alphas_angle",
             )
         else:
             self.alphas_rho = tf.constant(
@@ -846,16 +831,10 @@ class BatchOptimizer:
                 dtype=tf.float32,
             )
         self.phis = tf.Variable(
-            phis,
-            dtype=tf.float32,
-            trainable=True,
-            name="betas_rho",
+            phis, dtype=tf.float32, trainable=True, name="betas_rho",
         )
         self.thetas = tf.Variable(
-            thetas,
-            dtype=tf.float32,
-            trainable=True,
-            name="betas_angle",
+            thetas, dtype=tf.float32, trainable=True, name="betas_angle",
         )
 
     def get_numpy_vars(
@@ -941,7 +920,7 @@ class BatchOptimizer:
         )
 
     def best_circuit(self):
-        fids = self.batch_state_fidelities(
+        fids = self.batch_fidelities(
             self.betas_rho,
             self.betas_angle,
             self.alphas_rho,
