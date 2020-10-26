@@ -58,7 +58,6 @@ class BatchOptimizer:
             "term_fid": term_fid,
             "dfid_stop": dfid_stop,
             "no_CD_end": no_CD_end,
-            "name": name,
             "learning_rate": learning_rate,
             "epoch_size": epoch_size,
             "epochs": epochs,
@@ -70,26 +69,18 @@ class BatchOptimizer:
         }
         self.parameters.update(kwargs)
         if self.parameters["optimization_type"] == "state transfer":
-            self.batch_fidelities = self.batch_multi_state_fidelities
+            self.batch_fidelities = self.batch_state_transfer_fidelities
             self.initial_states = tf.stack(
                 [tfq.qt2tf(state) for state in initial_states]
             )
             self.target_unitary = tfq.qt2tf(target_unitary)
             self.target_states = (  # store dag
-                [tfq.qt2tf(state) for state in target_states]
+                tf.stack([tfq.qt2tf(state) for state in target_states])
                 if self.target_unitary is None
                 else self.target_unitary @ self.initial_states
             )
             self.target_states_dag = tf.linalg.adjoint(self.target_states)
             N_cav = self.initial_states[0].numpy().shape[0] // 2
-            if len(initial_states) == 1:
-                self.batch_fidelities = self.batch_state_fidelities
-                # why are we storing qutip states, when we can just retrieve dims from N_cav when it is time to save the h5py file?
-                # TODO: handle this better, could also pass numpy object or multiple states, tf2qt is very specific for my tensor product structure
-                self.initial_state_qutip = tfq.tf2qt(self.initial_states[0])
-                self.target_state_qutip = tfq.tf2qt(self.target_states[0])
-                self.initial_state = self.initial_states[0]
-                self.target_state = self.target_states[0]
         elif self.parameters["optimization_type"] == "unitary":
             self.target_unitary = tfq.qt2tf(target_unitary)
             N_cav = self.target_unitary.numpy().shape[0] // 2
@@ -99,7 +90,7 @@ class BatchOptimizer:
             raise Exception("Need to implement expectation optimization")
         else:
             raise ValueError(
-                "optimization_type must be one of \{'state transfer', 'unitary', 'expectation'\}"
+                "optimization_type must be one of {'state transfer', 'unitary', 'expectation'}"
             )
         self.parameters["N_cav"] = N_cav
         if P_cav is not None:
@@ -138,12 +129,12 @@ class BatchOptimizer:
         parameters["initial_states"] = (
             parameters["initial_states"]
             if "initial_states" in parameters
-            else [self.initial_state]
+            else self.initial_states
         )
         parameters["target_states"] = (
             parameters["target_states"]
             if "target_states" in parameters
-            else [self.target_state]
+            else self.target_states
         )
         parameters["filename"] = (
             parameters["filename"] if "filename" in parameters else self.filename
@@ -313,6 +304,7 @@ class BatchOptimizer:
         blocks = -1j * tf.concat([tf.concat([ll, lr], 3), tf.concat([ul, ur], 3)], 2)
         return blocks
 
+    """
     @tf.function
     def state(
         self,
@@ -336,48 +328,14 @@ class BatchOptimizer:
             )
         else:
             bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
-        psi = self.initial_state
+        psi = self.initial_states[0]
         for U in bs[:i]:
             psi = U @ psi
         return psi
-
-    # TODO: How does it handle the if statements here?
-    @tf.function
-    def batch_final_states(
-        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-    ):
-        bs = self.batch_construct_block_operators(
-            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-        )
-        psis = tf.stack([self.initial_state] * self.parameters["N_multistart"])
-        # note: might be able to use tf.einsum or tf.scan (as done in U_tot) here.
-        for U in bs:
-            psis = U @ psis
-        return psis
+    """
 
     @tf.function
-    def batch_state_overlaps(
-        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-    ):
-        psifs = self.batch_final_states(
-            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-        )
-        psit_dag = tf.linalg.adjoint(self.target_state)
-        overlaps = psit_dag @ psifs  # broadcasting
-        return overlaps
-
-    @tf.function
-    def batch_state_fidelities(
-        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-    ):
-        overlaps = self.batch_state_overlaps(
-            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-        )
-        fids = tf.cast(overlaps * tf.math.conj(overlaps), dtype=tf.float32)
-        return fids
-
-    @tf.function
-    def batch_multi_state_fidelities(
+    def batch_state_transfer_fidelities(
         self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
     ):
         bs = self.batch_construct_block_operators(
@@ -388,11 +346,15 @@ class BatchOptimizer:
             psis = tf.einsum(
                 "mij,msjk->msik", U, psis
             )  # m: multistart, s:multiple states
-        overlaps = tf.squeeze(self.target_states_dag @ psis)  # broadcasting
+        overlaps = self.target_states_dag @ psis  # broadcasting
         overlaps = tf.reduce_mean(overlaps, axis=1)
+        overlaps = tf.squeeze(overlaps)
+        # squeeze after reduce_mean which uses axis=1,
+        # which will not exist if squeezed before for single state transfer
         fids = tf.cast(overlaps * tf.math.conj(overlaps), dtype=tf.float32)
         return fids
 
+    """
     @tf.function
     def mult_bin_tf(self, a):
         while a.shape[0] > 1:
@@ -420,6 +382,7 @@ class BatchOptimizer:
         #     U_c = U @ U_c
         return U_c
 
+    
     @tf.function
     def unitary_fidelity(
         self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
@@ -434,18 +397,7 @@ class BatchOptimizer:
         return tf.cast(
             (1.0 / D) ** 2 * overlap * tf.math.conj(overlap), dtype=tf.float32
         )
-
-    # returns <psi_f | O | psi_f>
-    @tf.function
-    def expectation_value(
-        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas, O
-    ):
-        psif = self.final_state(
-            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-        )
-        psif_dag = tf.linalg.adjoint(psif)
-        expect = psif_dag @ O @ psif
-        return expect
+    """
 
     def optimize(self, do_prints=True):
 
@@ -680,17 +632,14 @@ class BatchOptimizer:
                     grp.attrs[parameter] = value
                 grp.attrs["termination_reason"] = "outside termination"
                 grp.attrs["elapsed_time_s"] = elapsed_time_s
-                # TODO: saving of multiple states or unitary.
-                grp.create_dataset(
-                    "initial_state", data=self.initial_state_qutip.full()
-                )
-                grp.create_dataset(
-                    "initial_state_dims", data=self.initial_state_qutip.dims
-                )
-                grp.create_dataset("target_state", data=self.target_state_qutip.full())
-                grp.create_dataset(
-                    "target_state_dims", data=self.target_state_qutip.dims
-                )
+                if self.target_unitary is not None:
+                    grp.create_dataset(
+                        "target_unitary", data=self.target_unitary.numpy()
+                    )
+                grp.create_dataset("initial_states", data=self.initial_states.numpy())
+                grp.create_dataset("target_states", data=self.target_states.numpy())
+                dims = [[2, int(self.initial_states[0].numpy().shape[0] / 2)], [1, 1]]
+                grp.create_dataset("state_dims", data=dims)
                 grp.create_dataset(
                     "fidelities",
                     chunks=True,
@@ -928,7 +877,7 @@ class BatchOptimizer:
             self.phis,
             self.thetas,
         )
-        max_idx = tf.argmax(fids)[0, 0].numpy()
+        max_idx = tf.argmax(fids).numpy()
         all_betas, all_alphas, all_phis, all_thetas = self.get_numpy_vars(
             self.betas_rho,
             self.betas_angle,
@@ -937,7 +886,7 @@ class BatchOptimizer:
             self.phis,
             self.thetas,
         )
-        max_fid = fids[max_idx][0, 0].numpy()
+        max_fid = fids[max_idx].numpy()
         betas = all_betas[max_idx]
         alphas = all_alphas[max_idx]
         phis = all_phis[max_idx]

@@ -29,22 +29,30 @@ class OptimizationAnalysis:
         self.data[timestamp] = {}
         with h5py.File(self.filename, "a") as f:
             self.data[timestamp]["parameters"] = dict(f[timestamp].attrs.items())
-            self.data[timestamp]["betas"] = f[timestamp]["betas"].value
-            self.data[timestamp]["alphas"] = f[timestamp]["alphas"].value
-            self.data[timestamp]["phis"] = f[timestamp]["phis"].value
-            self.data[timestamp]["thetas"] = f[timestamp]["thetas"].value
-            self.data[timestamp]["fidelities"] = f[timestamp]["fidelities"].value
-            if "initial_state" in f[timestamp]:
-                initial_state = f[timestamp]["initial_state"].value
-                initial_state_dims = f[timestamp]["initial_state_dims"].value
-                target_state = f[timestamp]["target_state"].value
-                target_state_dims = f[timestamp]["target_state_dims"].value
-                self.data[timestamp]["initial_state"] = qt.Qobj(
-                    initial_state, dims=initial_state_dims.tolist()
-                )
-                self.data[timestamp]["target_state"] = qt.Qobj(
-                    target_state, dims=target_state_dims.tolist()
-                )
+            self.data[timestamp]["betas"] = f[timestamp]["betas"][()]
+            self.data[timestamp]["alphas"] = f[timestamp]["alphas"][()]
+            self.data[timestamp]["phis"] = f[timestamp]["phis"][()]
+            self.data[timestamp]["thetas"] = f[timestamp]["thetas"][()]
+            self.data[timestamp]["fidelities"] = f[timestamp]["fidelities"][()]
+            if "initial_states" in f[timestamp]:
+                initial_states = f[timestamp]["initial_states"][()]
+                target_states = f[timestamp]["target_states"][()]
+                dims = f[timestamp]["state_dims"][()]
+                self.data[timestamp]["initial_states"] = [
+                    qt.Qobj(initial_state, dims=dims.tolist())
+                    for initial_state in initial_states
+                ]
+                self.data[timestamp]["target_states"] = [
+                    qt.Qobj(target_state, dims=dims.tolist())
+                    for target_state in target_states
+                ]
+                if len(self.data[timestamp]["initial_states"]) == 1:
+                    self.data[timestamp]["initial_state"] = self.data[timestamp][
+                        "initial_states"
+                    ][0]
+                    self.data[timestamp]["target_state"] = self.data[timestamp][
+                        "target_states"
+                    ][0]
 
     def fidelities(self, timestamp=None):
         if timestamp is None:
@@ -268,10 +276,10 @@ class OptimizationSweepsAnalysis:
                 "sweep_param_name"
             ]
             self.data[sweep_name]["timestamps"] = f[sweep_name].attrs["timestamps"]
-            self.data[sweep_name]["fidelities"] = f[sweep_name]["fidelities"].value
+            self.data[sweep_name]["fidelities"] = f[sweep_name]["fidelities"][()]
             self.data[sweep_name]["sweep_param_values"] = f[sweep_name][
                 "sweep_param_values"
-            ].value
+            ][()]
 
     def timestamps(self, sweep_name=None):
         if sweep_name is None:
@@ -285,9 +293,7 @@ class OptimizationSweepsAnalysis:
         self._load_data(sweep_name)
         return self.data[sweep_name]["fidelities"]
 
-    def get_opt_object(
-        self,
-    ):
+    def get_opt_object(self,):
         return OptimizationAnalysis(self.filename)
 
     def success_fracs(self, success_fid=None, sweep_name=None):
