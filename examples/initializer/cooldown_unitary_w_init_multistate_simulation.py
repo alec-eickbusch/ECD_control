@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import CD_control.tf_quantum as tfq
 import tensorflow as tf
 #%%
-#testing commits
+
 N = 50 #cavity hilbert space 
 N_blocks = 20 #5
 targ = np.array(qt.tensor(qt.identity(2),qt.identity(N)))
