@@ -3,6 +3,7 @@ import tensorflow as tf
 import h5py
 import matplotlib.pyplot as plt
 import qutip as qt
+from matplotlib.ticker import MaxNLocator
 
 plt.rcParams.update({"font.size": 14, "pdf.fonttype": 42, "ps.fonttype": 42})
 
@@ -344,25 +345,43 @@ class OptimizationSweepsAnalysis:
         ax.set_ylabel(r"$|\beta|$")
         plt.tight_layout()
 
-    def plot_sweep_fidelities(self, sweep_name=None, fig=None, ax=None, log=True):
+    def plot_sweep_fidelities(
+        self, sweep_name=None, labels=None, fig=None, ax=None, log=True
+    ):
         if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
-        fids = self.fidelities(sweep_name)
-        sweep_param_values = self.data[sweep_name]["sweep_param_values"]
-        sweep_param_name = self.data[sweep_name]["sweep_param_name"]
+            sweep_name = [self.sweep_names[-1]]
+        if not isinstance(sweep_name, list):
+            sweep_name = [sweep_name]
+
         if fig is None:
             fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+
         if ax is None:
             ax = fig.subplots()
-        if log:
-            ax.semilogy(sweep_param_values, 1 - fids, ":.", color="black")
-        else:
-            ax.plot(sweep_param_values, fids, ":.", color="black")
-        ax.set_xlabel(sweep_param_name)
+
         if log:
             ax.set_ylabel("best infidelity")
         else:
             ax.set_ylabel("best fidelity")
+
+        for i in range(len(sweep_name)):
+            sweep = sweep_name[i]
+            label = labels[i] if labels is not None else None
+            fids = self.fidelities(sweep)
+            sweep_param_values = self.data[sweep]["sweep_param_values"]
+            if log:
+                ax.semilogy(sweep_param_values, 1 - fids, ":.", label=label)
+            else:
+                ax.plot(sweep_param_values, fids, ":.", label=label)
+        if labels is not None:
+            if log:
+                plt.legend(loc="upper right", prop={"size": 6})
+            else:
+                plt.legend(loc="lower right", prop={"size": 6})
+        # sweep_param_name should be the same across sweeps
+        sweep_param_name = self.data[sweep]["sweep_param_name"]
+        ax.set_xlabel(sweep_param_name)
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # uses integers as ticks
         fig.tight_layout()
 
     def plot_sweep_success_fraction(
@@ -380,4 +399,6 @@ class OptimizationSweepsAnalysis:
         ax.plot(sweep_param_values, fracs, ":.", color="black")
         ax.set_xlabel(sweep_param_name)
         ax.set_ylabel("Fraction with F > %.3f" % success_fid)
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # uses integers as ticks
         fig.tight_layout()
+
