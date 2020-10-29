@@ -22,11 +22,16 @@ def qt2tf(qt_object, dtype=tf.complex64):
     return tf.constant(qt_object.full(), dtype=dtype)
 
 
-def tf2qt(tf_object):
+def tf2qt(tf_object, matrix=False):
     if not tf.is_tensor(tf_object):
         return tf_object
+
     return qt.Qobj(
-        tf_object.numpy(), dims=[[2, int(tf_object.numpy().shape[0] / 2)], [1, 1]]
+        tf_object.numpy(),
+        dims=[
+            [2, int(tf_object.numpy().shape[0] / 2)],
+            [1, 1] if not matrix else [2, int(tf_object.numpy().shape[0] / 2)],
+        ],
     )
 
 
