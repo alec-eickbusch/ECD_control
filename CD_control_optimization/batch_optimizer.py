@@ -26,6 +26,7 @@ class BatchOptimizer:
         optimization_type="state transfer",
         target_unitary=None,
         P_cav=None,
+        N_cav=None,
         initial_states=None,
         target_states=None,
         expectation_operators=None,
@@ -69,36 +70,47 @@ class BatchOptimizer:
         }
         self.parameters.update(kwargs)
         if self.parameters["optimization_type"] == "state transfer":
-            self.batch_fidelities = self.batch_state_transfer_fidelities
+            self.batch_fidelities = (
+                self.batch_state_transfer_fidelities
+            )  # set fidelity function
+
             self.initial_states = tf.stack(
                 [tfq.qt2tf(state) for state in initial_states]
             )
+
             self.target_unitary = tfq.qt2tf(target_unitary)
+
             self.target_states = (  # store dag
                 tf.stack([tfq.qt2tf(state) for state in target_states])
                 if self.target_unitary is None
                 else self.target_unitary @ self.initial_states
             )
-            self.target_states_dag = tf.linalg.adjoint(self.target_states)
+
+            self.target_states_dag = tf.linalg.adjoint(
+                self.target_states
+            )  # store dag to avoid having to take adjoint
+
             N_cav = self.initial_states[0].numpy().shape[0] // 2
         elif self.parameters["optimization_type"] == "unitary":
             self.target_unitary = tfq.qt2tf(target_unitary)
             N_cav = self.target_unitary.numpy().shape[0] // 2
             P_cav = P_cav if P_cav is not None else N_cav
             raise Exception("Need to implement unitary optimization")
+
         elif self.parameters["optimization_type"] == "expectation":
             raise Exception("Need to implement expectation optimization")
-        else:
+        elif self.parameters["optimization_type"] != "analysis":
             raise ValueError(
-                "optimization_type must be one of {'state transfer', 'unitary', 'expectation'}"
+                "optimization_type must be one of {'state transfer', 'unitary', 'expectation', 'analysis'}"
             )
+
         self.parameters["N_cav"] = N_cav
         if P_cav is not None:
             self.parameters["P_cav"] = P_cav
 
         # TODO: handle case when you pass initial params. In that case, don't randomize, but use "set_tf_vars()"
         self.randomize_and_set_vars()
-        # self.set_tf_vars(betasG=betas, alphas=alphas, phis=phis, thetas=thetas)
+        # self.set_tf_vars(betas=betas, alphas=alphas, phis=phis, thetas=thetas)
 
         self._construct_needed_matrices()
         self._construct_optimization_masks(beta_mask, alpha_mask, phi_mask, theta_mask)
@@ -354,7 +366,6 @@ class BatchOptimizer:
         fids = tf.cast(overlaps * tf.math.conj(overlaps), dtype=tf.float32)
         return fids
 
-    """
     @tf.function
     def mult_bin_tf(self, a):
         while a.shape[0] > 1:
@@ -366,13 +377,15 @@ class BatchOptimizer:
         return a[0]
 
     @tf.function
-    def U_tot(self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas):
-        if self.parameters["use_displacements"]:
-            bs = self.construct_block_operators_with_displacements(
-                betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-            )
-        else:
-            bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
+    def U_tot(self,):
+        bs = self.batch_construct_block_operators(
+            self.betas_rho,
+            self.betas_angle,
+            self.alphas_rho,
+            self.alphas_angle,
+            self.phis,
+            self.thetas,
+        )
         # U_c = tf.scan(lambda a, b: tf.matmul(b, a), bs)[-1]
         U_c = self.mult_bin_tf(
             tf.reverse(bs, axis=[0])
@@ -382,7 +395,7 @@ class BatchOptimizer:
         #     U_c = U @ U_c
         return U_c
 
-    
+    """
     @tf.function
     def unitary_fidelity(
         self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
@@ -811,62 +824,70 @@ class BatchOptimizer:
         return betas.T, alphas.T, phis.T, thetas.T
 
     def set_tf_vars(self, betas=None, alphas=None, phis=None, thetas=None):
-        # if None, sets to zero
-        self.betas_rho = (
-            tf.Variable(np.abs(np.array(betas)), dtype=tf.float32, trainable=True)
-            if betas is not None
-            else tf.Variable(
-                tf.zeros(self.parameters["N_blocks"], dtype=tf.float32), trainable=True
+        # reshaping for N_multistart = 1
+        if betas is not None:
+            if len(betas.shape) < 2:
+                betas = betas.reshape(betas.shape + (1,))
+                self.parameters["N_multistart"] = 1
+            betas_rho = np.abs(betas)
+            betas_angle = np.angle(betas)
+            self.betas_rho = tf.Variable(
+                betas_rho, dtype=tf.float32, trainable=True, name="betas_rho"
             )
-        )
-        self.betas_angle = (
-            tf.Variable(np.angle(np.array(betas)), dtype=tf.float32, trainable=True)
-            if betas is not None
-            else tf.Variable(
-                tf.zeros(self.parameters["N_blocks"], dtype=tf.float32), trainable=True
+            self.betas_angle = tf.Variable(
+                betas_angle, dtype=tf.float32, trainable=True, name="betas_angle",
             )
-        )
-        if self.parameters["use_displacements"]:
-            self.alphas_rho = (
-                tf.Variable(np.abs(np.array(alphas)), dtype=tf.float32, trainable=True)
-                if alphas is not None
-                else tf.Variable(
-                    tf.zeros(self.parameters["N_blocks"], dtype=tf.float32),
-                    trainable=True,
+        if alphas is not None:
+            if len(alphas.shape) < 2:
+                alphas = alphas.reshape(alphas.shape + (1,))
+                self.parameters["N_multistart"] = 1
+            alphas_rho = np.abs(alphas)
+            alphas_angle = np.angle(alphas)
+            if self.parameters["use_displacements"]:
+                self.alphas_rho = tf.Variable(
+                    alphas_rho, dtype=tf.float32, trainable=True, name="alphas_rho",
                 )
-            )
-            self.alphas_angle = (
-                tf.Variable(
-                    np.angle(np.array(alphas)), dtype=tf.float32, trainable=True
+                self.alphas_angle = tf.Variable(
+                    alphas_angle, dtype=tf.float32, trainable=True, name="alphas_angle",
                 )
-                if alphas is not None
-                else tf.Variable(
-                    tf.zeros(self.parameters["N_blocks"], dtype=tf.float32),
-                    trainable=True,
+            else:
+                self.alphas_rho = tf.constant(
+                    np.zeros(
+                        shape=(
+                            (
+                                self.parameters["N_blocks"],
+                                self.parameters["N_multistart"],
+                            )
+                        )
+                    ),
+                    dtype=tf.float32,
                 )
-            )
-        else:
-            self.alphas_rho = tf.constant(
-                tf.zeros(self.parameters["N_blocks"], dtype=tf.float32)
-            )
-            self.alphas_angle = tf.constant(
-                tf.zeros(self.parameters["N_blocks"], dtype=tf.float32)
-            )
+                self.alphas_angle = tf.constant(
+                    np.zeros(
+                        shape=(
+                            (
+                                self.parameters["N_blocks"],
+                                self.parameters["N_multistart"],
+                            )
+                        )
+                    ),
+                    dtype=tf.float32,
+                )
 
-        self.phis = (
-            tf.Variable(phis, dtype=tf.float32, trainable=True)
-            if phis is not None
-            else tf.Variable(
-                tf.zeros(self.parameters["N_blocks"], dtype=tf.float32), trainable=True
+        if phis is not None:
+            if len(phis.shape) < 2:
+                phis = phis.reshape(phis.shape + (1,))
+                self.parameters["N_multistart"] = 1
+            self.phis = tf.Variable(
+                phis, dtype=tf.float32, trainable=True, name="betas_rho",
             )
-        )
-        self.thetas = (
-            tf.Variable(thetas, dtype=tf.float32, trainable=True)
-            if phis is not None
-            else tf.Variable(
-                tf.zeros(self.parameters["N_blocks"], dtype=tf.float32), trainable=True
+        if thetas is not None:
+            if len(thetas.shape) < 2:
+                thetas = thetas.reshape(thetas.shape + (1,))
+                self.parameters["N_multistart"] = 1
+            self.thetas = tf.Variable(
+                thetas, dtype=tf.float32, trainable=True, name="betas_angle",
             )
-        )
 
     def best_circuit(self):
         fids = self.batch_fidelities(
