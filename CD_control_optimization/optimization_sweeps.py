@@ -100,11 +100,12 @@ class OptimizationSweeps:
     def is_already_optimized(self, sweep_param_values):
         with h5py.File(self.filename, "a") as f:
             if self.sweep_name in f:
-                vals = np.array(f[self.sweep_name]["sweep_param_values"])
-                print(vals, sweep_param_values)
-                ans = np.any(np.equal(vals, sweep_param_values).all(1))
-                print(ans)
-                return ans
+                return np.any(
+                    np.equal(
+                        np.array(f[self.sweep_name]["sweep_param_values"]),
+                        sweep_param_values,
+                    ).all(1)
+                )
         return False
 
     # as your running larger sweeps, you can accumulate data.
