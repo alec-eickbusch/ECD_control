@@ -5,13 +5,23 @@ from .batch_optimizer import TIMESTAMP_FORMAT
 
 
 class OptimizationSweeps:
-    def __init__(self, opt_object):
-        self.opt_object = opt_object
-        self.filename = self.opt_object.filename
-        self.sweep_names = []
+    def __init__(self, sweep_param_names=[], filename="sweep"):
+        # setup filename
+        self.filename = filename
+        path = self.filename.split(".")
+        if len(path) < 2 or (len(path) == 2 and path[-1] != ".h5"):
+            self.filename = path[0] + ".h5"
+
+        # Setup Sweep
+        timestamp = datetime.datetime.now().strftime(TIMESTAMP_FORMAT)
+        self.sweep_param_names = ["N_blocks"] + sweep_param_names
+        sweep_param_names_str = " ".join(self.sweep_param_names)
+        self.sweep_name = "sweep " + sweep_param_names_str + " " + timestamp
 
     def N_blocks_sweep(
         self,
+        opt_object,
+        sweep_param_values=[],
         min_N_blocks=2,
         max_N_blocks=12,
         beta_scale_function=None,
@@ -19,105 +29,115 @@ class OptimizationSweeps:
         terminate=True,
         do_prints=True,
     ):
+        if len(sweep_param_values) != len(self.sweep_param_names) - 1:
+            raise Exception(
+                "Please enter matching sweep_param_values to "
+                + str(self.sweep_param_names)
+                + "!"
+            )
+        opt_object.filename = self.filename
+
+        # Initialize
         best_fid = 0.0
         N_blocks = min_N_blocks
-        timestamp = datetime.datetime.now().strftime(TIMESTAMP_FORMAT)
-        sweep_name = "sweep N_blocks " + timestamp
-        self.sweep_names.append(sweep_name)
-        sweep_param_name = "Number of Blocks"
-        timestamps = []
+
+        # N_block dependent random initialization
         beta_scale_function = (
             beta_scale_function
             if beta_scale_function is not None
-            else lambda N_blocks: self.opt_object.parameters["beta_scale"]
+            else lambda N_blocks: opt_object.parameters["beta_scale"]
         )
         alpha_scale_function = (
             alpha_scale_function
             if alpha_scale_function is not None
-            else lambda N_blocks: self.opt_object.parameters["alpha_scale"]
+            else lambda N_blocks: opt_object.parameters["alpha_scale"]
         )
+
+        sweep_param_values_base = sweep_param_values
+        # Loop through N blocks
         print("\nstarting N blocks sweep")
         while (N_blocks <= max_N_blocks) and (
-            best_fid < self.opt_object.parameters["term_fid"]
+            best_fid < opt_object.parameters["term_fid"]
         ):
-            print("\nN_blocks: %d" % N_blocks)
-            print("N blocks sweep filename: " + self.filename)
-            print("N blocks sweep name: " + sweep_name + "\n")
+            sweep_param_values = [N_blocks] + sweep_param_values_base
+            if self.is_already_optimized(
+                sweep_param_values
+            ):  # useful when restarting sweep
+                N_blocks += 1
+                continue
+            print(
+                "\n"
+                + str(self.sweep_param_names)
+                + " sweep: "
+                + str(sweep_param_values)
+            )
+            print(str(self.sweep_param_names) + " sweep filename: " + self.filename)
+            print(
+                str(self.sweep_param_names) + " sweep name: " + self.sweep_name + "\n"
+            )
+
             beta_scale = beta_scale_function(N_blocks)
             alpha_scale = alpha_scale_function(N_blocks)
-            self.opt_object.modify_parameters(
+            opt_object.modify_parameters(
                 N_blocks=N_blocks, beta_scale=beta_scale, alpha_scale=alpha_scale
             )
-            timestamps.append(self.opt_object.optimize(do_prints=do_prints))
-            best_circuit = self.opt_object.best_circuit()
-            if N_blocks == min_N_blocks:
-                self.save_sweep_data(
-                    sweep_name,
-                    timestamps,
-                    best_circuit,
-                    append=False,
-                    sweep_param_name=sweep_param_name,
-                    sweep_param_value=N_blocks,
-                )
-            else:
-                self.save_sweep_data(
-                    sweep_name,
-                    timestamps,
-                    best_circuit,
-                    append=True,
-                    sweep_param_name=sweep_param_name,
-                    sweep_param_value=N_blocks,
-                )
+
+            timestamp = opt_object.optimize(do_prints=do_prints)
+            all_fidelities = opt_object.all_fidelities()
+
+            self.save_sweep_data(
+                timestamp, all_fidelities, sweep_param_values=sweep_param_values,
+            )
+
             if terminate:
-                best_fid = best_circuit["fidelity"]
+                best_fid = np.max(all_fidelities)
+
             N_blocks += 1
         print("\n N_blocks sweep finished.")
         print("N blocks sweep filename: " + self.filename)
-        print("N blocks sweep name: " + sweep_name + "\n")
-        return sweep_name
+        print("N blocks sweep name: " + self.sweep_name + "\n")
+
+    def is_already_optimized(self, sweep_param_values):
+        with h5py.File(self.filename, "a") as f:
+            if self.sweep_name in f:
+                vals = np.array(f[self.sweep_name]["sweep_param_values"])
+                print(vals, sweep_param_values)
+                ans = np.any(np.equal(vals, sweep_param_values).all(1))
+                print(ans)
+                return ans
+        return False
 
     # as your running larger sweeps, you can accumulate data.
-    def save_sweep_data(
-        self,
-        sweep_name,
-        timestamps,
-        circuit_data,
-        append=False,
-        sweep_param_name="sweep_parameter",
-        sweep_param_value=0,
-        **kwargs
-    ):
-        timestamp_str = timestamps[0]
-        if len(timestamps) > 1:
-            for t in timestamps:
-                timestamp_str = timestamp_str + "," + t
-        if not append:
-            with h5py.File(self.filename, "a") as f:
-                grp = f.create_group(sweep_name)
+    def save_sweep_data(self, timestamp, fidelities, sweep_param_values=[], **kwargs):
+        # Updating: timestamps, sweep_params_labels, fidelities
+        # No need to update: sweep_params_names
+        with h5py.File(self.filename, "a") as f:
+            if self.sweep_name not in f:
+                grp = f.create_group(self.sweep_name)
                 for parameter, value in kwargs.items():
                     grp.attrs[parameter] = value
-                grp.attrs["timestamps"] = timestamps
-                grp.attrs["sweep_param_name"] = sweep_param_name
+                grp.attrs["sweep_param_names"] = self.sweep_param_names
+
+                grp.attrs["timestamps"] = [timestamp]
                 grp.create_dataset(
-                    "fidelities",
-                    chunks=True,
-                    data=[circuit_data["fidelity"]],
-                    maxshape=(None,),
+                    "fidelities", chunks=True, data=[fidelities], maxshape=(None, None),
                 )
                 grp.create_dataset(
                     "sweep_param_values",
                     chunks=True,
-                    data=[sweep_param_value],
-                    maxshape=(None,),
+                    data=[sweep_param_values],
+                    maxshape=(None, None),
                 )
-        else:
-            with h5py.File(self.filename, "a") as f:
-                f[sweep_name]["fidelities"].resize(
-                    f[sweep_name]["fidelities"].shape[0] + 1, axis=0
+            else:
+                f[self.sweep_name].attrs["timestamps"] = list(
+                    f[self.sweep_name].attrs["timestamps"]
+                ) + [timestamp]
+
+                f[self.sweep_name]["fidelities"].resize(
+                    f[self.sweep_name]["fidelities"].shape[0] + 1, axis=0
                 )
-                f[sweep_name]["sweep_param_values"].resize(
-                    f[sweep_name]["sweep_param_values"].shape[0] + 1, axis=0
+                f[self.sweep_name]["sweep_param_values"].resize(
+                    f[self.sweep_name]["sweep_param_values"].shape[0] + 1, axis=0
                 )
-                f[sweep_name]["fidelities"][-1] = circuit_data["fidelity"]
-                f[sweep_name]["sweep_param_values"][-1] = sweep_param_value
-                f[sweep_name].attrs["timestamps"] = timestamps
+                f[self.sweep_name]["fidelities"][-1] = fidelities
+                f[self.sweep_name]["sweep_param_values"][-1] = sweep_param_values
