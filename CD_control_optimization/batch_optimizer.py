@@ -652,7 +652,6 @@ class BatchOptimizer:
                 grp.create_dataset("initial_states", data=self.initial_states.numpy())
                 grp.create_dataset("target_states", data=self.target_states.numpy())
                 dims = [[2, int(self.initial_states[0].numpy().shape[0] / 2)], [1, 1]]
-                grp.create_dataset("state_dims", data=dims)
                 grp.create_dataset(
                     "fidelities",
                     chunks=True,
@@ -920,8 +919,29 @@ class BatchOptimizer:
             "thetas": thetas,
         }
 
+    def all_fidelities(self):
+        fids = self.batch_fidelities(
+            self.betas_rho,
+            self.betas_angle,
+            self.alphas_rho,
+            self.alphas_angle,
+            self.phis,
+            self.thetas,
+        )
+        return fids.numpy()
+
     def best_fidelity(self):
-        return self.best_circuit()["fidelity"]
+        fids = self.batch_fidelities(
+            self.betas_rho,
+            self.betas_angle,
+            self.alphas_rho,
+            self.alphas_angle,
+            self.phis,
+            self.thetas,
+        )
+        max_idx = tf.argmax(fids).numpy()
+        max_fid = fids[max_idx].numpy()
+        return max_fid
 
     def print_info(self):
         best_circuit = self.best_circuit()
