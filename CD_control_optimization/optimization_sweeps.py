@@ -105,7 +105,7 @@ class OptimizationSweeps:
                         np.array(f[self.sweep_name]["sweep_param_values"]),
                         sweep_param_values,
                     ).all(1)
-                )
+                )  # checks if row of sweep_param_values is in np array f[self.sweep_name]["sweep_param_values"] already
         return False
 
     # as your running larger sweeps, you can accumulate data.
