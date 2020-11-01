@@ -5,8 +5,11 @@ import matplotlib.pyplot as plt
 import qutip as qt
 from matplotlib.ticker import MaxNLocator
 from CD_control_optimization.batch_optimizer import BatchOptimizer
+from scipy.interpolate import interp2d
 
 plt.rcParams.update({"font.size": 14, "pdf.fonttype": 42, "ps.fonttype": 42})
+
+N_BLOCKS = "N_blocks"
 
 
 class OptimizationAnalysis:
@@ -304,8 +307,8 @@ class OptimizationSweepsAnalysis:
                 continue
             self.data[sweep_name] = {}
             with h5py.File(self.filename, "a") as f:
-                self.data[sweep_name]["sweep_param_name"] = f[sweep_name].attrs[
-                    "sweep_param_name"
+                self.data[sweep_name]["sweep_param_names"] = f[sweep_name].attrs[
+                    "sweep_param_names"
                 ]
                 self.data[sweep_name]["timestamps"] = f[sweep_name].attrs["timestamps"]
                 self.data[sweep_name]["fidelities"] = f[sweep_name]["fidelities"][()]
@@ -323,22 +326,38 @@ class OptimizationSweepsAnalysis:
             sweep_name = self.sweep_names[-1]
         return self.get_data(sweep_name)["fidelities"]
 
+    def best_fidelities(self, sweep_name=None):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        return np.amax(self.fidelities(sweep_name), 1)
+
     def success_fracs(self, success_fid=None, sweep_name=None):
         if sweep_name is None:
             sweep_name = self.sweep_names[-1]
-        fracs = []
-        for timestamp in self.timestamps(sweep_name):
-            fracs.append(
-                self.opt_analysis_obj.success_fraction(
-                    timestamp=timestamp, success_fid=success_fid
-                )
-            )
-        return np.array(fracs)
+        fids = self.fidelities(sweep_name)
+        return np.mean(fids >= success_fid, axis=1)
+
+    # def success_fracs(self, success_fid=None, sweep_name=None):
+    #     if sweep_name is None:
+    #         sweep_name = self.sweep_names[-1]
+    #     fracs = []
+    #     for timestamp in self.timestamps(sweep_name):
+    #         fracs.append(
+    #             self.opt_analysis_obj.success_fraction(
+    #                 timestamp=timestamp, success_fid=success_fid
+    #             )
+    #         )
+    #     return np.array(fracs)
 
     def sweep_param_values(self, sweep_name=None):
         if sweep_name is None:
             sweep_name = self.sweep_names[-1]
-        return self.get_data(sweep_name)["sweep_param_values"]
+        return np.array(self.get_data(sweep_name)["sweep_param_values"])
+
+    def sweep_param_names(self, sweep_name=None):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        return list(self.get_data(sweep_name)["sweep_param_names"])
 
     # for each optimization in the sweep, find the best beta
     def best_circuits(self, sweep_name=None):
@@ -352,41 +371,123 @@ class OptimizationSweepsAnalysis:
     def best_U_tots(self, sweep_name=None):
         if sweep_name is None:
             sweep_name = self.sweep_names[-1]
+
+        timestamps = self.timestamps(sweep_name)
+
+        # e.g. [[1,1],[2,1],[3,1],...]
+        sweep_param_values = self.sweep_param_values(sweep_name)
+
+        # e.g. ["N_blocks", "max_fock"]
+        sweep_param_names = self.sweep_param_names(sweep_name)
+
         U_tots = []
-        N_blocks = []
-        for timestamp in self.timestamps(sweep_name):
+        for timestamp in timestamps:
             U_tots.append(self.opt_analysis_obj.best_U_tot(timestamp))
-            N_blocks.append(
-                self.opt_analysis_obj.get_data(timestamp)["parameters"]["N_blocks"]
-            )
-        return U_tots, N_blocks
+        return U_tots, sweep_param_values, sweep_param_names
 
-    def plot_best_mag_betas(self, sweep_name=None, fig=None, ax=None):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
-        sweep_param_values = self.get_data(sweep_name)["sweep_param_values"]
-        sweep_param_name = self.get_data(sweep_name)["sweep_param_name"]
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
-        circuits = self.best_circuits(sweep_name)
-        for i, value in enumerate(sweep_param_values):
-            betas = circuits[i]["betas"]
-            num = len(betas)
-            plt.scatter(value * np.ones(num), np.abs(betas))
-        sweep_param_name = self.get_data(sweep_name)["sweep_param_name"]
-        ax.set_xlabel(sweep_param_name)
-        ax.set_ylabel(r"$|\beta|$")
-        plt.tight_layout()
-
-    def plot_sweep_fidelities(
-        self, sweep_name=None, labels=None, fig=None, ax=None, log=True
+    def get_fixed_indx(
+        self, sweep_name=None, fixed_param_names=[], fixed_param_values=[]
     ):
         if sweep_name is None:
-            sweep_name = [self.sweep_names[-1]]
-        if not isinstance(sweep_name, list):
-            sweep_name = [sweep_name]
+            sweep_name = self.sweep_names[-1]
+        sweep_param_names = self.sweep_param_names(sweep_name)
+        sweep_param_values = self.sweep_param_values(sweep_name)
+        if len(fixed_param_names) == 0:
+            return list(range(len(sweep_param_values)))
+        indxs = []
+        ordered_fixed_param_values = []
+        for param_name in sweep_param_names:
+            if param_name not in fixed_param_names:
+                indxs.append(sweep_param_names.index(param_name))
+            else:
+                ordered_fixed_param_values.append(
+                    fixed_param_values[fixed_param_names.index(param_name)]
+                )
+        all_fixed_param_values = np.delete(sweep_param_values, indxs, axis=1)
+        indxs = np.where(
+            (all_fixed_param_values == tuple(ordered_fixed_param_values)).all(axis=1)
+        )[0]
+        return indxs
+
+    # def plot_best_mag_betas(self, sweep_name=None, fig=None, ax=None):
+    #     if sweep_name is None:
+    #         sweep_name = self.sweep_names[-1]
+    #     sweep_param_values = self.get_data(sweep_name)["sweep_param_values"]
+    #     sweep_param_name = self.get_data(sweep_name)["sweep_param_name"]
+    #     if fig is None:
+    #         fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+    #     if ax is None:
+    #         ax = fig.subplots()
+    #     circuits = self.best_circuits(sweep_name)
+    #     for i, value in enumerate(sweep_param_values):
+    #         betas = circuits[i]["betas"]
+    #         num = len(betas)
+    #         plt.scatter(value * np.ones(num), np.abs(betas))
+    #     sweep_param_name = self.get_data(sweep_name)["sweep_param_name"]
+    #     ax.set_xlabel(sweep_param_name)
+    #     ax.set_ylabel(r"$|\beta|$")
+    #     plt.tight_layout()
+
+    def plot_sweep_fidelities(
+        self,
+        sweep_name=None,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        fig=None,
+        ax=None,
+        log=True,
+        **kwargs
+    ):
+        """
+        sweep_name:         name of sweep description group
+        fixed_param_names:   fidelity plotted against this sweep parameter 
+                            (e.g. 'N_blocks' from['N_blocks', 'target_fock'])
+        fixed_param_values: list of values specifying other fixed parameters
+                            (e.g. [3] for ['target_fock'] = [3])
+        fig:                figure            
+        ax:                 subplots of figure
+        log:                boolean, plot log or linear
+        **kwargs:           other plotting attributes
+        """
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+
+        sweep_param_names = self.sweep_param_names(sweep_name)
+
+        if len(fixed_param_names) + 1 != len(sweep_param_names) or len(
+            fixed_param_names
+        ) != len(fixed_param_values):
+            raise Exception(
+                "Please properly fix "
+                + str(len(sweep_param_names) - 1)
+                + " parameters out of: "
+                + str(sweep_param_names)
+            )
+
+        find_sweep_param_name = sweep_param_names[:]
+        for fixed_param_name in fixed_param_names:
+            if fixed_param_name not in sweep_param_names:
+                raise Exception(
+                    "Please properly fix "
+                    + str(len(sweep_param_names) - 1)
+                    + " parameters out of: "
+                    + str(sweep_param_names)
+                )
+            find_sweep_param_name.remove(fixed_param_name)
+        sweep_param_name = find_sweep_param_name[0]
+        sweep_param_name_indx = sweep_param_names.index(sweep_param_name)
+
+        indxs = self.get_fixed_indx(sweep_name, fixed_param_names, fixed_param_values)
+        sweep_param_values = self.sweep_param_values(sweep_name)[indxs][
+            :, sweep_param_name_indx
+        ]  # y
+
+        all_fids = self.best_fidelities(sweep_name)
+        fids = all_fids[indxs] if indxs is not None else all_fids  # y
+
+        sort_indx = np.argsort(sweep_param_values)
+        sweep_param_values = sweep_param_values[sort_indx]
+        fids = fids[sort_indx]
 
         if fig is None:
             fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
@@ -398,26 +499,317 @@ class OptimizationSweepsAnalysis:
             ax.set_ylabel("best infidelity")
         else:
             ax.set_ylabel("best fidelity")
-
-        for i in range(len(sweep_name)):
-            sweep = sweep_name[i]
-            label = labels[i] if labels is not None else None
-            fids = self.fidelities(sweep)
-            sweep_param_values = self.get_data(sweep)["sweep_param_values"]
-            if log:
-                ax.semilogy(sweep_param_values, 1 - fids, ":.", label=label)
-            else:
-                ax.plot(sweep_param_values, fids, ":.", label=label)
-        if labels is not None:
+        label = None
+        if len(fixed_param_names) > 0:
+            label = ", ".join(fixed_param_names) + ": " + str(fixed_param_values)
+        if log:
+            ax.semilogy(sweep_param_values, 1 - fids, ":.", label=label, **kwargs)
+        else:
+            ax.plot(sweep_param_values, fids, ":.", label=label, **kwargs)
+        if label is not None:
             if log:
                 plt.legend(loc="upper right", prop={"size": 6})
             else:
                 plt.legend(loc="lower right", prop={"size": 6})
-        # sweep_param_name should be the same across sweeps
-        sweep_param_name = self.get_data(sweep)["sweep_param_name"]
         ax.set_xlabel(sweep_param_name)
-        ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # uses integers as ticks
+        if sweep_param_name == N_BLOCKS:
+            ax.xaxis.set_major_locator(
+                MaxNLocator(integer=True)
+            )  # uses integers as ticks
         fig.tight_layout()
+
+    def plot_multi_sweep_fidelities(
+        self,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        sweep_param_name=None,
+        log=True,
+        **kwargs
+    ):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        if fig is None:
+            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+        if ax is None:
+            ax = fig.subplots()
+
+        sweep_param_names = self.sweep_param_names(sweep_name)
+        indx = sweep_param_names.index(sweep_param_name)
+        fixed_param_names = sweep_param_names
+        fixed_param_names.remove(sweep_param_name)
+
+        sweep_param_values = self.sweep_param_values(sweep_name)
+        all_fixed_param_values = np.delete(sweep_param_values, indx, axis=1)
+        all_fixed_param_values = sorted(set([tuple(x) for x in all_fixed_param_values]))
+
+        for fixed_param_values in all_fixed_param_values:
+            self.plot_sweep_fidelities(
+                sweep_name,
+                fixed_param_names=fixed_param_names,
+                fixed_param_values=list(fixed_param_values),
+                fig=fig,
+                ax=ax,
+                log=log,
+                **kwargs
+            )
+
+    def plot_min_N_blocks_to_reach_fid(
+        self,
+        success_fid=0.999,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        **kwargs
+    ):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        if fig is None:
+            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+        if ax is None:
+            ax = fig.subplots()
+
+        try:
+            remaining_param_names = self.sweep_param_names(sweep_name)
+            remaining_param_names.remove(N_BLOCKS)
+            for fixed_param_name in fixed_param_names:
+                remaining_param_names.remove(fixed_param_name)
+            sweep_param_name = remaining_param_names[0]
+            remaining_param_names.remove(sweep_param_name)
+            assert len(remaining_param_names) == 0
+        except:
+            temp = self.sweep_param_names(sweep_name)
+            temp.remove(N_BLOCKS)
+            raise Exception(
+                "Please properly fix "
+                + str(len(temp) - 1)
+                + " parameters out of: "
+                + str(temp)
+            )
+
+        sweep_param_names = self.sweep_param_names(sweep_name)
+        N_blocks_indx = sweep_param_names.index(N_BLOCKS)
+        sweep_param_indx = sweep_param_names.index(sweep_param_name)
+
+        sweep_param_values = self.sweep_param_values(sweep_name)
+        unique_sweep_param_values = sorted(set(sweep_param_values[:, sweep_param_indx]))
+
+        all_fids = self.best_fidelities(sweep_name)
+        data = {"min_N_blocks": [], "sweep_param_values": []}
+        for sweep_param_value in unique_sweep_param_values:
+            indxs = self.get_fixed_indx(
+                sweep_name=sweep_name,
+                fixed_param_names=fixed_param_names + [sweep_param_name],
+                fixed_param_values=fixed_param_values + [sweep_param_value],
+            )
+            N_blocks_swept = sweep_param_values[indxs][:, N_blocks_indx]
+            sort_indxs = np.argsort(N_blocks_swept)
+            N_blocks_swept = N_blocks_swept[sort_indxs]
+            fids = all_fids[indxs][sort_indxs]
+            satisfying_indxs = np.where(fids >= success_fid)[0]
+            if len(satisfying_indxs) > 0:
+                min_indx = np.min(satisfying_indxs)
+                min_N_block = N_blocks_swept[min_indx]
+                data["min_N_blocks"].append(min_N_block)
+                data["sweep_param_values"].append(sweep_param_value)
+
+        ax.plot(data["sweep_param_values"], data["min_N_blocks"], ":.", **kwargs)
+        ax.set_xlabel(sweep_param_name, size=8)
+        ax.set_ylabel(
+            "Minimum N Blocks to reach " + str(100 * success_fid) + "% Fidelity", size=8
+        )
+        fig.tight_layout()
+
+    def plot_2D_success_fraction(
+        self,
+        success_fid=0.999,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        type="interpolate",
+        **kwargs
+    ):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        if fig is None:
+            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+        if ax is None:
+            ax = fig.subplots()
+
+        metric = self.success_fracs(success_fid, sweep_name)
+        outlier_val = np.max(metric) + 0.1
+        self.plot_2D_metric(
+            metric,
+            outlier_val=outlier_val,
+            sweep_name=sweep_name,
+            fig=fig,
+            ax=ax,
+            fixed_param_names=fixed_param_names,
+            fixed_param_values=fixed_param_values,
+            type=type,
+            **kwargs
+        )
+        ax.set_title(
+            "Success Fraction for Fidelity: " + str(success_fid * 100) + "%", size=8
+        )
+
+    def plot_2D_fidelity(
+        self,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        log=True,
+        type="interpolate",
+        **kwargs
+    ):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        if fig is None:
+            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+        if ax is None:
+            ax = fig.subplots()
+
+        all_fids = self.best_fidelities(sweep_name)
+        if log:
+            all_fids = np.log10(1 - all_fids)
+        outlier_val = np.min(all_fids) - 0.5 if log else np.max(all_fids) + 0.1
+        self.plot_2D_metric(
+            all_fids,
+            outlier_val=outlier_val,
+            sweep_name=sweep_name,
+            fig=fig,
+            ax=ax,
+            fixed_param_names=fixed_param_names,
+            fixed_param_values=fixed_param_values,
+            type=type,
+            **kwargs
+        )
+        ax.set_title("Log Infidelity" if log else "Fidelity")
+
+    def plot_2D_metric(
+        self,
+        metric,
+        outlier_val=-1,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        type="interpolate",
+        **kwargs
+    ):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        if fig is None:
+            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+        if ax is None:
+            ax = fig.subplots()
+
+        try:
+            remaining_param_names = self.sweep_param_names(sweep_name)
+            for fixed_param_name in fixed_param_names:
+                remaining_param_names.remove(fixed_param_name)
+            assert len(remaining_param_names) == 2
+        except:
+            raise Exception(
+                "Please properly fix "
+                + str(len(self.sweep_param_names(sweep_name)) - 2)
+                + " parameters out of: "
+                + str(self.sweep_param_names(sweep_name))
+            )
+        indxs = self.get_fixed_indx(
+            sweep_name=sweep_name,
+            fixed_param_names=fixed_param_names,
+            fixed_param_values=fixed_param_values,
+        )
+        sweep_param_names = self.sweep_param_names(sweep_name)
+        sweep_param_values = self.sweep_param_values(sweep_name)[indxs]
+        z_vals = metric[indxs]
+
+        param_x_name = remaining_param_names[0]
+        param_x_indx = sweep_param_names.index(param_x_name)
+        param_y_name = remaining_param_names[1]
+        param_y_indx = sweep_param_names.index(param_y_name)
+        x_vals = sweep_param_values[:, param_x_indx]
+        y_vals = sweep_param_values[:, param_y_indx]
+        self.plot_2d(
+            x_vals,
+            y_vals,
+            z_vals,
+            fig,
+            ax,
+            outlier_val=outlier_val,
+            type=type,
+            **kwargs
+        )
+        ax.set_xlabel(param_x_name, size=8)
+        ax.set_ylabel(param_y_name, size=8)
+        fig.tight_layout()
+
+    def plot_2d(
+        self,
+        x_list,
+        y_list,
+        z_list,
+        fig=None,
+        ax=None,
+        outlier_val=2,
+        type="interpolate",
+        **kwargs
+    ):
+        """
+        type: 'contour', 'interpolate', 'scatter'
+        """
+        types = ["contour", "interpolate", "scatter"]
+        if type not in types:
+            raise Exception("Please choose a type form: " + str(types))
+        if fig is None:
+            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+        if ax is None:
+            ax = fig.subplots()
+
+        if type == "scatter":
+            plt.scatter(x_list, y_list, s=40, c=z_list, marker="o", cmap="cool")
+            plt.colorbar(extend="both")
+            return
+
+        x_coords = sorted(set(x_list))
+        y_coords = sorted(set(y_list))
+
+        if type == "interpolate":
+            f = interp2d(x_list, y_list, z_list, kind="linear")
+            Z = f(x_coords, y_coords)
+        elif type == "contour":
+            Z = np.ones((len(y_coords), len(x_coords))) * outlier_val
+
+        xy_list = [(x_list[i], y_list[i]) for i in range(len(x_list))]
+        for i in range(len(x_coords)):
+            for j in range(len(y_coords)):
+                if (x_coords[i], y_coords[j]) not in xy_list:
+                    Z[j][i] = outlier_val
+                elif type == "contour":
+                    Z[j][i] = z_list[xy_list.index((x_coords[i], y_coords[j]))]
+
+        cmap = plt.get_cmap("cool")
+        plt.contourf(
+            x_coords,
+            y_coords,
+            Z,
+            cmap=cmap,
+            vmin=np.min(z_list),
+            vmax=np.max(z_list),
+            **kwargs
+        )
+        m = plt.cm.ScalarMappable(cmap=cmap)
+        m.set_array(Z)
+        m.set_clim(np.min(z_list), np.max(z_list))
+        plt.colorbar(m)
 
     def plot_sweep_success_fraction(
         self, success_fid=0.999, sweep_name=None, fig=None, ax=None
