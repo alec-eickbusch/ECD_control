@@ -764,9 +764,9 @@ class OptimizationSweepsAnalysis:
         **kwargs
     ):
         """
-        type: 'contour', 'interpolate', 'scatter'
+        type: 'contour', 'interpolate', 'interpolate_full', 'scatter'
         """
-        types = ["contour", "interpolate", "scatter"]
+        types = ["contour", "interpolate", "interpolate_full", "scatter"]
         if type not in types:
             raise Exception("Please choose a type form: " + str(types))
         if fig is None:
@@ -782,7 +782,7 @@ class OptimizationSweepsAnalysis:
         x_coords = sorted(set(x_list))
         y_coords = sorted(set(y_list))
 
-        if type == "interpolate":
+        if type == "interpolate" or type == "interpolate_full":
             f = interp2d(x_list, y_list, z_list, kind="linear")
             Z = f(x_coords, y_coords)
         elif type == "contour":
@@ -792,7 +792,8 @@ class OptimizationSweepsAnalysis:
         for i in range(len(x_coords)):
             for j in range(len(y_coords)):
                 if (x_coords[i], y_coords[j]) not in xy_list:
-                    Z[j][i] = outlier_val
+                    if type == "interpolate" or type == "contour":
+                        Z[j][i] = outlier_val
                 elif type == "contour":
                     Z[j][i] = z_list[xy_list.index((x_coords[i], y_coords[j]))]
 
@@ -811,21 +812,21 @@ class OptimizationSweepsAnalysis:
         m.set_clim(np.min(z_list), np.max(z_list))
         plt.colorbar(m)
 
-    def plot_sweep_success_fraction(
-        self, success_fid=0.999, sweep_name=None, fig=None, ax=None
-    ):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
-        fracs = self.success_fracs(sweep_name=sweep_name, success_fid=success_fid)
-        sweep_param_values = self.get_data(sweep_name)["sweep_param_values"]
-        sweep_param_name = self.get_data(sweep_name)["sweep_param_name"]
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
-        ax.plot(sweep_param_values, fracs, ":.", color="black")
-        ax.set_xlabel(sweep_param_name)
-        ax.set_ylabel("Fraction with F > %.3f" % success_fid)
-        ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # uses integers as ticks
-        fig.tight_layout()
+    # def plot_sweep_success_fraction(
+    #     self, success_fid=0.999, sweep_name=None, fig=None, ax=None
+    # ):
+    #     if sweep_name is None:
+    #         sweep_name = self.sweep_names[-1]
+    #     fracs = self.success_fracs(sweep_name=sweep_name, success_fid=success_fid)
+    #     sweep_param_values = self.get_data(sweep_name)["sweep_param_values"]
+    #     sweep_param_name = self.get_data(sweep_name)["sweep_param_name"]
+    #     if fig is None:
+    #         fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+    #     if ax is None:
+    #         ax = fig.subplots()
+    #     ax.plot(sweep_param_values, fracs, ":.", color="black")
+    #     ax.set_xlabel(sweep_param_name)
+    #     ax.set_ylabel("Fraction with F > %.3f" % success_fid)
+    #     ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # uses integers as ticks
+    #     fig.tight_layout()
 
