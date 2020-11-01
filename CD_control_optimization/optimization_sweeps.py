@@ -5,7 +5,7 @@ from .batch_optimizer import TIMESTAMP_FORMAT
 
 
 class OptimizationSweeps:
-    def __init__(self, sweep_param_names=[], filename="sweep"):
+    def __init__(self, sweep_param_names=[], filename="sweep", sweep_name=None):
         # setup filename
         self.filename = filename
         path = self.filename.split(".")
@@ -16,7 +16,11 @@ class OptimizationSweeps:
         timestamp = datetime.datetime.now().strftime(TIMESTAMP_FORMAT)
         self.sweep_param_names = ["N_blocks"] + sweep_param_names
         sweep_param_names_str = " ".join(self.sweep_param_names)
-        self.sweep_name = "sweep " + sweep_param_names_str + " " + timestamp
+        self.sweep_name = (
+            "sweep " + sweep_param_names_str + " " + timestamp
+            if sweep_name is None
+            else sweep_name
+        )
 
     def N_blocks_sweep(
         self,
