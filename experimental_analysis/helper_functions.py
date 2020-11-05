@@ -8,7 +8,10 @@ from scipy.interpolate import interp1d
 from scipy.integrate import solve_ivp, quad
 
 #%%
-def plot_pulse(epsilon, Omega, fig=None):
+# todo: nice plotting without Omega
+def plot_pulse(epsilon, Omega=None, fig=None):
+    if Omega is None:
+        Omega = np.zeros_like(epsilon)
     if fig is None:
         fig = plt.figure(figsize=(8, 4), dpi=200)
     axs = fig.subplots(2, sharex=True)
@@ -125,10 +128,11 @@ def alpha_from_epsilon2(
     ).y[0]
     return alpha
 
-
-def alpha_from_epsilon(epsilon):
-    alpha = -1j * np.cumsum(epsilon)
-    return alpha
+# todo: get direction of rotation correct.
+def alpha_from_epsilon(epsilon, delta=0, dt=1, alpha_init=0 + 0j):
+    ts = np.arange(0, len(epsilon)) * dt
+    integrand = np.exp(1j * delta * ts) * epsilon
+    return np.exp(-1j * delta * ts) * (alpha_init - 1j * np.cumsum(integrand))
 
 
 # %%
