@@ -50,13 +50,14 @@ class OptimizationAnalysis:
                 if "initial_states" in f[timestamp]:
                     initial_states = f[timestamp]["initial_states"][()]
                     target_states = f[timestamp]["target_states"][()]
-                    dims = f[timestamp]["state_dims"][()]
+                    N = initial_states.shape[0] // 2
+                    dims = [[2, N], [1, 1]]
                     self.data[timestamp]["initial_states"] = [
-                        qt.Qobj(initial_state, dims=dims.tolist())
+                        qt.Qobj(initial_state, dims=dims)
                         for initial_state in initial_states
                     ]
                     self.data[timestamp]["target_states"] = [
-                        qt.Qobj(target_state, dims=dims.tolist())
+                        qt.Qobj(target_state, dims=dims)
                         for target_state in target_states
                     ]
                     if len(self.data[timestamp]["initial_states"]) == 1:
@@ -121,9 +122,9 @@ class OptimizationAnalysis:
             timestamp = self.timestamps[-1]
         idx = self.idx_of_best_circuit(timestamp)
         betas = self.get_data(timestamp)["betas"][-1][idx]
-        alphas = self.get_data(timestamp)["betas"][-1][idx]
-        phis = self.get_data(timestamp)["betas"][-1][idx]
-        thetas = self.get_data(timestamp)["betas"][-1][idx]
+        alphas = self.get_data(timestamp)["alphas"][-1][idx]
+        phis = self.get_data(timestamp)["phis"][-1][idx]
+        thetas = self.get_data(timestamp)["thetas"][-1][idx]
         max_fid = self.get_data(timestamp)["fidelities"][-1][idx]
         return {
             "fidelity": max_fid,
@@ -326,6 +327,34 @@ class OptimizationSweepsAnalysis:
             sweep_name = self.sweep_names[-1]
         return self.get_data(sweep_name)["fidelities"]
 
+    def abs_mean_betas(self, sweep_name=None):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        best_circuits = self.best_circuits(sweep_name)
+        betas = [np.mean(np.abs(circuit["betas"])) for circuit in best_circuits]
+        return np.array(betas)
+
+    def abs_sum_betas(self, sweep_name=None):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        best_circuits = self.best_circuits(sweep_name)
+        betas = [np.sum(np.abs(circuit["betas"])) for circuit in best_circuits]
+        return np.array(betas)
+
+    def abs_mean_alphas(self, sweep_name=None):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        best_circuits = self.best_circuits(sweep_name)
+        alphas = [np.mean(np.abs(circuit["alphas"])) for circuit in best_circuits]
+        return np.array(alphas)
+
+    def abs_sum_alphas(self, sweep_name=None):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        best_circuits = self.best_circuits(sweep_name)
+        alphas = [np.sum(np.abs(circuit["alphas"])) for circuit in best_circuits]
+        return np.array(alphas)
+
     def best_fidelities(self, sweep_name=None):
         if sweep_name is None:
             sweep_name = self.sweep_names[-1]
@@ -508,9 +537,9 @@ class OptimizationSweepsAnalysis:
             ax.plot(sweep_param_values, fids, ":.", label=label, **kwargs)
         if label is not None:
             if log:
-                plt.legend(loc="upper right", prop={"size": 6})
+                plt.legend(loc="upper right", prop={"size": 3})
             else:
-                plt.legend(loc="lower right", prop={"size": 6})
+                plt.legend(loc="lower right", prop={"size": 3})
         ax.set_xlabel(sweep_param_name)
         if sweep_param_name == N_BLOCKS:
             ax.xaxis.set_major_locator(
@@ -622,6 +651,138 @@ class OptimizationSweepsAnalysis:
         )
         fig.tight_layout()
 
+    def plot_2D_abs_mean_betas(
+        self,
+        success_fid=0.999,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        types=["scatter"],
+        **kwargs
+    ):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        if fig is None:
+            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+        if ax is None:
+            ax = fig.subplots()
+
+        metric = self.abs_mean_betas(sweep_name)
+        outlier_val = np.max(metric) + 0.1
+        self.plot_2D_metric(
+            metric,
+            outlier_val=outlier_val,
+            sweep_name=sweep_name,
+            fig=fig,
+            ax=ax,
+            fixed_param_names=fixed_param_names,
+            fixed_param_values=fixed_param_values,
+            types=types,
+            **kwargs
+        )
+        ax.set_title("Mean |Betas|", size=8)
+
+    def plot_2D_abs_sum_betas(
+        self,
+        success_fid=0.999,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        types=["scatter"],
+        **kwargs
+    ):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        if fig is None:
+            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+        if ax is None:
+            ax = fig.subplots()
+
+        metric = self.abs_sum_betas(sweep_name)
+        outlier_val = np.max(metric) + 0.1
+        self.plot_2D_metric(
+            metric,
+            outlier_val=outlier_val,
+            sweep_name=sweep_name,
+            fig=fig,
+            ax=ax,
+            fixed_param_names=fixed_param_names,
+            fixed_param_values=fixed_param_values,
+            types=types,
+            **kwargs
+        )
+        ax.set_title("Sum |Betas|", size=8)
+
+    def plot_2D_abs_mean_alphas(
+        self,
+        success_fid=0.999,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        types=["scatter"],
+        **kwargs
+    ):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        if fig is None:
+            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+        if ax is None:
+            ax = fig.subplots()
+
+        metric = self.abs_mean_alphas(sweep_name)
+        outlier_val = np.max(metric) + 0.1
+        self.plot_2D_metric(
+            metric,
+            outlier_val=outlier_val,
+            sweep_name=sweep_name,
+            fig=fig,
+            ax=ax,
+            fixed_param_names=fixed_param_names,
+            fixed_param_values=fixed_param_values,
+            types=types,
+            **kwargs
+        )
+        ax.set_title("Mean |Alphas|", size=8)
+
+    def plot_2D_abs_sum_alphas(
+        self,
+        success_fid=0.999,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        types=["scatter"],
+        **kwargs
+    ):
+        if sweep_name is None:
+            sweep_name = self.sweep_names[-1]
+        if fig is None:
+            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+        if ax is None:
+            ax = fig.subplots()
+
+        metric = self.abs_sum_alphas(sweep_name)
+        outlier_val = np.max(metric) + 0.1
+        self.plot_2D_metric(
+            metric,
+            outlier_val=outlier_val,
+            sweep_name=sweep_name,
+            fig=fig,
+            ax=ax,
+            fixed_param_names=fixed_param_names,
+            fixed_param_values=fixed_param_values,
+            types=types,
+            **kwargs
+        )
+        ax.set_title("Sum |Alphas|", size=8)
+
     def plot_2D_success_fraction(
         self,
         success_fid=0.999,
@@ -630,7 +791,7 @@ class OptimizationSweepsAnalysis:
         ax=None,
         fixed_param_names=[],
         fixed_param_values=[],
-        type="interpolate",
+        types=["scatter"],
         **kwargs
     ):
         if sweep_name is None:
@@ -650,7 +811,7 @@ class OptimizationSweepsAnalysis:
             ax=ax,
             fixed_param_names=fixed_param_names,
             fixed_param_values=fixed_param_values,
-            type=type,
+            types=types,
             **kwargs
         )
         ax.set_title(
@@ -665,7 +826,7 @@ class OptimizationSweepsAnalysis:
         fixed_param_names=[],
         fixed_param_values=[],
         log=True,
-        type="interpolate",
+        types=["scatter"],
         **kwargs
     ):
         if sweep_name is None:
@@ -687,7 +848,7 @@ class OptimizationSweepsAnalysis:
             ax=ax,
             fixed_param_names=fixed_param_names,
             fixed_param_values=fixed_param_values,
-            type=type,
+            types=types,
             **kwargs
         )
         ax.set_title("Log Infidelity" if log else "Fidelity")
@@ -701,7 +862,7 @@ class OptimizationSweepsAnalysis:
         ax=None,
         fixed_param_names=[],
         fixed_param_values=[],
-        type="interpolate",
+        types=["scatter"],
         **kwargs
     ):
         if sweep_name is None:
@@ -745,7 +906,7 @@ class OptimizationSweepsAnalysis:
             fig,
             ax,
             outlier_val=outlier_val,
-            type=type,
+            types=types,
             **kwargs
         )
         ax.set_xlabel(param_x_name, size=8)
@@ -760,42 +921,62 @@ class OptimizationSweepsAnalysis:
         fig=None,
         ax=None,
         outlier_val=2,
-        type="interpolate",
+        types=["scatter"],
         **kwargs
     ):
         """
-        type: 'contour', 'interpolate', 'interpolate_full', 'scatter'
+        'scatter', 'interpolate', 'extrapolate', None
         """
-        types = ["contour", "interpolate", "interpolate_full", "scatter"]
-        if type not in types:
-            raise Exception("Please choose a type form: " + str(types))
+        default_types = ["interpolate", "extrapolate", "scatter"]
+        if not isinstance(types, list):
+            types = [types]
+        for type in types:
+            if type not in default_types:
+                raise Exception("Please choose type(s) from: " + str(default_types))
         if fig is None:
             fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
         if ax is None:
             ax = fig.subplots()
 
-        if type == "scatter":
+        x_list = list(x_list)
+        y_list = list(y_list)
+        z_list = list(z_list)
+
+        x_coords = sorted(set(x_list))
+        y_coords = sorted(set(y_list))
+        xy_list = [(x_list[i], y_list[i]) for i in range(len(x_list))]
+        Z = np.ones((len(y_coords), len(x_coords)))
+        for i in range(len(x_coords)):
+            for j in range(len(y_coords)):
+                if (x_coords[i], y_coords[j]) in xy_list:
+                    Z[j][i] = z_list[xy_list.index((x_coords[i], y_coords[j]))]
+                else:
+                    Z[j][i] = None
+
+        if "extrapolate" in types:
+            for j in range(Z.shape[0]):
+                for i in range(1, Z.shape[1]):
+                    if np.isnan(Z[j][i]):
+                        Z[j][i] = Z[j][i - 1]
+                        xy_list.append((x_coords[i], y_coords[j]))
+                        x_list.append(x_coords[i])
+                        y_list.append(y_coords[j])
+                        z_list.append(Z[j][i])
+
+        if "scatter" in types:
             plt.scatter(x_list, y_list, s=40, c=z_list, marker="o", cmap="cool")
             plt.colorbar(extend="both")
             return
 
-        x_coords = sorted(set(x_list))
-        y_coords = sorted(set(y_list))
-
-        if type == "interpolate" or type == "interpolate_full":
+        # not sure if necessary, because contourf interpolates naturally
+        if "interpolate" in types:
             f = interp2d(x_list, y_list, z_list, kind="linear")
             Z = f(x_coords, y_coords)
-        elif type == "contour":
-            Z = np.ones((len(y_coords), len(x_coords))) * outlier_val
 
-        xy_list = [(x_list[i], y_list[i]) for i in range(len(x_list))]
         for i in range(len(x_coords)):
             for j in range(len(y_coords)):
                 if (x_coords[i], y_coords[j]) not in xy_list:
-                    if type == "interpolate" or type == "contour":
-                        Z[j][i] = outlier_val
-                elif type == "contour":
-                    Z[j][i] = z_list[xy_list.index((x_coords[i], y_coords[j]))]
+                    Z[j][i] = outlier_val
 
         cmap = plt.get_cmap("cool")
         plt.contourf(
@@ -811,22 +992,3 @@ class OptimizationSweepsAnalysis:
         m.set_array(Z)
         m.set_clim(np.min(z_list), np.max(z_list))
         plt.colorbar(m)
-
-    # def plot_sweep_success_fraction(
-    #     self, success_fid=0.999, sweep_name=None, fig=None, ax=None
-    # ):
-    #     if sweep_name is None:
-    #         sweep_name = self.sweep_names[-1]
-    #     fracs = self.success_fracs(sweep_name=sweep_name, success_fid=success_fid)
-    #     sweep_param_values = self.get_data(sweep_name)["sweep_param_values"]
-    #     sweep_param_name = self.get_data(sweep_name)["sweep_param_name"]
-    #     if fig is None:
-    #         fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-    #     if ax is None:
-    #         ax = fig.subplots()
-    #     ax.plot(sweep_param_values, fracs, ":.", color="black")
-    #     ax.set_xlabel(sweep_param_name)
-    #     ax.set_ylabel("Fraction with F > %.3f" % success_fid)
-    #     ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # uses integers as ticks
-    #     fig.tight_layout()
-
