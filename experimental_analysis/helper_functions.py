@@ -8,7 +8,10 @@ from scipy.interpolate import interp1d
 from scipy.integrate import solve_ivp, quad
 
 #%%
-def plot_pulse(epsilon, Omega, fig=None):
+# todo: nice plotting without Omega
+def plot_pulse(epsilon, Omega=None, fig=None):
+    if Omega is None:
+        Omega = np.zeros_like(epsilon)
     if fig is None:
         fig = plt.figure(figsize=(8, 4), dpi=200)
     axs = fig.subplots(2, sharex=True)
@@ -106,20 +109,30 @@ def interp(data_array, dt=1):
 
 
 # still having problems with this version
-"""
-def alpha_from_epsilon(epsilon_array, dt=1, K = 0, alpha_init=0+0j, kappa_cavity=0):
-    t_eval = np.linspace(0,len(epsilon_array)*dt-dt, len(epsilon_array))
+
+
+def alpha_from_epsilon2(
+    epsilon_array, dt=1, delta=0, alpha_init=0 + 0j, kappa_cavity=0
+):
+    t_eval = np.linspace(0, len(epsilon_array) * dt - dt, len(epsilon_array))
     epsilon = interp(epsilon_array, dt)
-    dalpha_dt = lambda t, alpha : -1j*epsilon(t) - (kappa_cavity/2)*alpha# - 1j*4*K*np.abs(alpha)**2 * alpha
-    alpha = solve_ivp(dalpha_dt,(0,len(epsilon_array)*dt-dt),y0=[alpha_init],\
-                      method='RK23',t_eval=t_eval).y[0]
+    dalpha_dt = (
+        lambda t, alpha: -1j * epsilon(t) + delta * alpha - (kappa_cavity / 2) * alpha
+    )  # - 1j*4*K*np.abs(alpha)**2 * alpha
+    alpha = solve_ivp(
+        dalpha_dt,
+        (0, len(epsilon_array) * dt - dt),
+        y0=[alpha_init],
+        method="RK23",
+        t_eval=t_eval,
+    ).y[0]
     return alpha
-"""
 
-
-def alpha_from_epsilon(epsilon):
-    alpha = -1j * np.cumsum(epsilon)
-    return alpha
+# todo: get direction of rotation correct.
+def alpha_from_epsilon(epsilon, delta=0, dt=1, alpha_init=0 + 0j):
+    ts = np.arange(0, len(epsilon)) * dt
+    integrand = np.exp(1j * delta * ts) * epsilon
+    return np.exp(-1j * delta * ts) * (alpha_init - 1j * np.cumsum(integrand))
 
 
 # %%
