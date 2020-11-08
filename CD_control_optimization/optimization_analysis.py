@@ -591,6 +591,7 @@ class OptimizationSweepsAnalysis:
         ax=None,
         fixed_param_names=[],
         fixed_param_values=[],
+        fit=None,
         **kwargs
     ):
         if sweep_name is None:
@@ -643,12 +644,20 @@ class OptimizationSweepsAnalysis:
                 min_N_block = N_blocks_swept[min_indx]
                 data["min_N_blocks"].append(min_N_block)
                 data["sweep_param_values"].append(sweep_param_value)
+        x = np.array(data["sweep_param_values"])
+        y = np.array(data["min_N_blocks"])
+        if fit is not None:
+            p = np.poly1d(np.polyfit(x, y, fit))
+            y_fit = p(x)
+            ax.plot(x, y_fit, ":o", label="Poly Fit")
 
-        ax.plot(data["sweep_param_values"], data["min_N_blocks"], ":.", **kwargs)
+        ax.plot(x, y, ":.", **kwargs, label="Simulation")
         ax.set_xlabel(sweep_param_name, size=8)
         ax.set_ylabel(
             "Minimum N Blocks to reach " + str(100 * success_fid) + "% Fidelity", size=8
         )
+        if fit is not None:
+            plt.legend(loc="lower right", prop={"size": 6})
         fig.tight_layout()
 
     def plot_2D_abs_mean_betas(
