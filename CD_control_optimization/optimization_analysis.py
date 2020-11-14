@@ -183,10 +183,8 @@ class OptimizationAnalysis:
 
     def plot_fidelities(self, timestamp=None, fig=None, ax=None, log=True):
         fidelities = self.fidelities(timestamp).T
-        if fig is None:
-            fig = plt.figure(figsize=(4, 3), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
+        fig = fig if fig is not None else plt.figure(figsize=(4, 3), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
         for fids in fidelities:
             if log:
                 ax.semilogy(1 - fids)
@@ -201,10 +199,8 @@ class OptimizationAnalysis:
 
     def plot_average_magnitude_beta(self, timestamp=None, fig=None, ax=None):
         average_mag_betas = self.average_magnitude_betas(timestamp).T
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
         for mag_betas in average_mag_betas:
             ax.plot(mag_betas)
         ax.set_xlabel("epoch")
@@ -213,10 +209,8 @@ class OptimizationAnalysis:
 
     def plot_average_magnitude_alpha(self, timestamp=None, fig=None, ax=None):
         average_mag_alphas = self.average_magnitude_alphas(timestamp).T
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
         for mag_alphas in average_mag_alphas:
             ax.plot(mag_alphas)
         ax.set_xlabel("epoch")
@@ -226,8 +220,7 @@ class OptimizationAnalysis:
     def plot_mag_betas(self, timestamp=None, fig=None):
         # will have shape num blocks, # multistart, #epochs with transpose
         betas = self.betas(timestamp).T
-        if fig is None:
-            fig = plt.figure(figsize=(14, 3), dpi=200)
+        fig = fig if fig is not None else plt.figure(figsize=(14, 3), dpi=200)
         axs = fig.subplots(1, betas.shape[0])
         for circuit_block, bs in enumerate(betas):
             for beta_per_epoch in bs:
@@ -240,8 +233,7 @@ class OptimizationAnalysis:
     def plot_phase_betas(self, timestamp=None, fig=None):
         # will have shape num blocks, # multistart, #epochs with transpose
         betas = self.betas(timestamp).T
-        if fig is None:
-            fig = plt.figure(figsize=(14, 3), dpi=200)
+        fig = fig if fig is not None else plt.figure(figsize=(14, 3), dpi=200)
         axs = fig.subplots(1, betas.shape[0])
         for circuit_block, bs in enumerate(betas):
             for beta_per_epoch in bs:
@@ -254,8 +246,7 @@ class OptimizationAnalysis:
     def plot_mag_alphas(self, timestamp=None, fig=None):
         # will have shape num blocks, # multistart, #epochs with transpose
         alphas = self.alphas(timestamp).T
-        if fig is None:
-            fig = plt.figure(figsize=(14, 3), dpi=200)
+        fig = fig if fig is not None else plt.figure(figsize=(14, 3), dpi=200)
         axs = fig.subplots(1, alphas.shape[0])
         for circuit_block, bs in enumerate(alphas):
             for alpha_per_epoch in bs:
@@ -268,8 +259,7 @@ class OptimizationAnalysis:
     def plot_phase_alphas(self, timestamp=None, fig=None):
         # will have shape num blocks, # multistart, #epochs with transpose
         alphas = self.alphas(timestamp).T
-        if fig is None:
-            fig = plt.figure(figsize=(14, 3), dpi=200)
+        fig = fig if fig is not None else plt.figure(figsize=(14, 3), dpi=200)
         axs = fig.subplots(1, alphas.shape[0])
         for circuit_block, bs in enumerate(alphas):
             for alpha_per_epoch in bs:
@@ -318,57 +308,48 @@ class OptimizationSweepsAnalysis:
                 ][()]
 
     def timestamps(self, sweep_name=None):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
         return self.get_data(sweep_name)["timestamps"]
 
     def fidelities(self, sweep_name=None):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
         return self.get_data(sweep_name)["fidelities"]
 
     def abs_mean_betas(self, sweep_name=None):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
         best_circuits = self.best_circuits(sweep_name)
         betas = [np.mean(np.abs(circuit["betas"])) for circuit in best_circuits]
         return np.array(betas)
 
     def abs_sum_betas(self, sweep_name=None):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
         best_circuits = self.best_circuits(sweep_name)
         betas = [np.sum(np.abs(circuit["betas"])) for circuit in best_circuits]
         return np.array(betas)
 
     def abs_mean_alphas(self, sweep_name=None):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
         best_circuits = self.best_circuits(sweep_name)
         alphas = [np.mean(np.abs(circuit["alphas"])) for circuit in best_circuits]
         return np.array(alphas)
 
     def abs_sum_alphas(self, sweep_name=None):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
         best_circuits = self.best_circuits(sweep_name)
         alphas = [np.sum(np.abs(circuit["alphas"])) for circuit in best_circuits]
         return np.array(alphas)
 
     def best_fidelities(self, sweep_name=None):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
         return np.amax(self.fidelities(sweep_name), 1)
 
     def success_fracs(self, success_fid=None, sweep_name=None):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
         fids = self.fidelities(sweep_name)
         return np.mean(fids >= success_fid, axis=1)
 
     # def success_fracs(self, success_fid=None, sweep_name=None):
-    #     if sweep_name is None:
-    #         sweep_name = self.sweep_names[-1]
+    #     sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
     #     fracs = []
     #     for timestamp in self.timestamps(sweep_name):
     #         fracs.append(
@@ -379,27 +360,23 @@ class OptimizationSweepsAnalysis:
     #     return np.array(fracs)
 
     def sweep_param_values(self, sweep_name=None):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
         return np.array(self.get_data(sweep_name)["sweep_param_values"])
 
     def sweep_param_names(self, sweep_name=None):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
         return list(self.get_data(sweep_name)["sweep_param_names"])
 
     # for each optimization in the sweep, find the best beta
     def best_circuits(self, sweep_name=None):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
         circuits = []
         for timestamp in self.timestamps(sweep_name):
             circuits.append(self.opt_analysis_obj.best_circuit(timestamp))
         return circuits
 
     def best_U_tots(self, sweep_name=None):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
 
         timestamps = self.timestamps(sweep_name)
 
@@ -417,8 +394,7 @@ class OptimizationSweepsAnalysis:
     def get_fixed_indx(
         self, sweep_name=None, fixed_param_names=[], fixed_param_values=[]
     ):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
         sweep_param_names = self.sweep_param_names(sweep_name)
         sweep_param_values = self.sweep_param_values(sweep_name)
         if len(fixed_param_names) == 0:
@@ -439,14 +415,11 @@ class OptimizationSweepsAnalysis:
         return indxs
 
     # def plot_best_mag_betas(self, sweep_name=None, fig=None, ax=None):
-    #     if sweep_name is None:
-    #         sweep_name = self.sweep_names[-1]
+    #     sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
     #     sweep_param_values = self.get_data(sweep_name)["sweep_param_values"]
     #     sweep_param_name = self.get_data(sweep_name)["sweep_param_name"]
-    #     if fig is None:
-    #         fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-    #     if ax is None:
-    #         ax = fig.subplots()
+    #     fig = fig if fig is not None else plt.figure(figsize=(3.5,2.5), dpi=200)
+    #     ax = ax if ax is not None else fig.subplots()
     #     circuits = self.best_circuits(sweep_name)
     #     for i, value in enumerate(sweep_param_values):
     #         betas = circuits[i]["betas"]
@@ -465,7 +438,7 @@ class OptimizationSweepsAnalysis:
         fig=None,
         ax=None,
         log=True,
-        **kwargs
+        **kwargs,
     ):
         """
         sweep_name:         name of sweep description group
@@ -478,8 +451,7 @@ class OptimizationSweepsAnalysis:
         log:                boolean, plot log or linear
         **kwargs:           other plotting attributes
         """
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
 
         sweep_param_names = self.sweep_param_names(sweep_name)
 
@@ -518,11 +490,9 @@ class OptimizationSweepsAnalysis:
         sweep_param_values = sweep_param_values[sort_indx]
         fids = fids[sort_indx]
 
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
 
-        if ax is None:
-            ax = fig.subplots()
+        ax = ax if ax is not None else fig.subplots()
 
         if log:
             ax.set_ylabel("best infidelity")
@@ -554,14 +524,11 @@ class OptimizationSweepsAnalysis:
         ax=None,
         sweep_param_name=None,
         log=True,
-        **kwargs
+        **kwargs,
     ):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
 
         sweep_param_names = self.sweep_param_names(sweep_name)
         indx = sweep_param_names.index(sweep_param_name)
@@ -580,26 +547,22 @@ class OptimizationSweepsAnalysis:
                 fig=fig,
                 ax=ax,
                 log=log,
-                **kwargs
+                **kwargs,
             )
 
-    def plot_min_N_blocks_to_reach_fid(
+    def min_N_blocks_to_reach_fid(
         self,
         success_fid=0.999,
         sweep_name=None,
         fig=None,
         ax=None,
+        plot=True,
         fixed_param_names=[],
         fixed_param_values=[],
         fit=None,
-        **kwargs
+        **kwargs,
     ):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
 
         try:
             remaining_param_names = self.sweep_param_names(sweep_name)
@@ -646,9 +609,17 @@ class OptimizationSweepsAnalysis:
                 data["sweep_param_values"].append(sweep_param_value)
         x = np.array(data["sweep_param_values"])
         y = np.array(data["min_N_blocks"])
-        if fit is not None:
+        y_fit = []
+        if fit is not None and len(x) > 0:
             p = np.poly1d(np.polyfit(x, y, fit))
             y_fit = p(x)
+
+        if not plot:
+            return x, sweep_param_name, y, y_fit
+
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
+        if fit is not None:
             ax.plot(x, y_fit, ":o", label="Poly Fit")
 
         ax.plot(x, y, ":.", **kwargs, label="Simulation")
@@ -660,6 +631,217 @@ class OptimizationSweepsAnalysis:
             plt.legend(loc="lower right", prop={"size": 6})
         fig.tight_layout()
 
+    def plot_2D_min_N_blocks(
+        self,
+        success_infids=[0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1],
+        fit=None,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        types=["scatter"],
+        **kwargs,
+    ):
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
+
+        self.plot_2D_min_vals(
+            success_infids=success_infids,
+            fit=fit,
+            sweep_name=sweep_name,
+            fig=fig,
+            ax=ax,
+            fixed_param_names=fixed_param_names,
+            fixed_param_values=fixed_param_values,
+            types=types,
+            min_val_method=self.min_N_blocks_to_reach_fid,
+            **kwargs,
+        )
+
+        ax.set_title("Minimum N Blocks", size=8)
+        fig.tight_layout()
+
+    def min_abs_sum_betas_to_reach_fid(
+        self,
+        success_fid=0.999,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        plot=True,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        fit=None,
+        **kwargs,
+    ):
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+
+        try:
+            remaining_param_names = self.sweep_param_names(sweep_name)
+            remaining_param_names.remove(N_BLOCKS)
+            for fixed_param_name in fixed_param_names:
+                remaining_param_names.remove(fixed_param_name)
+            sweep_param_name = remaining_param_names[0]
+            remaining_param_names.remove(sweep_param_name)
+            assert len(remaining_param_names) == 0
+        except:
+            temp = self.sweep_param_names(sweep_name)
+            temp.remove(N_BLOCKS)
+            raise Exception(
+                "Please properly fix "
+                + str(len(temp) - 1)
+                + " parameters out of: "
+                + str(temp)
+            )
+
+        sweep_param_names = self.sweep_param_names(sweep_name)
+        sweep_param_indx = sweep_param_names.index(sweep_param_name)
+
+        sweep_param_values = self.sweep_param_values(sweep_name)
+        unique_sweep_param_values = sorted(set(sweep_param_values[:, sweep_param_indx]))
+
+        all_fids = self.best_fidelities(sweep_name)
+        abs_sum_betas = self.abs_sum_betas(sweep_name)
+
+        data = {"min_abs_sum_beta": [], "sweep_param_values": []}
+        for sweep_param_value in unique_sweep_param_values:
+            indxs = self.get_fixed_indx(
+                sweep_name=sweep_name,
+                fixed_param_names=fixed_param_names + [sweep_param_name],
+                fixed_param_values=fixed_param_values + [sweep_param_value],
+            )
+            abs_sum_betas_achieved = abs_sum_betas[indxs]
+            sort_indxs = np.argsort(abs_sum_betas_achieved)
+            abs_sum_betas_achieved = abs_sum_betas_achieved[sort_indxs]
+            fids = all_fids[indxs][sort_indxs]
+            satisfying_indxs = np.where(fids >= success_fid)[0]
+            if len(satisfying_indxs) > 0:
+                min_indx = np.min(satisfying_indxs)
+                min_abs_sum_betas = abs_sum_betas_achieved[min_indx]
+                data["min_abs_sum_beta"].append(min_abs_sum_betas)
+                data["sweep_param_values"].append(sweep_param_value)
+        x = np.array(data["sweep_param_values"])
+        y = np.array(data["min_abs_sum_beta"])
+        y_fit = []
+        if fit is not None and len(x) > 0:
+            p = np.poly1d(np.polyfit(x, y, fit))
+            y_fit = p(x)
+
+        if not plot:
+            return x, sweep_param_name, y, y_fit
+
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
+
+        if fit is not None:
+            ax.plot(x, y_fit, ":o", label="Poly Fit")
+
+        ax.plot(x, y, ":.", **kwargs, label="Simulation")
+        ax.set_xlabel(sweep_param_name, size=8)
+        ax.set_ylabel(
+            "Minimum $\\Sigma_i |\\beta_i|$ to reach "
+            + str(100 * success_fid)
+            + "% Fidelity",
+            size=8,
+        )
+        if fit is not None:
+            plt.legend(loc="lower right", prop={"size": 6})
+        fig.tight_layout()
+
+    def plot_2D_min_abs_sum_betas(
+        self,
+        success_infids=[0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1],
+        fit=None,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        types=["scatter"],
+        **kwargs,
+    ):
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
+
+        self.plot_2D_min_vals(
+            success_infids=success_infids,
+            fit=fit,
+            sweep_name=sweep_name,
+            fig=fig,
+            ax=ax,
+            fixed_param_names=fixed_param_names,
+            fixed_param_values=fixed_param_values,
+            types=types,
+            min_val_method=self.min_abs_sum_betas_to_reach_fid,
+            **kwargs,
+        )
+
+        ax.set_title("Minimum $\\Sigma_{i} |\\betas_i|", size=8)
+        fig.tight_layout()
+
+    def plot_2D_min_vals(
+        self,
+        success_infids=[0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1],
+        fit=None,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        log=True,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        types=["scatter"],
+        min_val_method=None,
+        **kwargs,
+    ):
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
+
+        min_val_method = (
+            min_val_method
+            if min_val_method is not None
+            else self.min_abs_sum_betas_to_reach_fid
+        )
+
+        x_vals = []
+        y_vals = []
+        z_vals = []
+
+        for success_infid in success_infids:
+            (param_vals, param_name, min_vals, min_vals_fit,) = min_val_method(
+                success_fid=1 - success_infid,
+                sweep_name=sweep_name,
+                plot=False,
+                fixed_param_names=fixed_param_names,
+                fixed_param_values=fixed_param_values,
+                fit=fit,
+            )
+            param_vals = list(param_vals)
+            min_vals = list(min_vals if fit is None else min_vals_fit)
+
+            x_vals += param_vals
+            z_vals += min_vals
+            y_vals += [success_infid] * len(param_vals)
+
+        outlier_val = np.max(z_vals) + 0.1
+        self.plot_2d(
+            x_vals,
+            y_vals,
+            z_vals,
+            fig,
+            ax,
+            outlier_val=outlier_val,
+            types=types,
+            **kwargs,
+        )
+        ax.set_xlabel(param_name, size=8)
+        ax.set_ylabel("Success Infidelity % Threshold", size=8)
+        if log:
+            plt.yscale("log")
+        fig.tight_layout()
+
     def plot_2D_abs_mean_betas(
         self,
         success_fid=0.999,
@@ -669,14 +851,11 @@ class OptimizationSweepsAnalysis:
         fixed_param_names=[],
         fixed_param_values=[],
         types=["scatter"],
-        **kwargs
+        **kwargs,
     ):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
 
         metric = self.abs_mean_betas(sweep_name)
         outlier_val = np.max(metric) + 0.1
@@ -689,7 +868,7 @@ class OptimizationSweepsAnalysis:
             fixed_param_names=fixed_param_names,
             fixed_param_values=fixed_param_values,
             types=types,
-            **kwargs
+            **kwargs,
         )
         ax.set_title("Mean |Betas|", size=8)
 
@@ -702,14 +881,11 @@ class OptimizationSweepsAnalysis:
         fixed_param_names=[],
         fixed_param_values=[],
         types=["scatter"],
-        **kwargs
+        **kwargs,
     ):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
 
         metric = self.abs_sum_betas(sweep_name)
         outlier_val = np.max(metric) + 0.1
@@ -722,7 +898,7 @@ class OptimizationSweepsAnalysis:
             fixed_param_names=fixed_param_names,
             fixed_param_values=fixed_param_values,
             types=types,
-            **kwargs
+            **kwargs,
         )
         ax.set_title("Sum |Betas|", size=8)
 
@@ -735,14 +911,11 @@ class OptimizationSweepsAnalysis:
         fixed_param_names=[],
         fixed_param_values=[],
         types=["scatter"],
-        **kwargs
+        **kwargs,
     ):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
 
         metric = self.abs_mean_alphas(sweep_name)
         outlier_val = np.max(metric) + 0.1
@@ -755,7 +928,7 @@ class OptimizationSweepsAnalysis:
             fixed_param_names=fixed_param_names,
             fixed_param_values=fixed_param_values,
             types=types,
-            **kwargs
+            **kwargs,
         )
         ax.set_title("Mean |Alphas|", size=8)
 
@@ -768,14 +941,11 @@ class OptimizationSweepsAnalysis:
         fixed_param_names=[],
         fixed_param_values=[],
         types=["scatter"],
-        **kwargs
+        **kwargs,
     ):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
 
         metric = self.abs_sum_alphas(sweep_name)
         outlier_val = np.max(metric) + 0.1
@@ -788,7 +958,7 @@ class OptimizationSweepsAnalysis:
             fixed_param_names=fixed_param_names,
             fixed_param_values=fixed_param_values,
             types=types,
-            **kwargs
+            **kwargs,
         )
         ax.set_title("Sum |Alphas|", size=8)
 
@@ -801,14 +971,11 @@ class OptimizationSweepsAnalysis:
         fixed_param_names=[],
         fixed_param_values=[],
         types=["scatter"],
-        **kwargs
+        **kwargs,
     ):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
 
         metric = self.success_fracs(success_fid, sweep_name)
         outlier_val = np.max(metric) + 0.1
@@ -821,7 +988,7 @@ class OptimizationSweepsAnalysis:
             fixed_param_names=fixed_param_names,
             fixed_param_values=fixed_param_values,
             types=types,
-            **kwargs
+            **kwargs,
         )
         ax.set_title(
             "Success Fraction for Fidelity: " + str(success_fid * 100) + "%", size=8
@@ -836,14 +1003,11 @@ class OptimizationSweepsAnalysis:
         fixed_param_values=[],
         log=True,
         types=["scatter"],
-        **kwargs
+        **kwargs,
     ):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
 
         all_fids = self.best_fidelities(sweep_name)
         if log:
@@ -858,7 +1022,7 @@ class OptimizationSweepsAnalysis:
             fixed_param_names=fixed_param_names,
             fixed_param_values=fixed_param_values,
             types=types,
-            **kwargs
+            **kwargs,
         )
         ax.set_title("Log Infidelity" if log else "Fidelity")
 
@@ -872,14 +1036,11 @@ class OptimizationSweepsAnalysis:
         fixed_param_names=[],
         fixed_param_values=[],
         types=["scatter"],
-        **kwargs
+        **kwargs,
     ):
-        if sweep_name is None:
-            sweep_name = self.sweep_names[-1]
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
 
         try:
             remaining_param_names = self.sweep_param_names(sweep_name)
@@ -916,7 +1077,7 @@ class OptimizationSweepsAnalysis:
             ax,
             outlier_val=outlier_val,
             types=types,
-            **kwargs
+            **kwargs,
         )
         ax.set_xlabel(param_x_name, size=8)
         ax.set_ylabel(param_y_name, size=8)
@@ -931,7 +1092,7 @@ class OptimizationSweepsAnalysis:
         ax=None,
         outlier_val=2,
         types=["scatter"],
-        **kwargs
+        **kwargs,
     ):
         """
         'scatter', 'interpolate', 'extrapolate', None
@@ -942,10 +1103,8 @@ class OptimizationSweepsAnalysis:
         for type in types:
             if type not in default_types:
                 raise Exception("Please choose type(s) from: " + str(default_types))
-        if fig is None:
-            fig = plt.figure(figsize=(3.5, 2.5), dpi=200)
-        if ax is None:
-            ax = fig.subplots()
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
 
         x_list = list(x_list)
         y_list = list(y_list)
@@ -995,7 +1154,7 @@ class OptimizationSweepsAnalysis:
             cmap=cmap,
             vmin=np.min(z_list),
             vmax=np.max(z_list),
-            **kwargs
+            **kwargs,
         )
         m = plt.cm.ScalarMappable(cmap=cmap)
         m.set_array(Z)
