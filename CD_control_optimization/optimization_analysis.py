@@ -6,6 +6,7 @@ import qutip as qt
 from matplotlib.ticker import MaxNLocator
 from CD_control_optimization.batch_optimizer import BatchOptimizer
 from scipy.interpolate import interp2d
+from tqdm import tqdm
 
 plt.rcParams.update({"font.size": 14, "pdf.fonttype": 42, "ps.fonttype": 42})
 
@@ -271,7 +272,14 @@ class OptimizationAnalysis:
 
 
 class OptimizationSweepsAnalysis:
-    def __init__(self, filename):
+    def __init__(self, filename, averaging_over=None):
+        self.averaging_over = averaging_over
+        self._load_data = (
+            self._load_data_averaged
+            if averaging_over is not None
+            else self._load_data_single
+        )
+
         self.filename = filename
         with h5py.File(self.filename, "a") as f:
             group_names = list(f.keys())
@@ -288,7 +296,7 @@ class OptimizationSweepsAnalysis:
             self._load_data(sweep_names=[sweep_name])
         return self.data[sweep_name]
 
-    def _load_data(self, sweep_names=None):
+    def _load_data_single(self, sweep_names=None):
         if sweep_names is None:
             sweep_names = [self.sweep_names[-1]]
         if not isinstance(sweep_names, list):
@@ -306,6 +314,111 @@ class OptimizationSweepsAnalysis:
                 self.data[sweep_name]["sweep_param_values"] = f[sweep_name][
                     "sweep_param_values"
                 ][()]
+
+                self.data[sweep_name]["best_circuits"] = []
+                for timestamp in self.data[sweep_name]["timestamps"]:
+                    self.data[sweep_name]["best_circuits"].append(
+                        self.opt_analysis_obj.best_circuit(timestamp)
+                    )
+
+    def _load_data_averaged(self, sweep_names=None):
+        if sweep_names is None:
+            sweep_names = [self.sweep_names[-1]]
+        if not isinstance(sweep_names, list):
+            sweep_names = [sweep_names]
+        for sweep_name in sweep_names:
+            if sweep_name in self.data:
+                continue
+            self.data[sweep_name] = {}
+            with h5py.File(self.filename, "a") as f:
+                sweep_param_names = list(f[sweep_name].attrs["sweep_param_names"])
+                # copy list
+                self.data[sweep_name]["sweep_param_names"] = sweep_param_names[:]
+
+                sweep_param_values = f[sweep_name]["sweep_param_values"][()]
+                self.data[sweep_name]["sweep_param_values"] = sweep_param_values
+
+                timestamps = f[sweep_name].attrs["timestamps"]
+                self.data[sweep_name]["timestamps"] = []
+
+                avg_indx = sweep_param_names.index(self.averaging_over)
+                remaining_param_names = list(sweep_param_names)
+                remaining_param_names.remove(self.averaging_over)
+
+                fidelities = f[sweep_name]["fidelities"][()]
+                self.data[sweep_name]["fidelities"] = []
+                remaining_param_values = np.delete(sweep_param_values, avg_indx, axis=1)
+                remaining_param_unique_values = np.unique(
+                    remaining_param_values, axis=0
+                )
+
+                # "fidelity": max_fid,
+                # "betas": betas,
+                # "alphas": alphas,
+                # "phis": phis,
+                # "thetas": thetas,
+                best_circuits = np.array(
+                    [
+                        self.opt_analysis_obj.best_circuit(timestamp)
+                        for timestamp in timestamps
+                    ]
+                )
+                self.data[sweep_name]["best_circuits"] = []
+
+                remaining_sweep_param_values = []
+
+                for remaining_param_unique_val in tqdm(remaining_param_unique_values):
+                    indxs = self.get_fixed_indx(
+                        sweep_name=sweep_name,
+                        fixed_param_names=remaining_param_names,
+                        fixed_param_values=list(remaining_param_unique_val),
+                    )
+                    self.data[sweep_name]["timestamps"].append(
+                        " ".join(timestamps[indxs])
+                    )
+                    remaining_sweep_param_values.append(remaining_param_unique_val)
+                    fids = np.array(0.0)
+                    for fid_vals in fidelities[indxs]:
+                        fids = fids + np.sort(fid_vals)  # add max to max
+
+                    best_circuit = {
+                        "fidelity": 0,
+                        "betas": np.array(0.0j),
+                        "alphas": np.array(0.0j),
+                        "phis": np.array(0.0j),
+                        "thetas": np.array(0.0j),
+                    }
+                    num_circuits = len(best_circuits[indxs])
+                    for circuit in best_circuits[indxs]:
+                        best_circuit["fidelity"] += circuit["fidelity"]
+                        best_circuit["betas"] = best_circuit["betas"] + np.array(
+                            circuit["betas"]
+                        )
+                        best_circuit["alphas"] = best_circuit["alphas"] + np.array(
+                            circuit["alphas"]
+                        )
+                        best_circuit["phis"] = best_circuit["phis"] + np.array(
+                            circuit["phis"]
+                        )
+                        best_circuit["thetas"] = best_circuit["thetas"] + np.array(
+                            circuit["thetas"]
+                        )
+                    # averaging
+                    best_circuit["fidelity"] = best_circuit["fidelity"] / num_circuits
+                    best_circuit["betas"] = best_circuit["betas"] / num_circuits
+                    best_circuit["alphas"] = best_circuit["alphas"] / num_circuits
+                    best_circuit["phis"] = best_circuit["phis"] / num_circuits
+                    best_circuit["thetas"] = best_circuit["thetas"] / num_circuits
+                    self.data[sweep_name]["best_circuits"].append(best_circuit)
+                    self.data[sweep_name]["fidelities"].append(fids / num_circuits)
+                # do this after because get_fixed_indx needs full param_values and param_names
+                self.data[sweep_name]["fidelities"] = np.array(
+                    self.data[sweep_name]["fidelities"]
+                )
+                self.data[sweep_name]["sweep_param_values"] = np.array(
+                    remaining_sweep_param_values
+                )
+                self.data[sweep_name]["sweep_param_names"] = remaining_param_names
 
     def timestamps(self, sweep_name=None):
         sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
@@ -370,10 +483,7 @@ class OptimizationSweepsAnalysis:
     # for each optimization in the sweep, find the best beta
     def best_circuits(self, sweep_name=None):
         sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
-        circuits = []
-        for timestamp in self.timestamps(sweep_name):
-            circuits.append(self.opt_analysis_obj.best_circuit(timestamp))
-        return circuits
+        return self.get_data(sweep_name)["best_circuits"]
 
     def best_U_tots(self, sweep_name=None):
         sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
@@ -908,6 +1018,7 @@ class OptimizationSweepsAnalysis:
         sweep_name=None,
         fig=None,
         ax=None,
+        log=True,
         fixed_param_names=[],
         fixed_param_values=[],
         types=["scatter"],
@@ -918,6 +1029,7 @@ class OptimizationSweepsAnalysis:
         ax = ax if ax is not None else fig.subplots()
 
         metric = self.abs_mean_alphas(sweep_name)
+        metric = np.log10(metric) if log else metric
         outlier_val = np.max(metric) + 0.1
         self.plot_2D_metric(
             metric,
@@ -930,7 +1042,7 @@ class OptimizationSweepsAnalysis:
             types=types,
             **kwargs,
         )
-        ax.set_title("Mean |Alphas|", size=8)
+        ax.set_title("Mean |Alphas|" + ("(log)" if log else ""), size=8)
 
     def plot_2D_abs_sum_alphas(
         self,
