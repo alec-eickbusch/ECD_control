@@ -1,6 +1,7 @@
 #%%
 # note: timestamp can't use "/" character for h5 saving.
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
+END_OPT_STRING = "\n" + "=" * 60 + "\n"
 import numpy as np
 import tensorflow as tf
 
@@ -192,8 +193,7 @@ class BatchOptimizer:
             )
         if alpha_mask is None:
             alpha_mask = np.ones(
-                shape=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
-                dtype=np.float32,
+                shape=(1, self.parameters["N_multistart"]), dtype=np.float32,
             )
         else:
             raise Exception(
@@ -258,31 +258,26 @@ class BatchOptimizer:
     def batch_construct_block_operators(
         self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
     ):
+        # conditional displacements
+        Bs = (
+            tf.cast(betas_rho, dtype=tf.complex64)
+            / tf.constant(2, dtype=tf.complex64)
+            * tf.math.exp(
+                tf.constant(1j, dtype=tf.complex64)
+                * tf.cast(betas_angle, dtype=tf.complex64)
+            )
+        )
 
-        Bs_g = tf.cast(betas_rho, dtype=tf.complex64) / tf.constant(
-            2, dtype=tf.complex64
-        ) * tf.math.exp(
-            tf.constant(1j, dtype=tf.complex64)
-            * tf.cast(betas_angle, dtype=tf.complex64)
-        ) + tf.cast(
-            alphas_rho, dtype=tf.complex64
-        ) * tf.math.exp(
+        # final displacement
+        D = tf.cast(alphas_rho, dtype=tf.complex64) * tf.math.exp(
             tf.constant(1j, dtype=tf.complex64)
             * tf.cast(alphas_angle, dtype=tf.complex64)
         )
-        Bs_e = tf.constant(-1, dtype=tf.complex64) * tf.cast(
-            betas_rho, dtype=tf.complex64
-        ) / tf.constant(2, dtype=tf.complex64) * tf.math.exp(
-            tf.constant(1j, dtype=tf.complex64)
-            * tf.cast(betas_angle, dtype=tf.complex64)
-        ) + tf.cast(
-            alphas_rho, dtype=tf.complex64
-        ) * tf.math.exp(
-            tf.constant(1j, dtype=tf.complex64)
-            * tf.cast(alphas_angle, dtype=tf.complex64)
-        )
-        ds_g = self.batch_construct_displacement_operators(Bs_g)
-        ds_e = self.batch_construct_displacement_operators(Bs_e)
+
+        ds_end = self.batch_construct_displacement_operators(D)
+        ds_g = self.batch_construct_displacement_operators(Bs)
+        ds_e = tf.linalg.adjoint(ds_g)
+
         Phis = phis - tf.constant(np.pi, dtype=tf.float32) / tf.constant(
             2, dtype=tf.float32
         )
@@ -313,7 +308,20 @@ class BatchOptimizer:
         # (ll, lr)
         # (ul, ur)
         # pi pulse also adds -i phase, however don't need to trck it unless using multiple oscillators.a
-        blocks = -1j * tf.concat([tf.concat([ll, lr], 3), tf.concat([ul, ur], 3)], 2)
+        # append a final block matrix with a single displacement in each quadrant
+        blocks = tf.concat(
+            [
+                -1j * tf.concat([tf.concat([ll, lr], 3), tf.concat([ul, ur], 3)], 2),
+                tf.concat(
+                    [
+                        tf.concat([ds_end, tf.zeros_like(ds_end)], 3),
+                        tf.concat([tf.zeros_like(ds_end), ds_end], 3),
+                    ],
+                    2,
+                ),
+            ],
+            0,
+        )
         return blocks
 
     """
@@ -587,13 +595,17 @@ class BatchOptimizer:
             condition_fid = tf.greater(fids, self.parameters["term_fid"])
             condition_dfid = tf.greater(dfids, self.parameters["dfid_stop"])
             if tf.reduce_any(condition_fid):
-                print("\n\n Optimization stopped. Term fidelity reached.\n")
+                print(
+                    "\n\n Optimization stopped. Term fidelity reached.\n"
+                )
                 termination_reason = "term_fid"
                 break
             if not tf.reduce_any(condition_dfid):
                 print("\n max dFid: %6f" % tf.reduce_max(dfids).numpy())
                 print("dFid stop: %6f" % self.parameters["dfid_stop"])
-                print("\n\n Optimization stopped.  No dfid is greater than dfid_stop\n")
+                print(
+                    "\n\n Optimization stopped.  No dfid is greater than dfid_stop\n"
+                )
                 termination_reason = "dfid"
                 break
 
@@ -622,6 +634,7 @@ class BatchOptimizer:
             % (self.parameters["N_multistart"], self.parameters["N_cav"])
             + str(datetime.timedelta(seconds=step_time_s))
         )
+        print(END_OPT_STRING)
         return timestamp
 
     # if append is True, it will assume the dataset is already created and append only the
@@ -672,11 +685,7 @@ class BatchOptimizer:
                     "alphas",
                     data=[alphas_np],
                     chunks=True,
-                    maxshape=(
-                        None,
-                        self.parameters["N_multistart"],
-                        self.parameters["N_blocks"],
-                    ),
+                    maxshape=(None, self.parameters["N_multistart"], 1,),
                 )
                 grp.create_dataset(
                     "phis",
@@ -738,14 +747,10 @@ class BatchOptimizer:
         )
         if self.parameters["use_displacements"]:
             alphas_rho = np.random.uniform(
-                0,
-                alpha_scale,
-                size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+                0, alpha_scale, size=(1, self.parameters["N_multistart"]),
             )
             alphas_angle = np.random.uniform(
-                -np.pi,
-                np.pi,
-                size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+                -np.pi, np.pi, size=(1, self.parameters["N_multistart"]),
             )
         phis = np.random.uniform(
             -np.pi,
@@ -776,19 +781,11 @@ class BatchOptimizer:
             )
         else:
             self.alphas_rho = tf.constant(
-                np.zeros(
-                    shape=(
-                        (self.parameters["N_blocks"], self.parameters["N_multistart"])
-                    )
-                ),
+                np.zeros(shape=((1, self.parameters["N_multistart"]))),
                 dtype=tf.float32,
             )
             self.alphas_angle = tf.constant(
-                np.zeros(
-                    shape=(
-                        (self.parameters["N_blocks"], self.parameters["N_multistart"])
-                    )
-                ),
+                np.zeros(shape=((1, self.parameters["N_multistart"]))),
                 dtype=tf.float32,
             )
         self.phis = tf.Variable(
@@ -851,25 +848,11 @@ class BatchOptimizer:
                 )
             else:
                 self.alphas_rho = tf.constant(
-                    np.zeros(
-                        shape=(
-                            (
-                                self.parameters["N_blocks"],
-                                self.parameters["N_multistart"],
-                            )
-                        )
-                    ),
+                    np.zeros(shape=((1, self.parameters["N_multistart"],))),
                     dtype=tf.float32,
                 )
                 self.alphas_angle = tf.constant(
-                    np.zeros(
-                        shape=(
-                            (
-                                self.parameters["N_blocks"],
-                                self.parameters["N_multistart"],
-                            )
-                        )
-                    ),
+                    np.zeros(shape=((1, self.parameters["N_multistart"],))),
                     dtype=tf.float32,
                 )
 
