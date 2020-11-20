@@ -891,6 +891,124 @@ class OptimizationSweepsAnalysis:
         ax.set_title("Minimum $\\Sigma_{i} |\\betas_i|", size=8)
         fig.tight_layout()
 
+    def min_abs_sum_alphas_to_reach_fid(
+        self,
+        success_fid=0.999,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        plot=True,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        fit=None,
+        **kwargs,
+    ):
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+
+        try:
+            remaining_param_names = self.sweep_param_names(sweep_name)
+            remaining_param_names.remove(N_BLOCKS)
+            for fixed_param_name in fixed_param_names:
+                remaining_param_names.remove(fixed_param_name)
+            sweep_param_name = remaining_param_names[0]
+            remaining_param_names.remove(sweep_param_name)
+            assert len(remaining_param_names) == 0
+        except:
+            temp = self.sweep_param_names(sweep_name)
+            temp.remove(N_BLOCKS)
+            raise Exception(
+                "Please properly fix "
+                + str(len(temp) - 1)
+                + " parameters out of: "
+                + str(temp)
+            )
+
+        sweep_param_names = self.sweep_param_names(sweep_name)
+        sweep_param_indx = sweep_param_names.index(sweep_param_name)
+
+        sweep_param_values = self.sweep_param_values(sweep_name)
+        unique_sweep_param_values = sorted(set(sweep_param_values[:, sweep_param_indx]))
+
+        all_fids = self.best_fidelities(sweep_name)
+        abs_sum_alphas = self.abs_sum_alphas(sweep_name)
+
+        data = {"min_abs_sum_alpha": [], "sweep_param_values": []}
+        for sweep_param_value in unique_sweep_param_values:
+            indxs = self.get_fixed_indx(
+                sweep_name=sweep_name,
+                fixed_param_names=fixed_param_names + [sweep_param_name],
+                fixed_param_values=fixed_param_values + [sweep_param_value],
+            )
+            abs_sum_alphas_achieved = abs_sum_alphas[indxs]
+            sort_indxs = np.argsort(abs_sum_alphas_achieved)
+            abs_sum_alphas_achieved = abs_sum_alphas_achieved[sort_indxs]
+            fids = all_fids[indxs][sort_indxs]
+            satisfying_indxs = np.where(fids >= success_fid)[0]
+            if len(satisfying_indxs) > 0:
+                min_indx = np.min(satisfying_indxs)
+                min_abs_sum_alphas = abs_sum_alphas_achieved[min_indx]
+                data["min_abs_sum_alpha"].append(min_abs_sum_alphas)
+                data["sweep_param_values"].append(sweep_param_value)
+        x = np.array(data["sweep_param_values"])
+        y = np.array(data["min_abs_sum_alpha"])
+        y_fit = []
+        if fit is not None and len(x) > 0:
+            p = np.poly1d(np.polyfit(x, y, fit))
+            y_fit = p(x)
+
+        if not plot:
+            return x, sweep_param_name, y, y_fit
+
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
+
+        if fit is not None:
+            ax.plot(x, y_fit, ":o", label="Poly Fit")
+
+        ax.plot(x, y, ":.", **kwargs, label="Simulation")
+        ax.set_xlabel(sweep_param_name, size=8)
+        ax.set_ylabel(
+            "Minimum $\\Sigma_i |\\alpha_i|$ to reach "
+            + str(100 * success_fid)
+            + "% Fidelity",
+            size=8,
+        )
+        if fit is not None:
+            plt.legend(loc="lower right", prop={"size": 6})
+        fig.tight_layout()
+
+    def plot_2D_min_abs_sum_alphas(
+        self,
+        success_infids=[0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1],
+        fit=None,
+        sweep_name=None,
+        fig=None,
+        ax=None,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        types=["scatter"],
+        **kwargs,
+    ):
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
+
+        self.plot_2D_min_vals(
+            success_infids=success_infids,
+            fit=fit,
+            sweep_name=sweep_name,
+            fig=fig,
+            ax=ax,
+            fixed_param_names=fixed_param_names,
+            fixed_param_values=fixed_param_values,
+            types=types,
+            min_val_method=self.min_abs_sum_alphas_to_reach_fid,
+            **kwargs,
+        )
+
+        ax.set_title("Minimum $\\Sigma_{i} |\\alphas_i|", size=8)
+        fig.tight_layout()
+
     def plot_2D_min_vals(
         self,
         success_infids=[0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1],
