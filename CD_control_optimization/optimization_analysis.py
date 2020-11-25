@@ -82,6 +82,13 @@ class OptimizationAnalysis:
             timestamp = self.timestamps[-1]
         return self.get_data(timestamp)["fidelities"]
 
+    def best_fidelities(self, timestamp=None):
+        if timestamp is None:
+            timestamp = self.timestamps[-1]
+        indx = self.idx_of_best_circuit(timestamp)
+        fids = self.fidelities(timestamp).T[indx]
+        return fids
+
     def parameters(self, timestamp=None):
         if timestamp is None:
             timestamp = self.timestamps[-1]
@@ -182,15 +189,30 @@ class OptimizationAnalysis:
         alphas = self.alphas(timestamp)
         return np.mean(np.abs(alphas), axis=-1)
 
-    def plot_fidelities(self, timestamp=None, fig=None, ax=None, log=True):
+    def plot_fidelities(self, timestamp=None, fig=None, ax=None, log=True, **kwargs):
         fidelities = self.fidelities(timestamp).T
         fig = fig if fig is not None else plt.figure(figsize=(4, 3), dpi=200)
         ax = ax if ax is not None else fig.subplots()
         for fids in fidelities:
             if log:
-                ax.semilogy(1 - fids)
+                ax.semilogy(1 - fids, **kwargs)
             else:
-                ax.plot(fids)
+                ax.plot(fids, **kwargs)
+        ax.set_xlabel("epoch")
+        if log:
+            ax.set_ylabel("infidelity")
+        else:
+            ax.set_ylabel("fidelity")
+        fig.tight_layout()
+
+    def plot_best_fidelity(self, timestamp=None, fig=None, ax=None, log=True, **kwargs):
+        fids = self.best_fidelities(timestamp)
+        fig = fig if fig is not None else plt.figure(figsize=(4, 3), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
+        if log:
+            ax.semilogy(1 - fids, **kwargs)
+        else:
+            ax.plot(fids, **kwargs)
         ax.set_xlabel("epoch")
         if log:
             ax.set_ylabel("infidelity")
