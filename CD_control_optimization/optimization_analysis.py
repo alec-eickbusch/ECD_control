@@ -802,6 +802,7 @@ class OptimizationSweepsAnalysis:
         fig=None,
         ax=None,
         plot=True,
+        log=False,
         fixed_param_names=[],
         fixed_param_values=[],
         fit=None,
@@ -867,9 +868,11 @@ class OptimizationSweepsAnalysis:
         ax = ax if ax is not None else fig.subplots()
 
         if fit is not None:
-            ax.plot(x, y_fit, ":o", label="Poly Fit")
+            ax.plot(x, y_fit, "-", label="Poly Fit")
 
-        ax.plot(x, y, ":.", **kwargs, label="Simulation")
+        ax.plot(x, y, ":o", **kwargs, label="Simulation")
+        if log:
+            ax.set_yscale("log")
         ax.set_xlabel(sweep_param_name, size=8)
         ax.set_ylabel(
             "Minimum $\\Sigma_i |\\beta_i|$ to reach "
@@ -920,6 +923,7 @@ class OptimizationSweepsAnalysis:
         fig=None,
         ax=None,
         plot=True,
+        log=False,
         fixed_param_names=[],
         fixed_param_values=[],
         fit=None,
@@ -985,9 +989,11 @@ class OptimizationSweepsAnalysis:
         ax = ax if ax is not None else fig.subplots()
 
         if fit is not None:
-            ax.plot(x, y_fit, ":o", label="Poly Fit")
+            ax.plot(x, y_fit, "-", label="Poly Fit")
 
-        ax.plot(x, y, ":.", **kwargs, label="Simulation")
+        ax.plot(x, y, ":o", **kwargs, label="Simulation")
+        if log:
+            ax.set_yscale("log")
         ax.set_xlabel(sweep_param_name, size=8)
         ax.set_ylabel(
             "Minimum $\\Sigma_i |\\alpha_i|$ to reach "
