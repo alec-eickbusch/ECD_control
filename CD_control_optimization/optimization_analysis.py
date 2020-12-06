@@ -79,7 +79,11 @@ class OptimizationAnalysis:
         parameters = self.get_data(timestamp)["parameters"]
         parameters["optimization_type"] = "analysis"
         parameters["N_multistart"] = N_multistart
-        return BatchOptimizer(**parameters)
+        return BatchOptimizer(
+            initial_states=self.data[timestamp]["initial_states"],
+            target_states=self.data[timestamp]["target_states"],
+            **parameters,
+        )
 
     def fidelities(self, timestamp=None):
         if timestamp is None:
@@ -224,21 +228,38 @@ class OptimizationAnalysis:
             ax.set_ylabel("fidelity")
         fig.tight_layout()
 
-    def plot_tSNE_betas(self, timestamp=None, fig=None, ax=None, log=True, **kwargs):
+    def plot_tSNE_betas(
+        self, timestamp=None, fig=None, ax=None, log=True, min_fid=0, **kwargs
+    ):
         fids = self.fidelities(timestamp)
         # num_epochs = fids.shape[0]
         fids = fids[-1]
-        fids = fids if log is False else np.log10(1 - fids)
-        betas = np.abs(self.betas(timestamp)[-1])
-        self.plot_tSNE(betas, fids, fig=fig, ax=ax, log=log, **kwargs)
+        if not np.any(fids >= min_fid):
+            print("No fidelities above: " + str(min_fid))
+            return
 
-    def plot_tSNE_alphas(self, timestamp=None, fig=None, ax=None, log=True, **kwargs):
+        fig = fig if fig is not None else plt.figure()
+        ax = ax if ax is not None else fig.subplots()
+        betas = np.abs(self.betas(timestamp)[-1])
+        fids = fids if log is False else np.log10(1 - fids)
+        self.plot_tSNE(betas, fids, fig=fig, ax=ax, log=log, **kwargs)
+        plt.show()
+
+    def plot_tSNE_alphas(
+        self, timestamp=None, fig=None, ax=None, log=True, min_fid=0, **kwargs
+    ):
         fids = self.fidelities(timestamp)
         # num_epochs = fids.shape[0]
         fids = fids[-1]
-        fids = fids if log is False else np.log10(1 - fids)
+        if not np.any(fids >= min_fid):
+            return
+
+        fig = fig if fig is not None else plt.figure()
+        ax = ax if ax is not None else fig.subplots()
         alphas = np.abs(self.alphas(timestamp)[-1])
+        fids = fids if log is False else np.log10(1 - fids)
         self.plot_tSNE(alphas, fids, fig=fig, ax=ax, log=log, **kwargs)
+        plt.show()
 
     def plot_tSNE(self, X, y, fig=None, ax=None, log=True, **kwargs):
         tsne = TSNE()
@@ -680,6 +701,21 @@ class OptimizationSweepsAnalysis:
                 MaxNLocator(integer=True)
             )  # uses integers as ticks
         fig.tight_layout()
+
+    def plot_best_fidelities_vs_epoch(
+        self, sweep_name=None, timestamp=None, fig=None, ax=None, log=True, **kwargs
+    ):
+        sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
+        fig = fig if fig is not None else plt.figure(figsize=(4, 3), dpi=200)
+        ax = ax if ax is not None else fig.subplots()
+        timestamps = self.timestamps()
+        sweep_param_values = self.sweep_param_values()
+        for i in tqdm(range(0, len(timestamps))):
+            timestamp = timestamps[i]
+            sweep_param_value = sweep_param_values[i]
+            self.opt_analysis_obj.plot_best_fidelity(
+                timestamp=timestamp, fig=fig, ax=ax, label=str(sweep_param_value)
+            )
 
     def plot_multi_sweep_fidelities(
         self,
