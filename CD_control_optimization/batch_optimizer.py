@@ -14,12 +14,13 @@ print(
     + "\n"
 )
 import CD_control_optimization.tf_quantum as tfq
+from CD_control_optimization.visualization import VisualizationMixin
 import qutip as qt
 import datetime
 import time
 
 
-class BatchOptimizer:
+class BatchOptimizer(VisualizationMixin):
 
     # a block is defined as the unitary: CD(beta)D(alpha)R_phi(theta)
     def __init__(
@@ -70,7 +71,10 @@ class BatchOptimizer:
             "comment": comment,
         }
         self.parameters.update(kwargs)
-        if self.parameters["optimization_type"] == "state transfer":
+        if (
+            self.parameters["optimization_type"] == "state transfer"
+            or self.parameters["optimization_type"] == "analysis"
+        ):
             self.batch_fidelities = (
                 self.batch_state_transfer_fidelities
             )  # set fidelity function
@@ -100,7 +104,7 @@ class BatchOptimizer:
 
         elif self.parameters["optimization_type"] == "expectation":
             raise Exception("Need to implement expectation optimization")
-        elif self.parameters["optimization_type"] != "analysis":
+        else:
             raise ValueError(
                 "optimization_type must be one of {'state transfer', 'unitary', 'expectation', 'analysis'}"
             )
@@ -595,17 +599,13 @@ class BatchOptimizer:
             condition_fid = tf.greater(fids, self.parameters["term_fid"])
             condition_dfid = tf.greater(dfids, self.parameters["dfid_stop"])
             if tf.reduce_any(condition_fid):
-                print(
-                    "\n\n Optimization stopped. Term fidelity reached.\n"
-                )
+                print("\n\n Optimization stopped. Term fidelity reached.\n")
                 termination_reason = "term_fid"
                 break
             if not tf.reduce_any(condition_dfid):
                 print("\n max dFid: %6f" % tf.reduce_max(dfids).numpy())
                 print("dFid stop: %6f" % self.parameters["dfid_stop"])
-                print(
-                    "\n\n Optimization stopped.  No dfid is greater than dfid_stop\n"
-                )
+                print("\n\n Optimization stopped.  No dfid is greater than dfid_stop\n")
                 termination_reason = "dfid"
                 break
 
