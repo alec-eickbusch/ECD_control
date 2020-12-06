@@ -7,6 +7,10 @@ from matplotlib.ticker import MaxNLocator
 from CD_control_optimization.batch_optimizer import BatchOptimizer
 from scipy.interpolate import interp2d
 from tqdm import tqdm
+from sklearn.manifold import TSNE
+import seaborn as sns
+
+sns.set(rc={"figure.figsize": (11.7, 8.27)})
 
 plt.rcParams.update({"font.size": 14, "pdf.fonttype": 42, "ps.fonttype": 42})
 
@@ -219,6 +223,34 @@ class OptimizationAnalysis:
         else:
             ax.set_ylabel("fidelity")
         fig.tight_layout()
+
+    def plot_tSNE_betas(self, timestamp=None, fig=None, ax=None, log=True, **kwargs):
+        fids = self.fidelities(timestamp)
+        # num_epochs = fids.shape[0]
+        fids = fids[-1]
+        fids = fids if log is False else np.log10(1 - fids)
+        betas = np.abs(self.betas(timestamp)[-1])
+        self.plot_tSNE(betas, fids, fig=fig, ax=ax, log=log, **kwargs)
+
+    def plot_tSNE_alphas(self, timestamp=None, fig=None, ax=None, log=True, **kwargs):
+        fids = self.fidelities(timestamp)
+        # num_epochs = fids.shape[0]
+        fids = fids[-1]
+        fids = fids if log is False else np.log10(1 - fids)
+        alphas = np.abs(self.alphas(timestamp)[-1])
+        self.plot_tSNE(alphas, fids, fig=fig, ax=ax, log=log, **kwargs)
+
+    def plot_tSNE(self, X, y, fig=None, ax=None, log=True, **kwargs):
+        tsne = TSNE()
+        X_embedded = tsne.fit_transform(X)
+        palette = sns.color_palette("magma", as_cmap=True)
+        sns.scatterplot(
+            x=X_embedded[:, 0],
+            y=X_embedded[:, 1],
+            hue=y,
+            legend="brief",
+            palette=palette,
+        )
 
     def plot_average_magnitude_beta(self, timestamp=None, fig=None, ax=None):
         average_mag_betas = self.average_magnitude_betas(timestamp).T
