@@ -15,6 +15,7 @@ sns.set(rc={"figure.figsize": (11.7, 8.27)})
 plt.rcParams.update({"font.size": 14, "pdf.fonttype": 42, "ps.fonttype": 42})
 
 N_BLOCKS = "N_blocks"
+TIMESTAMP_SEP = ","
 
 
 class OptimizationAnalysis:
@@ -449,7 +450,7 @@ class OptimizationSweepsAnalysis:
                         fixed_param_values=list(remaining_param_unique_val),
                     )
                     self.data[sweep_name]["timestamps"].append(
-                        " ".join(timestamps[indxs])
+                        TIMESTAMP_SEP.join(timestamps[indxs])
                     )
                     remaining_sweep_param_values.append(remaining_param_unique_val)
                     fids = np.array(0.0)
@@ -711,7 +712,7 @@ class OptimizationSweepsAnalysis:
         timestamps = self.timestamps()
         sweep_param_values = self.sweep_param_values()
         for i in tqdm(range(0, len(timestamps))):
-            timestamp = timestamps[i]
+            timestamp = timestamps[i].split(TIMESTAMP_SEP)[0]
             sweep_param_value = sweep_param_values[i]
             self.opt_analysis_obj.plot_best_fidelity(
                 timestamp=timestamp, fig=fig, ax=ax, label=str(sweep_param_value)
