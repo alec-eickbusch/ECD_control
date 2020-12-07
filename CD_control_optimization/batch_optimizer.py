@@ -85,6 +85,9 @@ class BatchOptimizer(VisualizationMixin):
 
             self.target_unitary = tfq.qt2tf(target_unitary)
 
+            # if self.target_unitary is not None: TODO
+            #     raise Exception("Need to fix target_unitary multi-state transfer generation!")
+
             self.target_states = (  # store dag
                 tf.stack([tfq.qt2tf(state) for state in target_states])
                 if self.target_unitary is None
