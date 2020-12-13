@@ -13,6 +13,7 @@ import seaborn as sns
 sns.set(rc={"figure.figsize": (11.7, 8.27)})
 
 plt.rcParams.update({"font.size": 14, "pdf.fonttype": 42, "ps.fonttype": 42})
+sns.set(font_scale=1)
 
 N_BLOCKS = "N_blocks"
 TIMESTAMP_SEP = ","
@@ -202,11 +203,18 @@ class OptimizationAnalysis:
         fidelities = self.fidelities(timestamp).T
         fig = fig if fig is not None else plt.figure(figsize=(4, 3), dpi=200)
         ax = ax if ax is not None else fig.subplots()
-        for fids in fidelities:
+        end_fids = fidelities[:, -1]
+        indxs = np.argsort(end_fids)
+        fidelities = fidelities[indxs]
+        for fids in fidelities[:-1]:
             if log:
-                ax.semilogy(1 - fids, **kwargs)
+                ax.semilogy(1 - fids, ":", linewidth=0.5, **kwargs)
             else:
-                ax.plot(fids, **kwargs)
+                ax.plot(fids, ":", linewidth=0.5, **kwargs)
+        if log:
+            ax.semilogy(1 - fidelities[-1], **kwargs)
+        else:
+            ax.plot(fidelities[-1], **kwargs)
         ax.set_xlabel("epoch")
         if log:
             ax.set_ylabel("infidelity")
@@ -1068,9 +1076,7 @@ class OptimizationSweepsAnalysis:
             ax.set_yscale("log")
         ax.set_xlabel(sweep_param_name, size=8)
         ax.set_ylabel(
-            "Minimum $\\Sigma_i |\\alpha_i|$ to reach "
-            + str(100 * success_fid)
-            + "% Fidelity",
+            "Minimum $|\\alpha_N|$ to reach " + str(100 * success_fid) + "% Fidelity",
             size=8,
         )
         if fit is not None:
