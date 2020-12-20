@@ -667,7 +667,7 @@ class BatchOptimizer(VisualizationMixin):
                     )
                 grp.create_dataset("initial_states", data=self.initial_states.numpy())
                 grp.create_dataset("target_states", data=self.target_states.numpy())
-                dims = [[2, int(self.initial_states[0].numpy().shape[0] / 2)], [1, 1]]
+                # dims = [[2, int(self.initial_states[0].numpy().shape[0] / 2)], [1, 1]]
                 grp.create_dataset(
                     "fidelities",
                     chunks=True,
