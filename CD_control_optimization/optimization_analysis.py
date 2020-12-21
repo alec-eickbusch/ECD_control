@@ -695,6 +695,10 @@ class OptimizationSweepsAnalysis:
         label = None
         if len(fixed_param_names) > 0:
             label = ", ".join(fixed_param_names) + ": " + str(fixed_param_values)
+        if 'label' in kwargs:
+            label = kwargs['label']
+            kwargs.pop('label')
+        
         if log:
             ax.semilogy(sweep_param_values, 1 - fids, ":.", label=label, **kwargs)
         else:
