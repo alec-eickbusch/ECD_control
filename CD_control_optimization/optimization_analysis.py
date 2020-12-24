@@ -696,8 +696,8 @@ class OptimizationSweepsAnalysis:
         if len(fixed_param_names) > 0:
             label = ", ".join(fixed_param_names) + ": " + str(fixed_param_values)
         if 'label' in kwargs:
-            label = kwargs['label']
-            kwargs.pop('label')
+            label = kwargs.pop('label')
+            
         
         if log:
             ax.semilogy(sweep_param_values, 1 - fids, ":.", label=label, **kwargs)
@@ -833,10 +833,12 @@ class OptimizationSweepsAnalysis:
 
         fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
         ax = ax if ax is not None else fig.subplots()
-        if fit is not None:
-            ax.plot(x, y_fit, "-", label="Poly Fit")
 
-        ax.plot(x, y, ":o", **kwargs, label="Simulation")
+        label = '' if 'label' not in kwargs else kwargs.pop('label')
+        if fit is not None:
+            ax.plot(x, y_fit, "-", label="Poly Fit " + label)
+
+        ax.plot(x, y, ":o", **kwargs, label="Simulation " + label)
         if log:
             ax.set_yscale("log")
         ax.set_xlabel(sweep_param_name, size=8)
