@@ -606,13 +606,26 @@ class OptimizationSweepsAnalysis:
         return indxs
 
     def plot_best_fidelities_vs_epoch(
-        self, sweep_name=None, timestamp=None, fig=None, ax=None, log=True, **kwargs
+        self,
+        sweep_name=None,
+        fixed_param_names=[],
+        fixed_param_values=[],
+        fig=None,
+        ax=None,
+        log=True,
+        **kwargs,
     ):
         sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
         fig = fig if fig is not None else plt.figure(figsize=(4, 3), dpi=200)
         ax = ax if ax is not None else fig.subplots()
-        timestamps = self.timestamps()
-        sweep_param_values = self.sweep_param_values()
+        timestamps = self.timestamps(sweep_name=sweep_name)
+        sweep_param_values = self.sweep_param_values(sweep_name=sweep_name)
+
+        indxs = self.get_fixed_indx(sweep_name, fixed_param_names, fixed_param_values)
+
+        timestamps = timestamps[indxs]
+        sweep_param_values = sweep_param_values[indxs]
+
         for i in tqdm(range(0, len(timestamps))):
             timestamp = timestamps[i].split(TIMESTAMP_SEP)[0]
             sweep_param_value = sweep_param_values[i]
