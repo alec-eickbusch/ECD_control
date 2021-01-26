@@ -12,7 +12,7 @@ from sklearn.manifold import TSNE
 
 plt.rcParams.update(
     {
-        "figure.figsize": (11.7, 8.27),
+        "figure.figsize": (12, 9),
         "font.size": 14,
         "pdf.fonttype": 42,
         "ps.fonttype": 42,
@@ -228,11 +228,11 @@ class OptimizationAnalysis:
             ax.semilogy(1 - fidelities[-1], **kwargs)
         else:
             ax.plot(fidelities[-1], **kwargs)
-        ax.set_xlabel("epoch")
+        ax.set_xlabel("epoch", size=8)
         if log:
-            ax.set_ylabel("infidelity")
+            ax.set_ylabel("infidelity", size=8)
         else:
-            ax.set_ylabel("fidelity")
+            ax.set_ylabel("fidelity", size=8)
         fig.tight_layout()
 
     def plot_best_fidelity(self, timestamp=None, fig=None, ax=None, log=True, **kwargs):
@@ -243,11 +243,11 @@ class OptimizationAnalysis:
             ax.semilogy(1 - fids, **kwargs)
         else:
             ax.plot(fids, **kwargs)
-        ax.set_xlabel("epoch")
+        ax.set_xlabel("epoch", size=8)
         if log:
-            ax.set_ylabel("infidelity")
+            ax.set_ylabel("infidelity", size=8)
         else:
-            ax.set_ylabel("fidelity")
+            ax.set_ylabel("fidelity", size=8)
         fig.tight_layout()
 
     def plot_tSNE_betas(
@@ -286,16 +286,15 @@ class OptimizationAnalysis:
     def plot_tSNE(self, X, y, fig=None, ax=None, log=True, **kwargs):
         tsne = TSNE()
         X_embedded = tsne.fit_transform(X)
-        import seaborn as sns
-
-        palette = sns.color_palette("magma", as_cmap=True)
-        sns.scatterplot(
+        
+        cm = plt.cm.get_cmap('plasma')
+        sc = plt.scatter(
             x=X_embedded[:, 0],
             y=X_embedded[:, 1],
-            hue=y,
-            legend="brief",
-            palette=palette,
+            c=y,
+            cmap=cm,
         )
+        plt.colorbar(sc)
 
     def plot_average_magnitude_beta(self, timestamp=None, fig=None, ax=None):
         average_mag_betas = self.average_magnitude_betas(timestamp).T
@@ -711,7 +710,7 @@ class OptimizationSweepsAnalysis:
             label = kwargs.pop("label")
 
         ax.plot(sweep_param_values, metric, ":.", label=label, **kwargs)
-        ax.set_xlabel(sweep_param_name)
+        ax.set_xlabel(sweep_param_name, size=8)
         if sweep_param_name == N_BLOCKS:
             ax.xaxis.set_major_locator(
                 MaxNLocator(integer=True)
@@ -764,8 +763,8 @@ class OptimizationSweepsAnalysis:
             )
         if color_gradient:
             cbar  = plt.colorbar(s_m, ticks=parameters)
-            cbar.ax.tick_params(labelsize=10) 
-            cbar.ax.set_title(fixed_param_names[0], rotation=0, size=10)
+            cbar.ax.tick_params(labelsize=6) 
+            cbar.ax.set_title(fixed_param_names[0], rotation=0, size=8)
             ax.get_legend().remove()
 
         
@@ -839,10 +838,10 @@ class OptimizationSweepsAnalysis:
         )
 
         if log:
-            ax.set_ylabel("best $\log_{10}$(infidelity)")
+            ax.set_ylabel("best $\log_{10}$(infidelity)", size=8)
             plt.legend(loc="upper right", prop={"size": 3})
         else:
-            ax.set_ylabel("best fidelity")
+            ax.set_ylabel("best fidelity", size=8)
             plt.legend(loc="lower right", prop={"size": 3})
 
     def plot_multi_sweep_U_benchmark(
@@ -910,10 +909,10 @@ class OptimizationSweepsAnalysis:
         )
 
         if log:
-            ax.set_ylabel("best $\log_{10}$(infidelity)")
+            ax.set_ylabel("best $\log_{10}$(infidelity)", size=8)
             plt.legend(loc="upper right", prop={"size": 3})
         else:
-            ax.set_ylabel("best fidelity")
+            ax.set_ylabel("best fidelity", size=8)
             plt.legend(loc="lower right", prop={"size": 3})
 
     def plot_multi_sweep_fidelities(
@@ -1010,12 +1009,12 @@ class OptimizationSweepsAnalysis:
         if fit is not None:
             ax.plot(x, y_fit, "-", label="Poly Fit " + label)
 
-        ax.plot(x, y, ":o", **kwargs, label="Simulation " + label)
+        ax.plot(x, y, "ko", **kwargs, label="Simulation " + label)
         if log:
             ax.set_yscale("log")
         ax.set_xlabel(sweep_param_name, size=8)
         ax.set_ylabel(
-            "Minimum N Blocks to reach " + str(100 * success_fid) + "% Fidelity", size=8
+            "Minimum N Blocks to\nreach " + str(100 * success_fid) + "% Fidelity", size=8
         )
         if fit is not None:
             plt.legend(loc="lower right", prop={"size": 6})
@@ -1096,7 +1095,7 @@ class OptimizationSweepsAnalysis:
         if fit is not None:
             ax.plot(x, y_fit, "-", label="Poly Fit")
 
-        ax.plot(x, y, ":o", **kwargs, label="Simulation")
+        ax.plot(x, y, "ko", **kwargs, label="Simulation")
         if log:
             ax.set_yscale("log")
         ax.set_xlabel(sweep_param_name, size=8)
@@ -1185,7 +1184,7 @@ class OptimizationSweepsAnalysis:
         if fit is not None:
             ax.plot(x, y_fit, "-", label="Poly Fit")
 
-        ax.plot(x, y, ":o", **kwargs, label="Simulation")
+        ax.plot(x, y, "ko", **kwargs, label="Simulation")
         if log:
             ax.set_yscale("log")
         ax.set_xlabel(sweep_param_name, size=8)
@@ -1246,7 +1245,7 @@ class OptimizationSweepsAnalysis:
                         z_list.append(Z[j][i])
 
         if "scatter" in types:
-            plt.scatter(x_list, y_list, s=40, c=z_list, marker="o", cmap="cool")
+            plt.scatter(x_list, y_list, s=40, c=z_list, marker="o", cmap="plasma_r")
             plt.colorbar(extend="both")
             return
 
@@ -1260,7 +1259,7 @@ class OptimizationSweepsAnalysis:
                 if (x_coords[i], y_coords[j]) not in xy_list:
                     Z[j][i] = outlier_val
 
-        cmap = plt.get_cmap("cool")
+        cmap = plt.get_cmap("plasma_r")
         plt.contourf(
             x_coords,
             y_coords,
