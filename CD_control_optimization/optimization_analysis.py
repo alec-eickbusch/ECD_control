@@ -8,12 +8,16 @@ from CD_control_optimization.batch_optimizer import BatchOptimizer
 from scipy.interpolate import interp2d
 from tqdm import tqdm
 from sklearn.manifold import TSNE
-import seaborn as sns
 
-sns.set(rc={"figure.figsize": (11.7, 8.27)})
+plt.rcParams.update(
+    {
+        "figure.figsize": (11.7, 8.27),
+        "font.size": 14,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+    }
+)
 
-plt.rcParams.update({"font.size": 14, "pdf.fonttype": 42, "ps.fonttype": 42})
-sns.set(font_scale=1)
 
 N_BLOCKS = "N_blocks"
 TIMESTAMP_SEP = ","
@@ -281,6 +285,8 @@ class OptimizationAnalysis:
     def plot_tSNE(self, X, y, fig=None, ax=None, log=True, **kwargs):
         tsne = TSNE()
         X_embedded = tsne.fit_transform(X)
+        import seaborn as sns
+
         palette = sns.color_palette("magma", as_cmap=True)
         sns.scatterplot(
             x=X_embedded[:, 0],
