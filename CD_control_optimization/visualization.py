@@ -3,11 +3,14 @@ import matplotlib.pyplot as plt
 import CD_control_optimization.tf_quantum as tfq
 import qutip as qt
 
-import seaborn as sns
-
-sns.set(rc={"figure.figsize": (11.7, 8.27)})
-
-plt.rcParams.update({"font.size": 14, "pdf.fonttype": 42, "ps.fonttype": 42})
+plt.rcParams.update(
+    {
+        "figure.figsize": (11.7, 8.27),
+        "font.size": 14,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+    }
+)
 
 
 def plot_wigner(
