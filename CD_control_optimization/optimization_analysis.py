@@ -13,7 +13,9 @@ from sklearn.manifold import TSNE
 plt.rcParams.update(
     {
         "figure.figsize": (12, 9),
-        "font.size": 14,
+        "font.size": 8,
+        "xtick.labelsize": 8,
+        "ytick.labelsize": 8,
         "pdf.fonttype": 42,
         "ps.fonttype": 42,
     }
@@ -763,7 +765,7 @@ class OptimizationSweepsAnalysis:
             )
         if color_gradient:
             cbar  = plt.colorbar(s_m, ticks=parameters)
-            cbar.ax.tick_params(labelsize=6) 
+            cbar.ax.tick_params(labelsize=8) 
             cbar.ax.set_title(fixed_param_names[0], rotation=0, size=8)
             ax.get_legend().remove()
 
