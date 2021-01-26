@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import h5py
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import qutip as qt
 from matplotlib.ticker import MaxNLocator
 from CD_control_optimization.batch_optimizer import BatchOptimizer
@@ -724,6 +725,7 @@ class OptimizationSweepsAnalysis:
         ax=None,
         sweep_param_name=None,
         plot_sweep_metric_func=None,
+        color_gradient=True,
         **kwargs,
     ):
         sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
@@ -744,7 +746,14 @@ class OptimizationSweepsAnalysis:
             if not plot_sweep_metric_func
             else plot_sweep_metric_func
         )
+
+        if color_gradient:
+            parameters = np.array(all_fixed_param_values)[:,0]
+            s_m = self._gradient_multiline_colorbar(parameters)
+
         for fixed_param_values in all_fixed_param_values:
+            if color_gradient:
+                kwargs['color'] = s_m.to_rgba(fixed_param_values[0])
             plot_sweep_metric_func(
                 sweep_name,
                 fixed_param_names=fixed_param_names,
@@ -753,6 +762,23 @@ class OptimizationSweepsAnalysis:
                 ax=ax,
                 **kwargs,
             )
+        if color_gradient:
+            cbar  = plt.colorbar(s_m, ticks=parameters)
+            cbar.ax.tick_params(labelsize=10) 
+            cbar.ax.set_title(fixed_param_names[0], rotation=0, size=10)
+            ax.get_legend().remove()
+
+        
+
+    def _gradient_multiline_colorbar(self, parameters):
+        # taken from https://stackoverflow.com/questions/26545897/drawing-a-colorbar-aside-a-line-plot-using-matplotlib/26562639#26562639
+        norm = mpl.colors.Normalize(
+            vmin=np.min(parameters), vmax=np.max(parameters)
+        )
+        c_m = mpl.cm.plasma_r
+        s_m = mpl.cm.ScalarMappable(cmap=c_m, norm=norm)
+        s_m.set_array([])
+        return s_m
 
     def _run_U_benchmark(
         self,
