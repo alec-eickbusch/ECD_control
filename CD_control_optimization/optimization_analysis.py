@@ -727,6 +727,7 @@ class OptimizationSweepsAnalysis:
         sweep_param_name=None,
         plot_sweep_metric_func=None,
         color_gradient=True,
+        discrete=False,
         **kwargs,
     ):
         sweep_name = sweep_name if sweep_name is not None else self.sweep_names[-1]
@@ -750,7 +751,7 @@ class OptimizationSweepsAnalysis:
 
         if color_gradient:
             parameters = np.array(all_fixed_param_values)[:,0]
-            s_m = self._gradient_multiline_colorbar(parameters)
+            s_m = self._gradient_multiline_colorbar(parameters, discrete=discrete)
 
         for fixed_param_values in all_fixed_param_values:
             if color_gradient:
@@ -771,12 +772,13 @@ class OptimizationSweepsAnalysis:
 
         
 
-    def _gradient_multiline_colorbar(self, parameters):
+    def _gradient_multiline_colorbar(self, parameters, discrete=False):
         # taken from https://stackoverflow.com/questions/26545897/drawing-a-colorbar-aside-a-line-plot-using-matplotlib/26562639#26562639
+        diff = [np.abs(parameters[1] - parameters[0]), np.abs(parameters[-1] - parameters[-2])] if discrete else [0,0]
         norm = mpl.colors.Normalize(
-            vmin=np.min(parameters), vmax=np.max(parameters)
+            vmin=np.min(parameters) - diff[0]/2, vmax=np.max(parameters) + diff[1]/2
         )
-        c_m = mpl.cm.plasma_r
+        c_m = mpl.cm.plasma_r if not discrete else plt.get_cmap('plasma_r', int(np.max(parameters)-np.min(parameters)+1))
         s_m = mpl.cm.ScalarMappable(cmap=c_m, norm=norm)
         s_m.set_array([])
         return s_m
