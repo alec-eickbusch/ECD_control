@@ -8,9 +8,9 @@ from CD_control_optimization.batch_optimizer import BatchOptimizer
 from scipy.interpolate import interp2d
 from tqdm import tqdm
 from sklearn.manifold import TSNE
-import seaborn as sns
+#import seaborn as sns
 
-sns.set(rc={"figure.figsize": (11.7, 8.27)})
+#sns.set(rc={"figure.figsize": (11.7, 8.27)})
 
 plt.rcParams.update({"font.size": 14, "pdf.fonttype": 42, "ps.fonttype": 42})
 
