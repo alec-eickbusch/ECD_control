@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 import CD_control_optimization.tf_quantum as tfq
 import qutip as qt
 
-import seaborn as sns
+# import seaborn as sns
 
-sns.set(rc={"figure.figsize": (11.7, 8.27)})
+# sns.set(rc={"figure.figsize": (11.7, 8.27)})
 
 plt.rcParams.update({"font.size": 14, "pdf.fonttype": 42, "ps.fonttype": 42})
 
@@ -43,13 +43,18 @@ def plot_wigner(
         ax = fig.subplots()
     if tensor_state:
         state = qt.ptrace(state, 1)
-    W = (np.pi / 2.0) * qt.wigner(state, xvec, xvec, g=2)
     if len(xvec_plot) > len(xvec):
         W = np.pad(W, (num_pad, num_pad), mode="constant")
     if contour:
         levels = np.linspace(-1.1, 1.1, 102)
         im = ax.contourf(
-            xvec2, yvec2, W, cmap="seismic", vmin=-1, vmax=+1, levels=levels,
+            xvec2,
+            yvec2,
+            W,
+            cmap="seismic",
+            vmin=-1,
+            vmax=+1,
+            levels=levels,
         )
     else:
         im = ax.pcolormesh(
@@ -83,7 +88,12 @@ class VisualizationMixin:
         for tf_state in self.initial_states:
             state = tfq.tf2qt(tf_state)
             plot_wigner(
-                state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
+                state,
+                contour=contour,
+                fig=fig,
+                ax=ax,
+                max_alpha=max_alpha,
+                cbar=cbar,
             )
 
     def plot_final_states(
@@ -101,7 +111,12 @@ class VisualizationMixin:
             )
         )
         plot_wigner(
-            state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
+            state,
+            contour=contour,
+            fig=fig,
+            ax=ax,
+            max_alpha=max_alpha,
+            cbar=cbar,
         )
 
     def plot_target_states(
@@ -110,11 +125,21 @@ class VisualizationMixin:
         for tf_state in self.target_states:
             state = tfq.tf2qt(tf_state)
             plot_wigner(
-                state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
+                state,
+                contour=contour,
+                fig=fig,
+                ax=ax,
+                max_alpha=max_alpha,
+                cbar=cbar,
             )
 
     def plot_state(self, i=0, contour=True, fig=None, ax=None, max_alpha=6, cbar=False):
         state = tfq.tf2qt(self.state(i=i))
         plot_wigner(
-            state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
+            state,
+            contour=contour,
+            fig=fig,
+            ax=ax,
+            max_alpha=max_alpha,
+            cbar=cbar,
         )
