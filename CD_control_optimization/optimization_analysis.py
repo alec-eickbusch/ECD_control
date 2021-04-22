@@ -990,7 +990,8 @@ class OptimizationSweepsAnalysis:
         unique_sweep_param_values = sorted(set(sweep_param_values[:, sweep_param_indx]))
 
         all_fids = self.best_fidelities(sweep_name)
-        data = {"min_N_blocks": [], "sweep_param_values": []}
+        circuits = np.array(self.best_circuits(sweep_name))
+        data = {"min_N_blocks": [], "sweep_param_values": [], "circuits": []}
         for sweep_param_value in unique_sweep_param_values:
             indxs = self.get_fixed_indx(
                 sweep_name=sweep_name,
@@ -1000,6 +1001,8 @@ class OptimizationSweepsAnalysis:
             N_blocks_swept = sweep_param_values[indxs][:, N_blocks_indx]
             sort_indxs = np.argsort(N_blocks_swept)
             N_blocks_swept = N_blocks_swept[sort_indxs]
+            print(indxs)
+            print(sort_indxs)
             fids = all_fids[indxs][sort_indxs]
             satisfying_indxs = np.where(fids >= success_fid)[0]
             if len(satisfying_indxs) > 0:
@@ -1007,6 +1010,7 @@ class OptimizationSweepsAnalysis:
                 min_N_block = N_blocks_swept[min_indx]
                 data["min_N_blocks"].append(min_N_block)
                 data["sweep_param_values"].append(sweep_param_value)
+                data["circuits"].append(circuits[indxs][min_indx])
         x = np.array(data["sweep_param_values"])
         y = np.array(data["min_N_blocks"])
         y_fit = []
@@ -1035,6 +1039,7 @@ class OptimizationSweepsAnalysis:
         if fit is not None:
             plt.legend(loc="lower right", prop={"size": 6})
         fig.tight_layout()
+        return data
 
     def min_abs_sum_betas_to_reach_fid(
         self,
