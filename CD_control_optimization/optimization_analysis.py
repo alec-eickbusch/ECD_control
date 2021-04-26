@@ -290,12 +290,7 @@ class OptimizationAnalysis:
         X_embedded = tsne.fit_transform(X)
 
         cm = plt.cm.get_cmap("plasma")
-        sc = plt.scatter(
-            x=X_embedded[:, 0],
-            y=X_embedded[:, 1],
-            c=y,
-            cmap=cm,
-        )
+        sc = plt.scatter(x=X_embedded[:, 0], y=X_embedded[:, 1], c=y, cmap=cm,)
         plt.colorbar(sc)
 
     def plot_average_magnitude_beta(self, timestamp=None, fig=None, ax=None):
@@ -1001,8 +996,8 @@ class OptimizationSweepsAnalysis:
             N_blocks_swept = sweep_param_values[indxs][:, N_blocks_indx]
             sort_indxs = np.argsort(N_blocks_swept)
             N_blocks_swept = N_blocks_swept[sort_indxs]
-            print(indxs)
-            print(sort_indxs)
+            # print(indxs)
+            # print(sort_indxs)
             fids = all_fids[indxs][sort_indxs]
             satisfying_indxs = np.where(fids >= success_fid)[0]
             if len(satisfying_indxs) > 0:
