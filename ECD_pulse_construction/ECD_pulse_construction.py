@@ -1,18 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
-from scipy.integrate import solve_ivp, quad
-from scipy.optimize import minimize, basinhopping, brute, curve_fit
+from scipy.integrate import solve_ivp
 from scipy.signal import find_peaks
-from scipy.special import eval_laguerre
-import sys
 
-
-if sys.version_info[0] == 3:
-    import qutip as qt
-    from tqdm import tqdm
-
-# note that some functions also in fpga_lib are repeated here so this file can be standalone.
+# note that some pulse functions also in fpga_lib are repeated here so this file can be somewhat standalone.
 
 
 def gaussian_wave(sigma, chop=4):
@@ -108,6 +100,8 @@ def interp(data_array, dt=1):
         ts, data_array, kind="cubic", bounds_error=False
     )  # can test different kinds
 
+def get_flip_idxs(qubit_dac_pulse):
+    return find_peaks(qubit_dac_pulse, height=np.max(qubit_dac_pulse) * 0.975)[0]
 
 # solution to nonlinear differential equation
 def alpha_from_epsilon_nonlinear(
