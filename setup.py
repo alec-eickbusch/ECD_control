@@ -6,10 +6,10 @@ from setuptools import setup
 setup(
     name="CD control optimization",
     version="0.1",
-    packages=["CD_control_optimization", "experimental_analysis"],
-    url="https://git.yale.edu/RSL/CD_control",
+    packages=["ECD_control_optimization", "ECD_pulse_construction"],
+    url="https://git.yale.edu/RSL/ECD_control",
     license="MIT",
     author="Alec Eickbusch, Shantanu Jha",
     author_email="alec.eickbusch@yale.edu, shantanu.jha@yale.edu",
-    description="Conditional Displacement Optimal Control",
+    description="Echoed Conditional Displacement Optimal Control",
 )

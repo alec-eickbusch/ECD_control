@@ -1,4 +1,4 @@
-# UDO - Unitary Decomposition Optimizer
-A general optimizer using automatic differentiation to decompose a target unitary into quantum gates composed of parameters.
+# Echoed Conditional Displacement Control 
 
-For now, working on the conditional displacement problem. Code will later be extended for general problems.
+1. A batch optimizer built in tensorflow to find circuit parameters of a ECD + R circuit
+2. Experimental tools which are used to build a ECD control pulse.
