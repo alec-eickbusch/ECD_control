@@ -734,14 +734,17 @@ class OptimizationSweepsAnalysis:
         fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.5), dpi=200)
         ax = ax if ax is not None else fig.subplots()
 
-        sweep_param_names = self.sweep_param_names(sweep_name)
-        indx = sweep_param_names.index(sweep_param_name)
-        fixed_param_names = sweep_param_names
-        fixed_param_names.remove(sweep_param_name)
+        sweep_param_names = self.sweep_param_names(
+            sweep_name
+        )  # ex ['N_blocks','target_fock']
+        # sweep_param_name = 'N_blocks'
+        indx = sweep_param_names.index(sweep_param_name)  # ex: 0
+        fixed_param_names = sweep_param_names  # ex ['N_blocks','target_fock']
+        fixed_param_names.remove(sweep_param_name)  # ex ['target_fock']
 
-        sweep_param_values = self.sweep_param_values(sweep_name)
-        all_fixed_param_values = np.delete(sweep_param_values, indx, axis=1)
-        all_fixed_param_values = sorted(set([tuple(x) for x in all_fixed_param_values]))
+        sweep_param_values = self.sweep_param_values(sweep_name) #list of lists indexing all [N_blocks, target_fock]
+        all_fixed_param_values = np.delete(sweep_param_values, indx, axis=1) #all fock states used
+        all_fixed_param_values = sorted(set([tuple(x) for x in all_fixed_param_values])) #all fock states used, one entry each.
 
         plot_sweep_metric_func = (
             self.plot_sweep_fidelities
