@@ -13,8 +13,8 @@ print(
     + tf.__version__
     + "\n"
 )
-import CD_control_optimization.tf_quantum as tfq
-from CD_control_optimization.visualization import VisualizationMixin
+import ECD_control.ECD_optimization.tf_quantum as tfq
+from ECD_control.ECD_optimization.visualization import VisualizationMixin
 import qutip as qt
 import datetime
 import time
@@ -204,8 +204,7 @@ class BatchOptimizer(VisualizationMixin):
             )
         if alpha_mask is None:
             alpha_mask = np.ones(
-                shape=(1, self.parameters["N_multistart"]),
-                dtype=np.float32,
+                shape=(1, self.parameters["N_multistart"]), dtype=np.float32,
             )
         else:
             raise Exception(
@@ -423,9 +422,7 @@ class BatchOptimizer(VisualizationMixin):
         return a[0]
 
     @tf.function
-    def U_tot(
-        self,
-    ):
+    def U_tot(self,):
         bs = self.batch_construct_block_operators(
             self.betas_rho,
             self.betas_angle,
@@ -624,12 +621,7 @@ class BatchOptimizer(VisualizationMixin):
                     phis = entry_stop_gradients(self.phis, self.phi_mask)
                     thetas = entry_stop_gradients(self.thetas, self.theta_mask)
                     new_fids = self.batch_fidelities(
-                        betas_rho,
-                        betas_angle,
-                        alphas_rho,
-                        alphas_angle,
-                        phis,
-                        thetas,
+                        betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas,
                     )
                     new_loss = loss_fun(new_fids)
                     dloss_dvar = tape.gradient(new_loss, variables)
@@ -726,11 +718,7 @@ class BatchOptimizer(VisualizationMixin):
                     "alphas",
                     data=[alphas_np],
                     chunks=True,
-                    maxshape=(
-                        None,
-                        self.parameters["N_multistart"],
-                        1,
-                    ),
+                    maxshape=(None, self.parameters["N_multistart"], 1,),
                 )
                 grp.create_dataset(
                     "phis",
@@ -792,14 +780,10 @@ class BatchOptimizer(VisualizationMixin):
         )
         if self.parameters["use_displacements"]:
             alphas_rho = np.random.uniform(
-                0,
-                alpha_scale,
-                size=(1, self.parameters["N_multistart"]),
+                0, alpha_scale, size=(1, self.parameters["N_multistart"]),
             )
             alphas_angle = np.random.uniform(
-                -np.pi,
-                np.pi,
-                size=(1, self.parameters["N_multistart"]),
+                -np.pi, np.pi, size=(1, self.parameters["N_multistart"]),
             )
         phis = np.random.uniform(
             -np.pi,
@@ -816,29 +800,17 @@ class BatchOptimizer(VisualizationMixin):
             betas_rho[-1] = 0
             betas_angle[-1] = 0
         self.betas_rho = tf.Variable(
-            betas_rho,
-            dtype=tf.float32,
-            trainable=True,
-            name="betas_rho",
+            betas_rho, dtype=tf.float32, trainable=True, name="betas_rho",
         )
         self.betas_angle = tf.Variable(
-            betas_angle,
-            dtype=tf.float32,
-            trainable=True,
-            name="betas_angle",
+            betas_angle, dtype=tf.float32, trainable=True, name="betas_angle",
         )
         if self.parameters["use_displacements"]:
             self.alphas_rho = tf.Variable(
-                alphas_rho,
-                dtype=tf.float32,
-                trainable=True,
-                name="alphas_rho",
+                alphas_rho, dtype=tf.float32, trainable=True, name="alphas_rho",
             )
             self.alphas_angle = tf.Variable(
-                alphas_angle,
-                dtype=tf.float32,
-                trainable=True,
-                name="alphas_angle",
+                alphas_angle, dtype=tf.float32, trainable=True, name="alphas_angle",
             )
         else:
             self.alphas_rho = tf.constant(
@@ -850,16 +822,10 @@ class BatchOptimizer(VisualizationMixin):
                 dtype=tf.float32,
             )
         self.phis = tf.Variable(
-            phis,
-            dtype=tf.float32,
-            trainable=True,
-            name="betas_rho",
+            phis, dtype=tf.float32, trainable=True, name="betas_rho",
         )
         self.thetas = tf.Variable(
-            thetas,
-            dtype=tf.float32,
-            trainable=True,
-            name="betas_angle",
+            thetas, dtype=tf.float32, trainable=True, name="betas_angle",
         )
 
     def get_numpy_vars(
@@ -901,10 +867,7 @@ class BatchOptimizer(VisualizationMixin):
                 betas_rho, dtype=tf.float32, trainable=True, name="betas_rho"
             )
             self.betas_angle = tf.Variable(
-                betas_angle,
-                dtype=tf.float32,
-                trainable=True,
-                name="betas_angle",
+                betas_angle, dtype=tf.float32, trainable=True, name="betas_angle",
             )
         if alphas is not None:
             if len(alphas.shape) < 2:
@@ -914,38 +877,18 @@ class BatchOptimizer(VisualizationMixin):
             alphas_angle = np.angle(alphas)
             if self.parameters["use_displacements"]:
                 self.alphas_rho = tf.Variable(
-                    alphas_rho,
-                    dtype=tf.float32,
-                    trainable=True,
-                    name="alphas_rho",
+                    alphas_rho, dtype=tf.float32, trainable=True, name="alphas_rho",
                 )
                 self.alphas_angle = tf.Variable(
-                    alphas_angle,
-                    dtype=tf.float32,
-                    trainable=True,
-                    name="alphas_angle",
+                    alphas_angle, dtype=tf.float32, trainable=True, name="alphas_angle",
                 )
             else:
                 self.alphas_rho = tf.constant(
-                    np.zeros(
-                        shape=(
-                            (
-                                1,
-                                self.parameters["N_multistart"],
-                            )
-                        )
-                    ),
+                    np.zeros(shape=((1, self.parameters["N_multistart"],))),
                     dtype=tf.float32,
                 )
                 self.alphas_angle = tf.constant(
-                    np.zeros(
-                        shape=(
-                            (
-                                1,
-                                self.parameters["N_multistart"],
-                            )
-                        )
-                    ),
+                    np.zeros(shape=((1, self.parameters["N_multistart"],))),
                     dtype=tf.float32,
                 )
 
@@ -954,20 +897,14 @@ class BatchOptimizer(VisualizationMixin):
                 phis = phis.reshape(phis.shape + (1,))
                 self.parameters["N_multistart"] = 1
             self.phis = tf.Variable(
-                phis,
-                dtype=tf.float32,
-                trainable=True,
-                name="betas_rho",
+                phis, dtype=tf.float32, trainable=True, name="betas_rho",
             )
         if thetas is not None:
             if len(thetas.shape) < 2:
                 thetas = thetas.reshape(thetas.shape + (1,))
                 self.parameters["N_multistart"] = 1
             self.thetas = tf.Variable(
-                thetas,
-                dtype=tf.float32,
-                trainable=True,
-                name="betas_angle",
+                thetas, dtype=tf.float32, trainable=True, name="betas_angle",
             )
 
     def best_circuit(self):

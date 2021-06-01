@@ -100,8 +100,10 @@ def interp(data_array, dt=1):
         ts, data_array, kind="cubic", bounds_error=False
     )  # can test different kinds
 
+
 def get_flip_idxs(qubit_dac_pulse):
     return find_peaks(qubit_dac_pulse, height=np.max(qubit_dac_pulse) * 0.975)[0]
+
 
 # solution to nonlinear differential equation
 def alpha_from_epsilon_nonlinear(
@@ -409,7 +411,11 @@ def conditional_displacement(
             ]
         )
         qubit_dac_pulse = np.concatenate(
-            [np.zeros(tw + 2 * len(d) + buf), p, np.zeros(tw + 2 * len(d) + buf),]
+            [
+                np.zeros(tw + 2 * len(d) + buf),
+                p,
+                np.zeros(tw + 2 * len(d) + buf),
+            ]
         )
         # need to detune the pulse for chi prime
         if chi_prime_correction:
@@ -664,7 +670,7 @@ def conditional_displacement_circuit(
     accumulated_phase = np.zeros_like(cavity_dac_pulse)
 
     if pad:
-        while len(cavity_dac_pulse) % 4 != 0:
+        while len(cavity_dac_pulse) % 4 != 0 and len(cavity_dac_pulse) < 24:
             cavity_dac_pulse = np.pad(cavity_dac_pulse, (0, 1), mode="constant")
             qubit_dac_pulse = [
                 np.pad(qp, (0, 1), mode="constant") for qp in qubit_dac_pulse

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import qutip as qt
 from matplotlib.ticker import MaxNLocator
-from CD_control_optimization.batch_optimizer import BatchOptimizer
+from ECD_optimization.batch_optimizer import BatchOptimizer
 from scipy.interpolate import interp2d
 from tqdm import tqdm
 from sklearn.manifold import TSNE

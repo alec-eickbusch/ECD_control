@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import CD_control_optimization.tf_quantum as tfq
+import ECD_control.ECD_optimization.tf_quantum as tfq
 import qutip as qt
 
 
@@ -52,13 +52,7 @@ def plot_wigner(
     if contour:
         levels = np.linspace(-1.1, 1.1, 102)
         im = ax.contourf(
-            xvec2,
-            yvec2,
-            W,
-            cmap="seismic",
-            vmin=-1,
-            vmax=+1,
-            levels=levels,
+            xvec2, yvec2, W, cmap="seismic", vmin=-1, vmax=+1, levels=levels,
         )
     else:
         im = ax.pcolormesh(
@@ -92,12 +86,7 @@ class VisualizationMixin:
         for tf_state in self.initial_states:
             state = tfq.tf2qt(tf_state)
             plot_wigner(
-                state,
-                contour=contour,
-                fig=fig,
-                ax=ax,
-                max_alpha=max_alpha,
-                cbar=cbar,
+                state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
             )
 
     def plot_final_states(
@@ -115,12 +104,7 @@ class VisualizationMixin:
             )
         )
         plot_wigner(
-            state,
-            contour=contour,
-            fig=fig,
-            ax=ax,
-            max_alpha=max_alpha,
-            cbar=cbar,
+            state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
         )
 
     def plot_target_states(
@@ -129,21 +113,11 @@ class VisualizationMixin:
         for tf_state in self.target_states:
             state = tfq.tf2qt(tf_state)
             plot_wigner(
-                state,
-                contour=contour,
-                fig=fig,
-                ax=ax,
-                max_alpha=max_alpha,
-                cbar=cbar,
+                state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
             )
 
     def plot_state(self, i=0, contour=True, fig=None, ax=None, max_alpha=6, cbar=False):
         state = tfq.tf2qt(self.state(i=i))
         plot_wigner(
-            state,
-            contour=contour,
-            fig=fig,
-            ax=ax,
-            max_alpha=max_alpha,
-            cbar=cbar,
+            state, contour=contour, fig=fig, ax=ax, max_alpha=max_alpha, cbar=cbar,
         )
