@@ -2,7 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from scipy.special import eval_laguerre
-
+from ECD_control.ECD_pulse_construction.ECD_pulse_construction import *
+import qutip as qt
 
 # pad the pulse then apply a relative delay.
 def relative_delay_and_pad(
@@ -1045,9 +1046,10 @@ def wigner_marginal(w_data, xvec, yvec=None, I=True, normalize=True):
     return w_marginal / norm
 
 
-def plot_wigner(psi, xvec=np.linspace(-5, 5, 41), ax=None, grid=True):
+def plot_wigner(psi, xvec=np.linspace(-5, 5, 41), ax=None, grid=True, invert=False):
     W = wigner(psi, xvec)
-    plot_wigner_data(W, xvec, ax=ax, grid=grid)
+    s = -1 if invert else +1
+    plot_wigner_data(s*W, xvec, ax=ax, grid=grid)
 
 
 def plot_wigner_data(
