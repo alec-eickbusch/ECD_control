@@ -418,9 +418,10 @@ def conditional_displacement(
             ]
         )
         # need to detune the pulse for chi prime
-        if chi_prime_correction:
-            ts = np.arange(len(cavity_dac_pulse))
-            cavity_dac_pulse = cavity_dac_pulse * np.exp(1j * ts * chi_prime)
+
+        # if chi_prime_correction:
+        #    ts = np.arange(len(cavity_dac_pulse))
+        #    cavity_dac_pulse = cavity_dac_pulse * np.exp(-1j * ts * chi_prime * n)
         return cavity_dac_pulse, qubit_dac_pulse
 
     cavity_dac_pulse, qubit_dac_pulse = construct_CD(alpha, tw, r, r2)
