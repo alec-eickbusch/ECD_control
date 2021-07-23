@@ -155,7 +155,11 @@ def simulate_master_equation(
     qubit_detune=0,
     finite_difference=True,
     kappa_cop=True,
+    epsilon_amplitude_multiplier=1.0,
+    Omega_amplitude_multiplier=1.0,
 ):
+    epsilon = epsilon_amplitude_multiplier * epsilon
+    Omega = Omega_amplitude_multiplier * Omega
     # alpha will include classical loss.
     if (
         alpha is None
@@ -484,7 +488,7 @@ def displaced_model_cf(model_func, beta, alpha_real, alpha_imag, p0_model):
     return np.exp(beta * np.conj(alpha) - np.conj(beta) * alpha) * cf
 
 
-def squeezed_vacuum(beta, r, theta):
+def squeezed_vacuum(beta, r):
     return np.exp(-0.5 * np.abs(beta * np.cosh(r) + np.conj(beta) * np.sinh(r)) ** 2)
 
 
@@ -636,11 +640,73 @@ def expect(states):
     I_expect = np.array([qt.expect(I, rho) for rho in states])
     Q_expect = np.array([qt.expect(Q, rho) for rho in states])
 
+    n_sq_expect = np.array([qt.expect(n * n, rho) for rho in states])
+    I_sq_expect = np.array([qt.expect(I * I, rho) for rho in states])
+    Q_sq_expect = np.array([qt.expect(Q * Q, rho) for rho in states])
+
     return {
         "sx": sx_expect,
         "sy": sy_expect,
         "sz": sz_expect,
         "n": n_expect,
+        "n_sq": n_sq_expect,
+        "I": I_expect,
+        "I_sq": I_sq_expect,
+        "Q": Q_expect,
+        "Q_sq": Q_sq_expect,
+    }
+
+
+def expect_displaced(states, alphas):
+    rho0 = states[0]
+    N = rho0.dims[0][1]
+    N2 = rho0.dims[0][0]
+
+    a = qt.tensor(qt.identity(N2), qt.destroy(N))
+    q = qt.tensor(qt.destroy(N2), qt.identity(N))
+
+    sx = q + q.dag()
+    sy = 1j * (q.dag() - q)
+    sz = 1 - 2 * q.dag() * q
+
+    n = a.dag() * a
+    I = (a + a.dag()) / 2.0
+    Q = 1j * (a.dag() - a) / 2.0
+
+    sx_expect = np.array([qt.expect(sx, rho) for rho in states])
+    sy_expect = np.array([qt.expect(sy, rho) for rho in states])
+    sz_expect = np.array([qt.expect(sz, rho) for rho in states])
+
+    n_expect = np.array(
+        [
+            qt.expect(n + alpha * a.dag() + np.conj(alpha) * a, rho)
+            + np.abs(alpha) ** 2
+            for rho, alpha in zip(states, alphas)
+        ]
+    )
+    I_expect = np.array(
+        [qt.expect(I, rho) + np.real(alpha) for rho, alpha in zip(states, alphas)]
+    )
+    Q_expect = np.array(
+        [qt.expect(Q, rho) + np.imag(alpha) for rho, alpha in zip(states, alphas)]
+    )
+
+    n_sq_expect = np.array(
+        [
+            qt.expect(
+                (n + alpha * a.dag() + np.conj(alpha) * a + np.abs(alpha) ** 2) ** 2,
+                rho,
+            )
+            for rho, alpha in zip(states, alphas)
+        ]
+    )
+
+    return {
+        "sx": sx_expect,
+        "sy": sy_expect,
+        "sz": sz_expect,
+        "n": n_expect,
+        "n_sq": n_sq_expect,
         "I": I_expect,
         "Q": Q_expect,
     }
@@ -735,6 +801,7 @@ def plot_cf(
     axs[0].set_xlabel("Re(beta)")
     axs[0].set_ylabel("Im(beta)")
     axs[0].set_title("Real")
+    axs[0].set_axisbelow(True)
     axs[1].imshow(
         np.imag(data_cf),
         origin="lower",
@@ -749,6 +816,7 @@ def plot_cf(
     axs[1].set_xlabel("Re(beta)")
     axs[1].set_ylabel("Im(beta)")
     axs[1].set_title("Imag")
+    axs[1].set_axisbelow(True)
 
     fig.suptitle(title)
     fig.tight_layout()
@@ -756,7 +824,11 @@ def plot_cf(
 
 # for now, only for real part.
 def plot_cf_sampled(
-    sample_betas, C_vals, beta_extent_real=[-5, 5], beta_extent_imag=[-5, 5], v=1.0,
+    sample_betas,
+    C_vals,
+    beta_extent_real=[-5, 5],
+    beta_extent_imag=[-5, 5],
+    v=1.0,
 ):
     dummy_xvec = np.linspace(beta_extent_real[0], beta_extent_real[1], 11)
     dummy_yvec = np.linspace(beta_extent_real[0], beta_extent_real[1], 11)
@@ -1049,7 +1121,7 @@ def wigner_marginal(w_data, xvec, yvec=None, I=True, normalize=True):
 def plot_wigner(psi, xvec=np.linspace(-5, 5, 41), ax=None, grid=True, invert=False):
     W = wigner(psi, xvec)
     s = -1 if invert else +1
-    plot_wigner_data(s*W, xvec, ax=ax, grid=grid)
+    plot_wigner_data(s * W, xvec, ax=ax, grid=grid)
 
 
 def plot_wigner_data(
@@ -1121,7 +1193,9 @@ def plot_wigner_data_marginals(w_data, xvec, yvec=None, grid=True, norms=True, c
 
 # note: could steal target_C_vals from the sampling.
 def fidelity_from_sampled_CF(
-    betas, sampled_C_real, C_target_values,
+    betas,
+    sampled_C_real,
+    C_target_values,
 ):
     # using batch optimizer to quickly calculate. It does the pre-diagonalization...
 
@@ -1137,3 +1211,41 @@ def fidelity_from_sampled_CF(
         * np.sum(sampled_C_real / C_target_values)
     )
     return overlap
+
+
+# Note: currently hard coded with Alec's parameters.
+# todo: re-write for general case.
+def process_tomo(cf_half, pulse_scale_I, pulse_scale_Q):
+    x, y = np.meshgrid(pulse_scale_I, pulse_scale_Q)
+    pulse_scale_complex = x + 1j * y
+    # phase correction
+    a = 0.062623780865
+    cf = np.exp(1j * a * np.abs(pulse_scale_complex) ** 2) * cf_half
+    """ could use the following for amplitude correction, but it was not something I measured, so I don't
+    think it's so valid.
+    #amplitude correction
+    x_full, y_full = np.meshgrid(np.concatenate([-1*pulse_scale_I[:0:-1], pulse_scale_I]), pulse_scale_Q)
+    pulse_scale_complex = x_full + 1j*y_full
+    a =  0.985171878299
+    b =  0.004644556712
+    amp = a*np.abs(pulse_scale_complex) + b*np.abs(pulse_scale_complex)**2
+    betas = np.exp(1j*np.angle(pulse_scale_complex))*amp
+    """
+
+    # The full cf
+    cf_full = np.zeros((cf.shape[0], cf.shape[1] * 2 - 1), dtype=np.complex64)
+    mid_idx = int(len(cf) / 2)
+    # cf_full[:,:mid_idx+1] = np.conj(cf_phase_corrected)[:,::-1]
+    cf_full[:, mid_idx:] = cf
+    cf_full[:, :mid_idx] = np.conj(cf)[::-1, :0:-1]
+
+    betas_I = np.concatenate([-1 * pulse_scale_I[:0:-1], pulse_scale_I])
+    betas_Q = pulse_scale_Q
+    return cf_full, betas_I, betas_Q
+
+
+def process_tomo_cut(cf_cut, pulse_scales):
+    # phase correction
+    a = 0.062623780865
+    cf = np.exp(1j * a * np.abs(pulse_scales) ** 2) * cf_cut
+    return cf
