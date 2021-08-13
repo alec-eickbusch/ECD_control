@@ -265,6 +265,160 @@ def simulate_master_equation(
     if kappa_up > 0:
         loss_ops.append(np.sqrt(kappa_up) * a.dag())
     if kappa_phi > 0:
+        print("Use superoperator method if you want kappa_phi!!")
+    if output:
+        print("Running mesolve:")
+    progress_bar = True if output else None
+    result = qt.mesolve(H, rho0, ts, loss_ops, expect, progress_bar=progress_bar)
+
+    return result, alpha
+
+
+# will use superoperator method
+# allows for time-dependent loss ops, like dephasing in the displaced frame.
+def simulate_master_equation_superoperator(
+    epsilon,
+    rho0,
+    delta=0,
+    chi=2 * np.pi * 1e-6 * 28,
+    chi_prime=2 * np.pi * 1e-9 * 0,
+    Ks=2 * np.pi * 1e-9 * 0,
+    kappa=0,
+    Kq=-2 * np.pi * 1e-3 * 2 * 192,
+    Omega=None,
+    expect=None,
+    stark_shift=True,
+    dispersive_term=True,
+    gamma_down_qubit=0,
+    gamma_up_qubit=0,
+    gamma_phi_qubit=0,
+    kappa_up=0,
+    kappa_phi=0,
+    output=True,
+    alpha=None,
+    qubit_detune=0,
+    finite_difference=True,
+    kappa_cop=True,
+    epsilon_amplitude_multiplier=1.0,
+    Omega_amplitude_multiplier=1.0,
+):
+    epsilon = epsilon_amplitude_multiplier * epsilon
+    Omega = Omega_amplitude_multiplier * Omega
+    # alpha will include classical loss.
+    if (
+        alpha is None
+    ):  # optinally can supply alpha, for instance, if you want to reuse it.
+        if output:
+            print("Solving for alpha(t)")
+        if np.max(np.abs(epsilon)) < 1e-9:
+            alpha = np.zeros_like(epsilon)
+        else:
+            if finite_difference:
+                alpha = alpha_from_epsilon_nonlinear_finite_difference(
+                    epsilon, delta=delta, Ks=Ks, kappa=kappa, alpha_init=0 + 0j
+                )
+            else:
+                alpha = alpha_from_epsilon_nonlinear(
+                    epsilon, delta=delta, Ks=Ks, kappa=kappa, alpha_init=0 + 0j
+                )
+
+    if output:
+        print("Constructing Hamiltonian")
+    N = rho0.dims[0][1]
+    N2 = rho0.dims[0][0]
+
+    a = qt.tensor(qt.identity(N2), qt.destroy(N))
+    q = qt.tensor(qt.destroy(N2), qt.identity(N))
+
+    d = +1 if dispersive_term else 0
+    H0 = (
+        d * delta * a.dag() * a
+        + d * chi * a.dag() * a * q.dag() * q
+        + chi_prime * a.dag() ** 2 * a ** 2 * q.dag() * q
+        + Ks * a.dag() ** 2 * a ** 2
+        + Kq * q.dag() ** 2 * q ** 2
+        + qubit_detune * q.dag() * q
+    )
+    # alpha and alpha* control
+    H_alpha = (
+        chi * a.dag() * q.dag() * q
+        + 2 * Ks * a.dag() ** 2 * a
+        + 2 * chi_prime * a.dag() ** 2 * a * q.dag() * q
+    )
+    # alpha^2 and alpha*^2 control
+    H_alpha_sq = Ks * a.dag() ** 2 + chi_prime * a.dag() ** 2 * q.dag() * q
+    # |alpha|^2 control
+    s = +1 if stark_shift else 0
+    H_abs_alpha_sq = (
+        4 * chi_prime * a.dag() * a * q.dag() * q
+        + s * chi * q.dag() * q
+        + 4 * Ks * a.dag() * a
+    )
+    # |alpha|^2*alpha control
+    H_abs_alpha_sq_alpha = 2 * chi_prime * a.dag() * q.dag() * q
+    # |alpha|^4 control
+    H_abs_alpha_4 = chi_prime * q.dag() * q
+    # Omega control
+    H_Omega = q.dag()
+    # Omega* control
+    H_Omega_star = q
+
+    ts = np.arange(0, len(epsilon))
+    alpha_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], alpha)
+    alpha_sq_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], alpha ** 2)
+    abs_alpha_sq_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], np.abs(alpha) ** 2)
+    abs_alpha_sq_alpha_spline = qt.interpolate.Cubic_Spline(
+        ts[0], ts[-1], np.abs(alpha) ** 2 * alpha
+    )
+    abs_alpha_4_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], np.abs(alpha) ** 4)
+    if Omega is not None:
+        Omega_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], Omega)
+        Omega_star_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], np.conj(Omega))
+
+    H = [
+        qt.liouvillian(H0),
+        [qt.liouvillian(H_alpha), alpha_spline],
+        [
+            qt.liouvillian(H_alpha.dag()),
+            lambda t, args: np.conj(alpha_spline(t, *args)),
+        ],
+    ]
+    if chi_prime != 0 or Ks != 0 or stark_shift != 0:
+        H += [[qt.liouvillian(H_abs_alpha_sq), abs_alpha_sq_spline]]
+    if chi_prime != 0 or Ks != 0:
+        H += [
+            [qt.liouvillian(H_alpha_sq), alpha_sq_spline],
+            [
+                qt.liouvillian(H_alpha_sq.dag()),
+                lambda t, args: np.conj(alpha_sq_spline(t, *args)),
+            ],
+            [qt.liouvillian(H_abs_alpha_sq_alpha), abs_alpha_sq_alpha_spline],
+            [
+                qt.liouvillian(H_abs_alpha_sq_alpha.dag()),
+                lambda t, args: np.conj(abs_alpha_sq_alpha_spline(t, *args)),
+            ],
+            [qt.liouvillian(H_abs_alpha_4), abs_alpha_4_spline],
+        ]
+    if Omega is not None:
+        H.extend(
+            [
+                [qt.liouvillian(H_Omega), Omega_spline],
+                [qt.liouvillian(H_Omega_star), Omega_star_spline],
+            ]
+        )
+
+    loss_ops = []
+    if gamma_down_qubit > 0:
+        loss_ops.append(np.sqrt(gamma_down_qubit) * q)
+    if gamma_up_qubit > 0:
+        loss_ops.append(np.sqrt(gamma_up_qubit) * q.dag())
+    if gamma_phi_qubit > 0:
+        loss_ops.append(np.sqrt(gamma_phi_qubit) * q.dag() * q)
+    if kappa > 0 and kappa_cop:
+        loss_ops.append(np.sqrt(kappa) * a)
+    if kappa_up > 0:
+        loss_ops.append(np.sqrt(kappa_up) * a.dag())
+    if kappa_phi > 0:
         # this part can be represented as a lindbladian.
         loss_ops += [
             np.sqrt(kappa_phi) * a.dag() * a,
@@ -275,15 +429,15 @@ def simulate_master_equation(
         def general_lindblad(X, Y):
             return qt.sprepost(X, Y) - (1 / 2.0) * (qt.spre(X * Y) + qt.spost(X * Y))
 
-        super_alpha_conj = kappa * (
+        super_alpha_conj = kappa_phi * (
             general_lindblad(a.dag() * a, a) + general_lindblad(a, a.dag() * a)
         )
-        super_alpha = kappa * (
+        super_alpha = kappa_phi * (
             general_lindblad(a.dag() * a, a.dag())
             + general_lindblad(a.dag(), a.dag() * a)
         )
-        super_alpha_conj_sq = kappa * general_lindblad(a, a)
-        super_alpha_sq = kappa * general_lindblad(a.dag(), a.dag())
+        super_alpha_conj_sq = kappa_phi * general_lindblad(a, a)
+        super_alpha_sq = kappa_phi * general_lindblad(a.dag(), a.dag())
         H.extend(
             [
                 [super_alpha_conj, lambda t, args: np.conj(alpha_spline(t, *args))],
@@ -1277,3 +1431,6 @@ def process_tomo_cut(cf_cut, pulse_scales):
     a = 0.062623780865
     cf = np.exp(1j * a * np.abs(pulse_scales) ** 2) * cf_cut
     return cf
+
+
+# %%
