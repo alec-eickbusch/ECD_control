@@ -268,7 +268,7 @@ def simulate_master_equation(
         # this part can be represented as a lindbladian.
         loss_ops += [
             np.sqrt(kappa_phi) * a.dag() * a,
-            [np.sqrt(kappa_phi) * a, np.conj(alpha_spline)],
+            [np.sqrt(kappa_phi) * a, lambda t, args: np.conj(alpha_spline(t, *args))],
             [np.sqrt(kappa_phi) * a.dag(), alpha_spline],
         ]
         # now, we will need to define custom superoperators for the other parts.
