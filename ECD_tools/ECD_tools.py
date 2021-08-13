@@ -150,6 +150,7 @@ def simulate_master_equation(
     gamma_up_qubit=0,
     gamma_phi_qubit=0,
     kappa_up=0,
+    kappa_phi=0,
     output=True,
     alpha=None,
     qubit_detune=0,
@@ -264,8 +265,36 @@ def simulate_master_equation(
     if kappa_up > 0:
         loss_ops.append(np.sqrt(kappa_up) * a.dag())
     if kappa_phi > 0:
-        loss_ops.append(np.sqrt(kappa_phi) * a.dag() * a)
+        # this part can be represented as a lindbladian.
+        loss_ops += [
+            np.sqrt(kappa_phi) * a.dag() * a,
+            [np.sqrt(kappa_phi) * a, np.conj(alpha_spline)],
+            [np.sqrt(kappa_phi) * a.dag(), alpha_spline],
+        ]
+        # now, we will need to define custom superoperators for the other parts.
+        def general_lindblad(X, Y):
+            return qt.sprepost(X, Y) - (1 / 2.0) * (qt.spre(X * Y) + qt.spost(X * Y))
 
+        super_alpha_conj = kappa * (
+            general_lindblad(a.dag() * a, a) + general_lindblad(a, a.dag() * a)
+        )
+        super_alpha = kappa * (
+            general_lindblad(a.dag() * a, a.dag())
+            + general_lindblad(a.dag(), a.dag() * a)
+        )
+        super_alpha_conj_sq = kappa * general_lindblad(a, a)
+        super_alpha_sq = kappa * general_lindblad(a.dag(), a.dag())
+        H.extend(
+            [
+                [super_alpha_conj, lambda t, args: np.conj(alpha_spline(t, *args))],
+                [super_alpha, alpha_spline],
+                [
+                    super_alpha_conj_sq,
+                    lambda t, args: np.conj(alpha_spline(t, *args)) ** 2,
+                ],
+                [super_alpha_sq, lambda t, args: alpha_spline(t, *args) ** 2],
+            ]
+        )
     if output:
         print("Running mesolve:")
     progress_bar = True if output else None
