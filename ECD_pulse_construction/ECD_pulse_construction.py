@@ -299,8 +299,9 @@ def get_ge_trajectories(
     return alpha_g, alpha_e
 
 
-def plot_trajs_complex(alpha_g, alpha_e=None, bound=None):
-    fig, ax = plt.subplots()
+def plot_trajs_complex(alpha_g, alpha_e=None, bound=None, ax=None):
+    if ax is None:
+        fig, ax = plt.subplots()
     ax.plot(np.real(alpha_g), np.imag(alpha_g), label="g")
     ax.fill_between(np.real(alpha_g), np.imag(alpha_g), alpha=0.2)
     if alpha_e is not None:
@@ -411,11 +412,7 @@ def conditional_displacement(
             ]
         )
         qubit_dac_pulse = np.concatenate(
-            [
-                np.zeros(tw + 2 * len(d) + buf),
-                p,
-                np.zeros(tw + 2 * len(d) + buf),
-            ]
+            [np.zeros(tw + 2 * len(d) + buf), p, np.zeros(tw + 2 * len(d) + buf),]
         )
         # need to detune the pulse for chi prime
 

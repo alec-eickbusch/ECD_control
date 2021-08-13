@@ -263,6 +263,8 @@ def simulate_master_equation(
         loss_ops.append(np.sqrt(kappa) * a)
     if kappa_up > 0:
         loss_ops.append(np.sqrt(kappa_up) * a.dag())
+    if kappa_phi > 0:
+        loss_ops.append(np.sqrt(kappa_phi) * a.dag() * a)
 
     if output:
         print("Running mesolve:")
@@ -293,6 +295,7 @@ def simulate_direct(
     kappa_up=0,
     output=True,
     qubit_detune=0,
+    kappa_phi=0,
 ):
     # alpha will include classical loss.
     if output:
@@ -345,6 +348,8 @@ def simulate_direct(
         loss_ops.append(np.sqrt(kappa) * a)
     if kappa_up > 0:
         loss_ops.append(np.sqrt(kappa_up) * a.dag())
+    if kappa_phi > 0:
+        loss_ops.append(np.sqrt(kappa_phi) * a.dag() * a)
 
     if output:
         print("Running mesolve:")
@@ -824,11 +829,7 @@ def plot_cf(
 
 # for now, only for real part.
 def plot_cf_sampled(
-    sample_betas,
-    C_vals,
-    beta_extent_real=[-5, 5],
-    beta_extent_imag=[-5, 5],
-    v=1.0,
+    sample_betas, C_vals, beta_extent_real=[-5, 5], beta_extent_imag=[-5, 5], v=1.0,
 ):
     dummy_xvec = np.linspace(beta_extent_real[0], beta_extent_real[1], 11)
     dummy_yvec = np.linspace(beta_extent_real[0], beta_extent_real[1], 11)
@@ -1193,9 +1194,7 @@ def plot_wigner_data_marginals(w_data, xvec, yvec=None, grid=True, norms=True, c
 
 # note: could steal target_C_vals from the sampling.
 def fidelity_from_sampled_CF(
-    betas,
-    sampled_C_real,
-    C_target_values,
+    betas, sampled_C_real, C_target_values,
 ):
     # using batch optimizer to quickly calculate. It does the pre-diagonalization...
 
