@@ -138,6 +138,7 @@ def alpha_from_epsilon_nonlinear_finite_difference(
     dt = 1
     alpha = np.zeros_like(epsilon_array)
     alpha[0] = alpha_init
+    alpha[1] = alpha_init
     for j in range(1, len(epsilon_array) - 1):
         alpha[j + 1] = (
             2

@@ -168,7 +168,7 @@ def simulate_master_equation(
     ):  # optinally can supply alpha, for instance, if you want to reuse it.
         if output:
             print("Solving for alpha(t)")
-        if np.max(np.abs(epsilon)) < 1e-9:
+        if np.max(np.abs(epsilon)) < 1e-9 and np.abs(alpha_init) == 0:
             alpha = np.zeros_like(epsilon)
         else:
             if finite_difference:
@@ -312,7 +312,7 @@ def simulate_master_equation_superoperator(
     ):  # optinally can supply alpha, for instance, if you want to reuse it.
         if output:
             print("Solving for alpha(t)")
-        if np.max(np.abs(epsilon)) < 1e-9:
+        if np.max(np.abs(epsilon)) < 1e-9 and np.abs(alpha_init) == 0:
             alpha = np.zeros_like(epsilon)
         else:
             if finite_difference:
@@ -874,12 +874,17 @@ def expect_displaced(states, alphas):
             for rho, alpha in zip(states, alphas)
         ]
     )
+    a_expect = np.array(
+        [qt.expect(a, rho) + alpha for rho, alpha in zip(states, alphas)]
+    )
+    """
     I_expect = np.array(
         [qt.expect(I, rho) + np.real(alpha) for rho, alpha in zip(states, alphas)]
     )
     Q_expect = np.array(
         [qt.expect(Q, rho) + np.imag(alpha) for rho, alpha in zip(states, alphas)]
     )
+    """
 
     n_sq_expect = np.array(
         [
@@ -897,8 +902,9 @@ def expect_displaced(states, alphas):
         "sz": sz_expect,
         "n": n_expect,
         "n_sq": n_sq_expect,
-        "I": I_expect,
-        "Q": Q_expect,
+        "a": a_expect
+        # "I": I_expect,
+        # "Q": Q_expect,
     }
 
 
