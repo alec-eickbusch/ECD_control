@@ -158,6 +158,7 @@ def simulate_master_equation(
     kappa_cop=True,
     epsilon_amplitude_multiplier=1.0,
     Omega_amplitude_multiplier=1.0,
+    alpha_init=0 + 0j,
 ):
     epsilon = epsilon_amplitude_multiplier * epsilon
     Omega = Omega_amplitude_multiplier * Omega
@@ -172,11 +173,11 @@ def simulate_master_equation(
         else:
             if finite_difference:
                 alpha = alpha_from_epsilon_nonlinear_finite_difference(
-                    epsilon, delta=delta, Ks=Ks, kappa=kappa, alpha_init=0 + 0j
+                    epsilon, delta=delta, Ks=Ks, kappa=kappa, alpha_init=alpha_init
                 )
             else:
                 alpha = alpha_from_epsilon_nonlinear(
-                    epsilon, delta=delta, Ks=Ks, kappa=kappa, alpha_init=0 + 0j
+                    epsilon, delta=delta, Ks=Ks, kappa=kappa, alpha_init=alpha_init
                 )
 
     if output:
@@ -301,6 +302,7 @@ def simulate_master_equation_superoperator(
     kappa_cop=True,
     epsilon_amplitude_multiplier=1.0,
     Omega_amplitude_multiplier=1.0,
+    alpha_init=0 + 0j,
 ):
     epsilon = epsilon_amplitude_multiplier * epsilon
     Omega = Omega_amplitude_multiplier * Omega
@@ -315,11 +317,11 @@ def simulate_master_equation_superoperator(
         else:
             if finite_difference:
                 alpha = alpha_from_epsilon_nonlinear_finite_difference(
-                    epsilon, delta=delta, Ks=Ks, kappa=kappa, alpha_init=0 + 0j
+                    epsilon, delta=delta, Ks=Ks, kappa=kappa, alpha_init=alpha_init
                 )
             else:
                 alpha = alpha_from_epsilon_nonlinear(
-                    epsilon, delta=delta, Ks=Ks, kappa=kappa, alpha_init=0 + 0j
+                    epsilon, delta=delta, Ks=Ks, kappa=kappa, alpha_init=alpha_init
                 )
 
     if output:
