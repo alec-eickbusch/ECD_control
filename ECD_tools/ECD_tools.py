@@ -819,20 +819,21 @@ def expect(states):
     sz = 1 - 2 * q.dag() * q
 
     n = a.dag() * a
-    I = (a + a.dag()) / 2.0
-    Q = 1j * (a.dag() - a) / 2.0
+    # I = (a + a.dag()) / 2.0
+    # Q = 1j * (a.dag() - a) / 2.0
 
     sx_expect = np.array([qt.expect(sx, rho) for rho in states])
     sy_expect = np.array([qt.expect(sy, rho) for rho in states])
     sz_expect = np.array([qt.expect(sz, rho) for rho in states])
 
     n_expect = np.array([qt.expect(n, rho) for rho in states])
-    I_expect = np.array([qt.expect(I, rho) for rho in states])
-    Q_expect = np.array([qt.expect(Q, rho) for rho in states])
+    a_expect = np.array([qt.expect(a, rho) for rho in states])
+    # I_expect = np.array([qt.expect(I, rho) for rho in states])
+    # Q_expect = np.array([qt.expect(Q, rho) for rho in states])
 
     n_sq_expect = np.array([qt.expect(n * n, rho) for rho in states])
-    I_sq_expect = np.array([qt.expect(I * I, rho) for rho in states])
-    Q_sq_expect = np.array([qt.expect(Q * Q, rho) for rho in states])
+    # I_sq_expect = np.array([qt.expect(I * I, rho) for rho in states])
+    # Q_sq_expect = np.array([qt.expect(Q * Q, rho) for rho in states])
 
     return {
         "sx": sx_expect,
@@ -840,10 +841,11 @@ def expect(states):
         "sz": sz_expect,
         "n": n_expect,
         "n_sq": n_sq_expect,
-        "I": I_expect,
-        "I_sq": I_sq_expect,
-        "Q": Q_expect,
-        "Q_sq": Q_sq_expect,
+        "a": a_expect
+        # "I": I_expect,
+        # "I_sq": I_sq_expect,
+        # "Q": Q_expect,
+        # "Q_sq": Q_sq_expect,
     }
 
 
