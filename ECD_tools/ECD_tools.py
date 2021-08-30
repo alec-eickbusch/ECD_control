@@ -926,6 +926,21 @@ def plot_expect(states):
         axs[n].grid()
         axs[n].legend(frameon=False)
 
+def plot_expect_displace(states, alphas):
+    expects = expect_displaced(states, alphas)
+    fig, axs = plt.subplots(nrows=2, ncols=1, sharex=True, figsize=(6, 6))
+    plot1 = ["sx", "sy", "sz"]
+    plot2 = ["n", "a"]
+    for n, p in enumerate([plot1, plot2]):
+        for name in p:
+            e = expects[name]
+            if name == 'a':
+                axs[n].plot(np.real(e), "-", label='re(a)')
+                axs[n].plot(np.imag(e), "-", label='re(a)')
+            else:
+                axs[n].plot(e, "-", label=name)
+        axs[n].grid()
+        axs[n].legend(frameon=False)
 
 def fft(complex_pulse, dt=1):
     df = 1 / dt  # sampling frequency in GHz
