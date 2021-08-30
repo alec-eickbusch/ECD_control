@@ -914,11 +914,15 @@ def plot_expect(states):
     expects = expect(states)
     fig, axs = plt.subplots(nrows=2, ncols=1, sharex=True, figsize=(6, 6))
     plot1 = ["sx", "sy", "sz"]
-    plot2 = ["n", "I", "Q"]
+    plot2 = ["n", "a"]
     for n, p in enumerate([plot1, plot2]):
         for name in p:
             e = expects[name]
-            axs[n].plot(e, "-", label=name)
+            if name == 'a':
+                axs[n].plot(np.real(e), "-", label='re(a)')
+                axs[n].plot(np.imag(e), "-", label='re(a)')
+            else:
+                axs[n].plot(e, "-", label=name)
         axs[n].grid()
         axs[n].legend(frameon=False)
 

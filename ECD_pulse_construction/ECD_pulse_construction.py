@@ -413,7 +413,11 @@ def conditional_displacement(
             ]
         )
         qubit_dac_pulse = np.concatenate(
-            [np.zeros(tw + 2 * len(d) + buf), p, np.zeros(tw + 2 * len(d) + buf),]
+            [
+                np.zeros(tw + 2 * len(d) + buf),
+                p,
+                np.zeros(tw + 2 * len(d) + buf),
+            ]
         )
         # need to detune the pulse for chi prime
 
@@ -426,7 +430,7 @@ def conditional_displacement(
 
     if curvature_correction:
 
-        def integrated_beta(epsilon):
+        def integrated_beta_and_displacement(epsilon):
             # note that the trajectories are first solved without kerr.
             flip_idx = int(len(epsilon) / 2)
             alpha_g, alpha_e = get_ge_trajectories(
@@ -438,11 +442,12 @@ def conditional_displacement(
                 flip_idxs=[flip_idx],
                 finite_difference=finite_difference,
             )
-            return np.abs(alpha_g[-1] - alpha_e[-1])
+            return np.abs(alpha_g[-1] - alpha_e[-1]), np.abs(alpha_g[-1] + alpha_e[-1])
 
         epsilon = cavity_dac_pulse * epsilon_m
-        current_beta = integrated_beta(epsilon)
-        diff = np.abs(current_beta) - np.abs(beta)
+        current_beta, current_disp = integrated_beta_and_displacement(epsilon)
+        diff = np.abs(cuttent_beta) - np.abs(beta)
+        cost = np.abs(current_beta) - np.abs(beta) + current_disp
         ratio = np.abs(current_beta) / np.abs(beta)
         if output:
             print("tw: " + str(tw))
@@ -457,7 +462,7 @@ def conditional_displacement(
             tw = int(tw * 1.5)
             ratio = 1.01
         tw_flag = True
-        while np.abs(diff) / np.abs(beta) > 1e-3:
+        while np.abs(diff) / np.abs(beta) > 1e-3 and cost > 1e-3:
             if ratio > 1.0 and tw > 0 and tw_flag:
                 tw = int(tw / ratio)
             else:
@@ -472,7 +477,7 @@ def conditional_displacement(
             r, r2 = ratios(alpha, tw)
             cavity_dac_pulse, qubit_dac_pulse = construct_CD(alpha, tw, r, r2)
             epsilon = cavity_dac_pulse * epsilon_m
-            current_beta = integrated_beta(epsilon)
+            current_beta, current_disp = integrated_beta_and_displacement(epsilon)
             diff = np.abs(current_beta) - np.abs(beta)
             ratio = np.abs(current_beta) / np.abs(beta)
             if output:

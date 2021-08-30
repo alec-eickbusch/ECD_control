@@ -1,8 +1,17 @@
 import numpy as np
 import tensorflow as tf
 import h5py
-import matplotlib.pyplot as plt
 import matplotlib as mpl
+
+mpl.rcParams["pdf.fonttype"] = 42
+mpl.rcParams["ps.fonttype"] = 42
+font_size = 7
+mpl.rcParams["font.size"] = font_size
+mpl.rcParams["xtick.labelsize"] = font_size
+mpl.rcParams["ytick.labelsize"] = font_size
+mpl.rcParams["font.sans-serif"] = "Arial"
+mpl.rcParams["font.family"] = "sans-serif"
+import matplotlib.pyplot as plt
 import qutip as qt
 from matplotlib.ticker import MaxNLocator
 from ECD_optimization.batch_optimizer import BatchOptimizer
@@ -216,25 +225,36 @@ class OptimizationAnalysis:
 
     def plot_fidelities(self, timestamp=None, fig=None, ax=None, log=True, **kwargs):
         fidelities = self.fidelities(timestamp).T
-        fig = fig if fig is not None else plt.figure(figsize=(4, 3), dpi=200)
+        fig = fig if fig is not None else plt.figure(figsize=(3.5, 2.25), dpi=200)
         ax = ax if ax is not None else fig.subplots()
         end_fids = fidelities[:, -1]
         indxs = np.argsort(end_fids)
         fidelities = fidelities[indxs]
         for fids in fidelities[:-1]:
+            import matplotlib
+
+            norm = matplotlib.colors.Normalize(
+                vmin=np.log10(1 - fidelities[-1][-1]), vmax=0
+            )
+            cmap = matplotlib.cm.get_cmap("winter")
+            color = cmap(norm(np.log10(1 - fids[-1])))
             if log:
-                ax.semilogy(1 - fids, ":", linewidth=0.5, **kwargs)
+                ax.semilogy(
+                    1 - fids, "-", linewidth=0.2, alpha=1, color=color, **kwargs
+                )
             else:
-                ax.plot(fids, ":", linewidth=0.5, **kwargs)
+                ax.plot(fids, "-", linewidth=0.5, **kwargs)
+        color = cmap(norm(np.log10(1 - fidelities[-1][-1])))
         if log:
-            ax.semilogy(1 - fidelities[-1], **kwargs)
+            ax.semilogy(1 - fidelities[-1], linewidth=1, color=color, **kwargs)
         else:
             ax.plot(fidelities[-1], **kwargs)
-        ax.set_xlabel("epoch", size=8)
-        if log:
-            ax.set_ylabel("infidelity", size=8)
-        else:
-            ax.set_ylabel("fidelity", size=8)
+
+        # ax.set_xlabel("epoch", size=8)
+        # if log:
+        #    ax.set_ylabel("infidelity", size=8)
+        # else:
+        #    ax.set_ylabel("fidelity", size=8)
         fig.tight_layout()
 
     def plot_best_fidelity(self, timestamp=None, fig=None, ax=None, log=True, **kwargs):
@@ -290,7 +310,12 @@ class OptimizationAnalysis:
         X_embedded = tsne.fit_transform(X)
 
         cm = plt.cm.get_cmap("plasma")
-        sc = plt.scatter(x=X_embedded[:, 0], y=X_embedded[:, 1], c=y, cmap=cm,)
+        sc = plt.scatter(
+            x=X_embedded[:, 0],
+            y=X_embedded[:, 1],
+            c=y,
+            cmap=cm,
+        )
         plt.colorbar(sc)
 
     def plot_average_magnitude_beta(self, timestamp=None, fig=None, ax=None):
@@ -737,9 +762,15 @@ class OptimizationSweepsAnalysis:
         fixed_param_names = sweep_param_names  # ex ['N_blocks','target_fock']
         fixed_param_names.remove(sweep_param_name)  # ex ['target_fock']
 
-        sweep_param_values = self.sweep_param_values(sweep_name) #list of lists indexing all [N_blocks, target_fock]
-        all_fixed_param_values = np.delete(sweep_param_values, indx, axis=1) #all fock states used
-        all_fixed_param_values = sorted(set([tuple(x) for x in all_fixed_param_values])) #all fock states used, one entry each.
+        sweep_param_values = self.sweep_param_values(
+            sweep_name
+        )  # list of lists indexing all [N_blocks, target_fock]
+        all_fixed_param_values = np.delete(
+            sweep_param_values, indx, axis=1
+        )  # all fock states used
+        all_fixed_param_values = sorted(
+            set([tuple(x) for x in all_fixed_param_values])
+        )  # all fock states used, one entry each.
 
         plot_sweep_metric_func = (
             self.plot_sweep_fidelities
