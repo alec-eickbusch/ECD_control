@@ -401,7 +401,11 @@ def conditional_displacement(
             ]
         )
         qubit_dac_pulse = np.concatenate(
-            [np.zeros(tw + 2 * len(d) + buf), p, np.zeros(tw + 2 * len(d) + buf),]
+            [
+                np.zeros(tw + 2 * len(d) + buf),
+                p,
+                np.zeros(tw + 2 * len(d) + buf),
+            ]
         )
         # need to detune the pulse for chi prime
 
@@ -505,7 +509,7 @@ def conditional_displacement(
                 + np.abs(second_radius - np.abs(alpha))
             )
 
-        result = fmin(cost, x0=[r, r0, r1, r2], xtol=1e-8, ftol=1e-8)
+        result = fmin(cost, x0=[r, r0, r1, r2], ftol=1e-3, xtol=1e-3)
         r = result[0]
         r0 = result[1]
         r1 = result[2]
@@ -732,7 +736,11 @@ def conditional_displacement_OLD(
             ]
         )
         qubit_dac_pulse = np.concatenate(
-            [np.zeros(tw + 2 * len(d) + buf), p, np.zeros(tw + 2 * len(d) + buf),]
+            [
+                np.zeros(tw + 2 * len(d) + buf),
+                p,
+                np.zeros(tw + 2 * len(d) + buf),
+            ]
         )
         # need to detune the pulse for chi prime
 
