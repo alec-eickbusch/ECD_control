@@ -501,9 +501,9 @@ def simulate_direct(
         + qubit_detune * q.dag() * q
     )
     # epsilon and epsilon_* control
-    H_epsilon = a
+    H_epsilon = a.dag()
     # Omega control
-    H_Omega = q
+    H_Omega = q.dag()
     ts = np.arange(0, len(epsilon))
     epsilon_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], epsilon)
     if Omega is not None:
@@ -918,13 +918,14 @@ def plot_expect(states):
     for n, p in enumerate([plot1, plot2]):
         for name in p:
             e = expects[name]
-            if name == 'a':
-                axs[n].plot(np.real(e), "-", label='re(a)')
-                axs[n].plot(np.imag(e), "-", label='re(a)')
+            if name == "a":
+                axs[n].plot(np.real(e), "-", label="re(a)")
+                axs[n].plot(np.imag(e), "-", label="re(a)")
             else:
                 axs[n].plot(e, "-", label=name)
         axs[n].grid()
         axs[n].legend(frameon=False)
+
 
 def plot_expect_displace(states, alphas):
     expects = expect_displaced(states, alphas)
@@ -934,13 +935,14 @@ def plot_expect_displace(states, alphas):
     for n, p in enumerate([plot1, plot2]):
         for name in p:
             e = expects[name]
-            if name == 'a':
-                axs[n].plot(np.real(e), "-", label='re(a)')
-                axs[n].plot(np.imag(e), "-", label='re(a)')
+            if name == "a":
+                axs[n].plot(np.real(e), "-", label="re(a)")
+                axs[n].plot(np.imag(e), "-", label="re(a)")
             else:
                 axs[n].plot(e, "-", label=name)
         axs[n].grid()
         axs[n].legend(frameon=False)
+
 
 def fft(complex_pulse, dt=1):
     df = 1 / dt  # sampling frequency in GHz
@@ -1041,7 +1043,11 @@ def plot_cf(
 
 # for now, only for real part.
 def plot_cf_sampled(
-    sample_betas, C_vals, beta_extent_real=[-5, 5], beta_extent_imag=[-5, 5], v=1.0,
+    sample_betas,
+    C_vals,
+    beta_extent_real=[-5, 5],
+    beta_extent_imag=[-5, 5],
+    v=1.0,
 ):
     dummy_xvec = np.linspace(beta_extent_real[0], beta_extent_real[1], 11)
     dummy_yvec = np.linspace(beta_extent_real[0], beta_extent_real[1], 11)
@@ -1406,7 +1412,9 @@ def plot_wigner_data_marginals(w_data, xvec, yvec=None, grid=True, norms=True, c
 
 # note: could steal target_C_vals from the sampling.
 def fidelity_from_sampled_CF(
-    betas, sampled_C_real, C_target_values,
+    betas,
+    sampled_C_real,
+    C_target_values,
 ):
     # using batch optimizer to quickly calculate. It does the pre-diagonalization...
 
