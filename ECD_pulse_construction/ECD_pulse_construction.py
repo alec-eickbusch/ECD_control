@@ -897,7 +897,7 @@ def conditional_displacement_circuit_OLD(
                 if (
                     beta != last_beta
                 ):  # don't construct the next one if it's the same beta...no need...
-                    e_cd, o_cd, alpha, tw = conditional_displacement(
+                    e_cd, o_cd, alpha, tw = conditional_displacement_OLD(
                         beta,
                         alpha=alpha_CD,
                         storage=storage,
@@ -1028,7 +1028,8 @@ def conditional_displacement_circuit(
     qubit_dac_pulse = [[] for _ in thetas]
     alphas = []
     tws = []
-    cd_qubit_phases = [0]
+    cd_qubit_phases = []
+    cumulative_qubit_phase = 0
     analytic_betas = []
     last_beta = 0
     beta_sign = +1
@@ -1103,8 +1104,9 @@ def conditional_displacement_circuit(
             theta = thetas[j][i]
             print("cd_qubit_phases:")
             print(cd_qubit_phases)
-            phi = phis[j][i] - qubit_phase_correction * cd_qubit_phases[-1]
-            # phi = phis[j][i] + qubit_phase_correction * cd_qubit_phases[-2]
+            print("cumulative qubit phase:")
+            print(cumulative_qubit_phase)
+            phi = phis[j][i]
             if not echo_qubit_pulses:
                 o_r = (
                     qubit.pulse.unit_amp
@@ -1127,10 +1129,10 @@ def conditional_displacement_circuit(
                     * np.exp(1j * phi)
                 )
                 o_r = np.concatenate([o_r_1, o_r_2, o_r_3])
-            qubit_dac_pulse[j].append(o_r)
+            qubit_dac_pulse[j].append(np.exp(-1j * cumulative_qubit_phase) * o_r)
             if buffer_time > 0 and len(qubit_dac_pulse[0]) > 0:
                 qubit_dac_pulse[j].append(np.zeros(buffer_time))
-            qubit_dac_pulse[j].append(o_cd)
+            qubit_dac_pulse[j].append(np.exp(-1j * cumulative_qubit_phase) * o_cd)
             if buffer_time > 0 and len(qubit_dac_pulse[0]) > 0:
                 qubit_dac_pulse[j].append(np.zeros(buffer_time))
 
@@ -1143,6 +1145,9 @@ def conditional_displacement_circuit(
             beta_sign = beta_sign * -1
         if buffer_time > 0 and len(qubit_dac_pulse[0]) > 0:
             cavity_dac_pulse.append(np.zeros(buffer_time))
+
+        # update the frame of the qubit
+        cumulative_qubit_phase += cd_qubit_phases[-1]
 
     cavity_dac_pulse = np.concatenate(cavity_dac_pulse)
     qubit_dac_pulse = [np.concatenate(qp) for qp in qubit_dac_pulse]
