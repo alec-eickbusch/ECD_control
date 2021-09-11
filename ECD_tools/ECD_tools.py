@@ -265,6 +265,7 @@ def simulate_master_equation(
         loss_ops.append(np.sqrt(kappa) * a)
     if kappa_up > 0:
         loss_ops.append(np.sqrt(kappa_up) * a.dag())
+         print("Use superoperator method if you want kappa_up!!")
     if kappa_phi > 0:
         print("Use superoperator method if you want kappa_phi!!")
     if output:
@@ -409,6 +410,9 @@ def simulate_master_equation_superoperator(
             ]
         )
 
+    def general_lindblad(X, Y):
+            return qt.sprepost(X, Y) - (1 / 2.0) * (qt.spre(X * Y) + qt.spost(X * Y))
+
     loss_ops = []
     if gamma_down_qubit > 0:
         loss_ops.append(np.sqrt(gamma_down_qubit) * q)
@@ -420,6 +424,19 @@ def simulate_master_equation_superoperator(
         loss_ops.append(np.sqrt(kappa) * a)
     if kappa_up > 0:
         loss_ops.append(np.sqrt(kappa_up) * a.dag())
+        I = qt.tensor(qt.identity(N2), qt.identity(N))
+        up_super_alpha_conj = kappa_up * (
+            general_lindblad(I,a) 
+        )
+        up_super_alpha = kappa_up * (
+            general_lindblad(a.dag(), I)
+        )
+        H.extend(
+            [
+                [up_super_alpha_conj, lambda t, args: np.conj(alpha_spline(t, *args))],
+                [up_super_alpha, alpha_spline],
+            ]
+        )
     if kappa_phi > 0:
         # this part can be represented as a lindbladian.
         loss_ops += [
@@ -427,28 +444,25 @@ def simulate_master_equation_superoperator(
             [np.sqrt(kappa_phi) * a, lambda t, args: np.conj(alpha_spline(t, *args))],
             [np.sqrt(kappa_phi) * a.dag(), alpha_spline],
         ]
-        # now, we will need to define custom superoperators for the other parts.
-        def general_lindblad(X, Y):
-            return qt.sprepost(X, Y) - (1 / 2.0) * (qt.spre(X * Y) + qt.spost(X * Y))
 
-        super_alpha_conj = kappa_phi * (
+        phi_super_alpha_conj = kappa_phi * (
             general_lindblad(a.dag() * a, a) + general_lindblad(a, a.dag() * a)
         )
-        super_alpha = kappa_phi * (
+        phi_super_alpha = kappa_phi * (
             general_lindblad(a.dag() * a, a.dag())
             + general_lindblad(a.dag(), a.dag() * a)
         )
-        super_alpha_conj_sq = kappa_phi * general_lindblad(a, a)
-        super_alpha_sq = kappa_phi * general_lindblad(a.dag(), a.dag())
+        phi_super_alpha_conj_sq = kappa_phi * general_lindblad(a, a)
+        phi_super_alpha_sq = kappa_phi * general_lindblad(a.dag(), a.dag())
         H.extend(
             [
-                [super_alpha_conj, lambda t, args: np.conj(alpha_spline(t, *args))],
-                [super_alpha, alpha_spline],
+                [phi_super_alpha_conj, lambda t, args: np.conj(alpha_spline(t, *args))],
+                [phi_super_alpha, alpha_spline],
                 [
-                    super_alpha_conj_sq,
+                    phi_super_alpha_conj_sq,
                     lambda t, args: np.conj(alpha_spline(t, *args)) ** 2,
                 ],
-                [super_alpha_sq, lambda t, args: alpha_spline(t, *args) ** 2],
+                [phi_super_alpha_sq, lambda t, args: alpha_spline(t, *args) ** 2],
             ]
         )
     if output:
