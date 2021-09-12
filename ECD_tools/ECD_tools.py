@@ -265,7 +265,7 @@ def simulate_master_equation(
         loss_ops.append(np.sqrt(kappa) * a)
     if kappa_up > 0:
         loss_ops.append(np.sqrt(kappa_up) * a.dag())
-         print("Use superoperator method if you want kappa_up!!")
+        print("Use superoperator method if you want kappa_up!!")
     if kappa_phi > 0:
         print("Use superoperator method if you want kappa_phi!!")
     if output:
@@ -411,7 +411,7 @@ def simulate_master_equation_superoperator(
         )
 
     def general_lindblad(X, Y):
-            return qt.sprepost(X, Y) - (1 / 2.0) * (qt.spre(X * Y) + qt.spost(X * Y))
+        return qt.sprepost(X, Y) - (1 / 2.0) * (qt.spre(X * Y) + qt.spost(X * Y))
 
     loss_ops = []
     if gamma_down_qubit > 0:
@@ -425,12 +425,8 @@ def simulate_master_equation_superoperator(
     if kappa_up > 0:
         loss_ops.append(np.sqrt(kappa_up) * a.dag())
         I = qt.tensor(qt.identity(N2), qt.identity(N))
-        up_super_alpha_conj = kappa_up * (
-            general_lindblad(I,a) 
-        )
-        up_super_alpha = kappa_up * (
-            general_lindblad(a.dag(), I)
-        )
+        up_super_alpha_conj = kappa_up * (general_lindblad(I, a))
+        up_super_alpha = kappa_up * (general_lindblad(a.dag(), I))
         H.extend(
             [
                 [up_super_alpha_conj, lambda t, args: np.conj(alpha_spline(t, *args))],
