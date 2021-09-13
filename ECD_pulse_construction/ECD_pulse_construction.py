@@ -434,13 +434,14 @@ def conditional_displacement(
         second_radius = np.abs(
             (alpha_g[int(3 * flip_idx / 2)] + alpha_e[int(3 * flip_idx / 2)]) / 2.0
         )
-        print(
-            "\r  mid_disp: %.4f" % mid_disp
-            + " final_disp: %.4f" % final_disp
-            + " first_radius: %.4f" % first_radius
-            + " second_radius: %.4f" % second_radius,
-            end="",
-        )
+        if output:
+            print(
+                "\r  mid_disp: %.4f" % mid_disp
+                + " final_disp: %.4f" % final_disp
+                + " first_radius: %.4f" % first_radius
+                + " second_radius: %.4f" % second_radius,
+                end="",
+            )
         return np.abs(alpha_g[-1] - alpha_e[-1]), np.abs(alpha_g[-1] + alpha_e[-1])
 
     """
