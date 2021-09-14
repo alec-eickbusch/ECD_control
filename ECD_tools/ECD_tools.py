@@ -411,7 +411,7 @@ def simulate_master_equation_superoperator(
         )
 
     def general_lindblad(X, Y):
-        return qt.sprepost(X, Y) - (1 / 2.0) * (qt.spre(X * Y) + qt.spost(X * Y))
+        return qt.sprepost(X, Y) - (1 / 2.0) * (qt.spre(Y * X) + qt.spost(Y * X))
 
     loss_ops = []
     if gamma_down_qubit > 0:
@@ -422,6 +422,8 @@ def simulate_master_equation_superoperator(
         loss_ops.append(np.sqrt(gamma_phi_qubit) * q.dag() * q)
     if kappa > 0 and kappa_cop:
         loss_ops.append(np.sqrt(kappa) * a)
+        # note: the "classical" part of oscillator relaxation accouted for in the master equation
+        # here, the same is not done for kappa_up, since it's usually very small.
     if kappa_up > 0:
         loss_ops.append(np.sqrt(kappa_up) * a.dag())
         I = qt.tensor(qt.identity(N2), qt.identity(N))
