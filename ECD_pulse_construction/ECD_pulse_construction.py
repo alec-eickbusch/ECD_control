@@ -511,7 +511,7 @@ def conditional_displacement(
                 + np.abs(second_radius - np.abs(alpha))
             )
 
-        result = fmin(cost, x0=[r, r0, r1, r2], ftol=1e-3, xtol=1e-3)
+        result = fmin(cost, x0=[r, r0, r1, r2], ftol=1e-3, xtol=1e-3, disp=False)
         r = result[0]
         r0 = result[1]
         r1 = result[2]
@@ -1104,10 +1104,6 @@ def conditional_displacement_circuit(
             pr, pi = np.real(c_wave), np.imag(c_wave)
         for j in range(len(thetas)):
             theta = thetas[j][i]
-            print("cd_qubit_phases:")
-            print(cd_qubit_phases)
-            print("cumulative qubit phase:")
-            print(cumulative_qubit_phase)
             phi = phis[j][i]
             if not echo_qubit_pulses:
                 o_r = (
