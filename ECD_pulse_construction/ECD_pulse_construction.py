@@ -440,7 +440,7 @@ def conditional_displacement(
                 + " final_disp: %.4f" % final_disp
                 + " first_radius: %.4f" % first_radius
                 + " second_radius: %.4f" % second_radius,
-                end="",
+                # end="",
             )
         return np.abs(alpha_g[-1] - alpha_e[-1]), np.abs(alpha_g[-1] + alpha_e[-1])
 
@@ -502,7 +502,7 @@ def conditional_displacement(
                     + " final_disp: %.4f" % final_disp
                     + " first_radius: %.4f" % first_radius
                     + " second_radius: %.4f" % second_radius,
-                    end="",
+                    # end="",
                 )
             return (
                 np.abs(mid_disp)
