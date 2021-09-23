@@ -3,7 +3,9 @@ import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from scipy.special import eval_laguerre
 from ECD_control.ECD_pulse_construction.ECD_pulse_construction import *
-import qutip as qt
+import sys
+if sys.version_info >= (3, 0):
+    import qutip as qt
 
 # pad the pulse then apply a relative delay.
 def relative_delay_and_pad(
@@ -304,6 +306,10 @@ def simulate_master_equation_superoperator(
     epsilon_amplitude_multiplier=1.0,
     Omega_amplitude_multiplier=1.0,
     alpha_init=0 + 0j,
+    ts=None,
+    options=None,
+    dressed_dephasing=False,
+    Ec=2 * np.pi * 0.2,
 ):
     epsilon = epsilon_amplitude_multiplier * epsilon
     Omega = Omega_amplitude_multiplier * Omega
@@ -366,7 +372,7 @@ def simulate_master_equation_superoperator(
     # Omega* control
     H_Omega_star = q
 
-    ts = np.arange(0, len(epsilon))
+    ts = np.arange(0, len(epsilon)) if ts is None else ts
     alpha_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], alpha)
     alpha_sq_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], alpha ** 2)
     abs_alpha_sq_spline = qt.interpolate.Cubic_Spline(ts[0], ts[-1], np.abs(alpha) ** 2)
@@ -438,20 +444,29 @@ def simulate_master_equation_superoperator(
     if kappa_phi > 0:
         # this part can be represented as a lindbladian.
         loss_ops += [
-            np.sqrt(kappa_phi) * a.dag() * a,
-            [np.sqrt(kappa_phi) * a, lambda t, args: np.conj(alpha_spline(t, *args))],
-            [np.sqrt(kappa_phi) * a.dag(), alpha_spline],
+            np.sqrt(2 * kappa_phi) * a.dag() * a,
+            [
+                np.sqrt(2 * kappa_phi) * a,
+                lambda t, args: np.conj(alpha_spline(t, *args)),
+            ],
+            [np.sqrt(2 * kappa_phi) * a.dag(), alpha_spline],
         ]
 
-        phi_super_alpha_conj = kappa_phi * (
-            general_lindblad(a.dag() * a, a) + general_lindblad(a, a.dag() * a)
+        phi_super_alpha_conj = (
+            2
+            * kappa_phi
+            * (general_lindblad(a.dag() * a, a) + general_lindblad(a, a.dag() * a))
         )
-        phi_super_alpha = kappa_phi * (
-            general_lindblad(a.dag() * a, a.dag())
-            + general_lindblad(a.dag(), a.dag() * a)
+        phi_super_alpha = (
+            2
+            * kappa_phi
+            * (
+                general_lindblad(a.dag() * a, a.dag())
+                + general_lindblad(a.dag(), a.dag() * a)
+            )
         )
-        phi_super_alpha_conj_sq = kappa_phi * general_lindblad(a, a)
-        phi_super_alpha_sq = kappa_phi * general_lindblad(a.dag(), a.dag())
+        phi_super_alpha_conj_sq = 2 * kappa_phi * general_lindblad(a, a)
+        phi_super_alpha_sq = 2 * kappa_phi * general_lindblad(a.dag(), a.dag())
         H.extend(
             [
                 [phi_super_alpha_conj, lambda t, args: np.conj(alpha_spline(t, *args))],
@@ -463,11 +478,25 @@ def simulate_master_equation_superoperator(
                 [phi_super_alpha_sq, lambda t, args: alpha_spline(t, *args) ** 2],
             ]
         )
+    if dressed_dephasing:
+        loss_ops.extend(
+            [
+                [
+                    np.sqrt(Ec * np.abs(chi) * gamma_phi_qubit) * q,
+                    lambda t, args: np.abs(alpha_spline(t, *args)) ** 2,
+                ],
+                [
+                    np.sqrt(Ec * np.abs(chi) * gamma_phi_qubit) * q.dag(),
+                    lambda t, args: np.abs(alpha_spline(t, *args)) ** 2,
+                ],
+            ]
+        )
     if output:
         print("Running mesolve:")
     progress_bar = True if output else None
-    result = qt.mesolve(H, rho0, ts, loss_ops, expect, progress_bar=progress_bar)
-
+    result = qt.mesolve(
+        H, rho0, ts, loss_ops, expect, progress_bar=progress_bar, options=options
+    )
     return result, alpha
 
 
@@ -714,7 +743,7 @@ def wigner_displaced_squeezed_vacuum(alpha, r, beta_real, beta_imag):
 # The unitary gates as used for qutip
 def D(alpha, N_cav):
     a = qt.tensor(qt.identity(2), qt.destroy(N_cav))
-    q = qt.tensor(qt.destroy(2), qt.identity(N_cav))
+    # q = qt.tensor(qt.destroy(2), qt.identity(N_cav))
     if np.abs(alpha) == 0:
         return qt.tensor(qt.identity(2), qt.identity(N_cav))
     return (alpha * a.dag() - np.conj(alpha) * a).expm()
@@ -949,7 +978,7 @@ def plot_expect_displace(states, alphas):
             e = expects[name]
             if name == "a":
                 axs[n].plot(np.real(e), "-", label="re(a)")
-                axs[n].plot(np.imag(e), "-", label="re(a)")
+                axs[n].plot(np.imag(e), "-", label="im(a)")
             else:
                 axs[n].plot(e, "-", label=name)
         axs[n].grid()
@@ -1000,6 +1029,8 @@ def plot_cf(
     title="",
     grid=True,
     bwr=False,
+    axs=None,
+    labels=True,
 ):
     dx_data = xvec_data[1] - xvec_data[0]
     yvec_data = xvec_data if yvec_data is None else yvec_data
@@ -1010,9 +1041,10 @@ def plot_cf(
         yvec_data[0] - dy_data / 2.0,
         yvec_data[-1] + dy_data / 2.0,
     )
-    fig, axs = plt.subplots(
-        nrows=1, ncols=2, sharex=False, sharey=False, figsize=(8, 6)
-    )
+    if axs is None:
+        fig, axs = plt.subplots(
+            nrows=1, ncols=2, sharex=False, sharey=False, figsize=(8, 6)
+        )
     cmap = "bwr" if bwr else "seismic"
     axs[0].imshow(
         np.real(data_cf),
@@ -1029,10 +1061,11 @@ def plot_cf(
         )
     if grid:
         axs[0].grid()
-    axs[0].set_xlabel("Re(beta)")
-    axs[0].set_ylabel("Im(beta)")
-    axs[0].set_title("Real")
-    axs[0].set_axisbelow(True)
+    if labels:
+        axs[0].set_xlabel("Re(beta)")
+        axs[0].set_ylabel("Im(beta)")
+        axs[0].set_title("Real")
+        axs[0].set_axisbelow(True)
     axs[1].imshow(
         np.imag(data_cf),
         origin="lower",
@@ -1044,13 +1077,14 @@ def plot_cf(
     )
     if grid:
         axs[1].grid()
-    axs[1].set_xlabel("Re(beta)")
-    axs[1].set_ylabel("Im(beta)")
-    axs[1].set_title("Imag")
-    axs[1].set_axisbelow(True)
+    if labels:
+        axs[1].set_xlabel("Re(beta)")
+        axs[1].set_ylabel("Im(beta)")
+        axs[1].set_title("Imag")
+        axs[1].set_axisbelow(True)
 
-    fig.suptitle(title)
-    fig.tight_layout()
+        fig.suptitle(title)
+        fig.tight_layout()
 
 
 # for now, only for real part.
