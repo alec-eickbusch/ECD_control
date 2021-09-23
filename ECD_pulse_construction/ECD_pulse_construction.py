@@ -511,7 +511,7 @@ def conditional_displacement(
                 + np.abs(second_radius - np.abs(alpha))
             )
 
-        result = fmin(cost, x0=[r, r0, r1, r2], ftol=1e-6, xtol=1e-6, disp=False)
+        result = fmin(cost, x0=[r, r0, r1, r2], ftol=1e-3, xtol=1e-3, disp=False)
         r = result[0]
         r0 = result[1]
         r1 = result[2]
