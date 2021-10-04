@@ -4,6 +4,7 @@ from scipy.optimize import minimize
 from scipy.special import eval_laguerre
 from ECD_control.ECD_pulse_construction.ECD_pulse_construction import *
 import sys
+
 if sys.version_info >= (3, 0):
     import qutip as qt
 
@@ -425,7 +426,7 @@ def simulate_master_equation_superoperator(
     if gamma_up_qubit > 0:
         loss_ops.append(np.sqrt(gamma_up_qubit) * q.dag())
     if gamma_phi_qubit > 0:
-        loss_ops.append(np.sqrt(gamma_phi_qubit) * q.dag() * q)
+        loss_ops.append(np.sqrt(2 * gamma_phi_qubit) * q.dag() * q)
     if kappa > 0 and kappa_cop:
         loss_ops.append(np.sqrt(kappa) * a)
         # note: the "classical" part of oscillator relaxation accouted for in the master equation
@@ -569,7 +570,7 @@ def simulate_direct(
     if gamma_up_qubit > 0:
         loss_ops.append(np.sqrt(gamma_up_qubit) * q.dag())
     if gamma_phi_qubit > 0:
-        loss_ops.append(np.sqrt(gamma_phi_qubit) * q.dag() * q)
+        loss_ops.append(np.sqrt(2 * gamma_phi_qubit) * q.dag() * q)
     if kappa > 0:
         loss_ops.append(np.sqrt(kappa) * a)
     if kappa_up > 0:
