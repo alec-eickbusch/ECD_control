@@ -197,7 +197,7 @@ def simulate_master_equation(
         + d * chi * a.dag() * a * q.dag() * q
         + chi_prime * a.dag() ** 2 * a ** 2 * q.dag() * q
         + Ks * a.dag() ** 2 * a ** 2
-        + (Kq / 2.0) * q.dag() ** 2 * q ** 2
+        + Kq * q.dag() ** 2 * q ** 2
         + qubit_detune * q.dag() * q
     )
     # alpha and alpha* control
