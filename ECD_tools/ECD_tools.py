@@ -197,7 +197,7 @@ def simulate_master_equation(
         + d * chi * a.dag() * a * q.dag() * q
         + chi_prime * a.dag() ** 2 * a ** 2 * q.dag() * q
         + Ks * a.dag() ** 2 * a ** 2
-        + Kq * q.dag() ** 2 * q ** 2
+        + (Kq / 2.0) * q.dag() ** 2 * q ** 2
         + qubit_detune * q.dag() * q
     )
     # alpha and alpha* control
@@ -1090,11 +1090,7 @@ def plot_cf(
 
 # for now, only for real part.
 def plot_cf_sampled(
-    sample_betas,
-    C_vals,
-    beta_extent_real=[-5, 5],
-    beta_extent_imag=[-5, 5],
-    v=1.0,
+    sample_betas, C_vals, beta_extent_real=[-5, 5], beta_extent_imag=[-5, 5], v=1.0,
 ):
     dummy_xvec = np.linspace(beta_extent_real[0], beta_extent_real[1], 11)
     dummy_yvec = np.linspace(beta_extent_real[0], beta_extent_real[1], 11)
@@ -1459,9 +1455,7 @@ def plot_wigner_data_marginals(w_data, xvec, yvec=None, grid=True, norms=True, c
 
 # note: could steal target_C_vals from the sampling.
 def fidelity_from_sampled_CF(
-    betas,
-    sampled_C_real,
-    C_target_values,
+    betas, sampled_C_real, C_target_values,
 ):
     # using batch optimizer to quickly calculate. It does the pre-diagonalization...
 
@@ -1481,11 +1475,12 @@ def fidelity_from_sampled_CF(
 
 # Note: currently hard coded with Alec's parameters.
 # todo: re-write for general case.
-def process_tomo(cf_half, pulse_scale_I, pulse_scale_Q):
+# default is for ECD sample.
+def process_tomo(cf_half, pulse_scale_I, pulse_scale_Q, phase_scale=0.062623780865):
     x, y = np.meshgrid(pulse_scale_I, pulse_scale_Q)
     pulse_scale_complex = x + 1j * y
     # phase correction
-    a = 0.062623780865
+    a = phase_scale
     cf = np.exp(1j * a * np.abs(pulse_scale_complex) ** 2) * cf_half
     """ could use the following for amplitude correction, but it was not something I measured, so I don't
     think it's so valid.
@@ -1510,11 +1505,29 @@ def process_tomo(cf_half, pulse_scale_I, pulse_scale_Q):
     return cf_full, betas_I, betas_Q
 
 
-def process_tomo_cut(cf_cut, pulse_scales):
+def process_tomo_cut(cf_cut, pulse_scales, phase_scale=0.062623780865):
     # phase correction
-    a = 0.062623780865
+    a = phase_scale
     cf = np.exp(1j * a * np.abs(pulse_scales) ** 2) * cf_cut
     return cf
+
+
+def reconstruct_state(cf, xvec, yvec, N=25):
+    from tomography import CharFuncTomography
+    from tomography_tf.characteristic_function import cf_rho_qt
+
+    x, y = np.meshgrid(xvec, yvec)
+    betas_CD_complex = x + 1j * y
+    char_func_points = betas_CD_complex.flatten()
+    charfunctomo = CharFuncTomography(dim=N)
+    g = 1.0
+    charfunctomo.set_char_func_points(char_func_points, g=g)
+    char_func_data = cf.flatten()
+    charfunctomo.set_char_func_data(char_func_data)
+    # reconstruction
+    rho_mle = charfunctomo.reconstruct_state(recon_type="mle", use_qt=False)
+    rho_mle = qt.Qobj(np.array(rho_mle))
+    return rho_mle
 
 
 # %%
