@@ -761,9 +761,10 @@ def R(phi, theta, N_cav):
     )
 
 
-def CD(beta, N_cav):
+def ECD(beta, N_cav):
     if np.abs(beta) == 0:
-        return R(0, np.pi, N_cav)
+        # return R(0, np.pi, N_cav)
+        return qt.tensor(qt.identity(2), qt.identity(N_cav))
     # return self.R(0,np.pi)*((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
     # temp removing pi pulse from CD for analytic opt testing
     # return ((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
@@ -776,29 +777,72 @@ def CD(beta, N_cav):
     # return self.D(beta / 2.0) * zz + self.D(-beta / 2.0) * oo
 
 
-def U_block(beta, phi, theta, N_cav):
-    return CD(beta, N_cav) * R(phi, theta, N_cav)
+def CD(beta, N_cav):
+    if np.abs(beta) == 0:
+        return qt.tensor(qt.identity(2), qt.identity(N_cav))
+    # return self.R(0,np.pi)*((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
+    # temp removing pi pulse from CD for analytic opt testing
+    # return ((beta*self.a.dag() - np.conj(beta)*self.a)*(self.sz/2.0)).expm()
+    zz = qt.tensor(qt.ket2dm(qt.basis(2, 0)), qt.identity(N_cav))
+    oo = qt.tensor(qt.ket2dm(qt.basis(2, 1)), qt.identity(N_cav))
+    return D(beta / 2.0, N_cav) * zz + D(-beta / 2.0, N_cav) * oo
+    # includes pi rotation
+
+    # alec 10/8/2020: Removing pi rotation to compare with tensorflow version.
+    # return self.D(beta / 2.0) * zz + self.D(-beta / 2.0) * oo
 
 
-def U_circuit(betas, phis, thetas, N_cav):
+def U_block_ECD(beta, phi, theta, N_cav):
+    return ECD(beta, N_cav) * R(phi, theta, N_cav)
+
+
+def U_circuit_ECD(betas, phis, thetas, N_cav):
     U = qt.tensor(qt.identity(2), qt.identity(N_cav))
     for beta, phi, theta in zip(betas, phis, thetas):
-        U = U_block(beta, phi, theta, N_cav) * U
+        U = U_block_ECD(beta, phi, theta, N_cav) * U
     return U
 
 
-def unitary_circuit_sim(psi0, betas, phis, thetas, N_cav):
+def U_block_CD(beta, phi, theta, N_cav):
+    return CD(beta, N_cav) * R(phi, theta, N_cav)
+
+
+def U_circuit_CD(betas, phis, thetas, N_cav):
+    U = qt.tensor(qt.identity(2), qt.identity(N_cav))
+    for beta, phi, theta in zip(betas, phis, thetas):
+        U = U_block_CD(beta, phi, theta, N_cav) * U
+    return U
+
+
+def unitary_circuit_sim_CD(psi0, betas, phis, thetas, N_cav):
     psis = [psi0]
     for beta, phi, theta in zip(betas, phis, thetas):
-        psi = U_block(beta, phi, theta, N_cav) * psis[-1]
+        psi = U_block_CD(beta, phi, theta, N_cav) * psis[-1]
         psis.append(psi)
     return psis
 
 
-def circuit_sim_density_matrix(rho0, betas, phis, thetas, N_cav):
+def unitary_circuit_sim_ECD(psi0, betas, phis, thetas, N_cav):
+    psis = [psi0]
+    for beta, phi, theta in zip(betas, phis, thetas):
+        psi = U_block_ECD(beta, phi, theta, N_cav) * psis[-1]
+        psis.append(psi)
+    return psis
+
+
+def circuit_sim_density_matrix_ECD(rho0, betas, phis, thetas, N_cav):
     rhos = [rho0]
     for beta, phi, theta in zip(betas, phis, thetas):
-        U = U_block(beta, phi, theta, N_cav)
+        U = U_block_ECD(beta, phi, theta, N_cav)
+        rho = U * rhos[-1] * U.dag()
+        rhos.append(rho)
+    return rhos
+
+
+def circuit_sim_density_matrix_CD(rho0, betas, phis, thetas, N_cav):
+    rhos = [rho0]
+    for beta, phi, theta in zip(betas, phis, thetas):
+        U = U_block_CD(beta, phi, theta, N_cav)
         rho = U * rhos[-1] * U.dag()
         rhos.append(rho)
     return rhos
@@ -1090,7 +1134,11 @@ def plot_cf(
 
 # for now, only for real part.
 def plot_cf_sampled(
-    sample_betas, C_vals, beta_extent_real=[-5, 5], beta_extent_imag=[-5, 5], v=1.0,
+    sample_betas,
+    C_vals,
+    beta_extent_real=[-5, 5],
+    beta_extent_imag=[-5, 5],
+    v=1.0,
 ):
     dummy_xvec = np.linspace(beta_extent_real[0], beta_extent_real[1], 11)
     dummy_yvec = np.linspace(beta_extent_real[0], beta_extent_real[1], 11)
@@ -1455,7 +1503,9 @@ def plot_wigner_data_marginals(w_data, xvec, yvec=None, grid=True, norms=True, c
 
 # note: could steal target_C_vals from the sampling.
 def fidelity_from_sampled_CF(
-    betas, sampled_C_real, C_target_values,
+    betas,
+    sampled_C_real,
+    C_target_values,
 ):
     # using batch optimizer to quickly calculate. It does the pre-diagonalization...
 
