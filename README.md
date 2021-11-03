@@ -1,4 +1,5 @@
-# Echoed Conditional Displacement Control 
+# Echoed Conditional Displacement Control
+This repo is under active developement. 
 
 ### Included Packages
 
