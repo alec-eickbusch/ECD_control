@@ -42,6 +42,7 @@ class BatchOptimizer(VisualizationMixin):
         epochs=100,
         beta_scale=1.0,
         alpha_scale=1.0,
+        theta_scale=np.pi,
         use_displacements=False,
         no_CD_end=False,
         beta_mask=None,
@@ -67,6 +68,7 @@ class BatchOptimizer(VisualizationMixin):
             "epochs": epochs,
             "beta_scale": beta_scale,
             "alpha_scale": alpha_scale,
+            "theta_scale": theta_scale,
             "use_displacements": use_displacements,
             "use_phase": use_phase,
             "name": name,
@@ -798,6 +800,7 @@ class BatchOptimizer(VisualizationMixin):
     def randomize_and_set_vars(self):
         beta_scale = self.parameters["beta_scale"]
         alpha_scale = self.parameters["alpha_scale"]
+        theta_scale = self.parameters["theta_scale"]
         betas_rho = np.random.uniform(
             0,
             beta_scale,
@@ -821,8 +824,8 @@ class BatchOptimizer(VisualizationMixin):
             size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
         )
         thetas = np.random.uniform(
-            -np.pi,
-            np.pi,
+            -1 * theta_scale,
+            theta_scale,
             size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
         )
         phis[0] = 0  # everything is relative to first phi
