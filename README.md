@@ -18,7 +18,7 @@ Two modules are contained in this git:
     Optimization of conditional displacement and qubit rotation circuit parameters for a quantum control problem. Built with Tensorflow.
     
 2. **ECD_pulse_construction**
-    Complies oscillator ($\varepsilon(t)$) and qubit ($\Omega()) pulse sequences from a set of ECD parameters
+    Complies oscillator and qubit pulse sequences from a set of ECD parameters
 
 contact: [alec.eickbusch@yale.edu](mailto:alec.eickbusch@yale.edu)
 
