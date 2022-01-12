@@ -86,10 +86,17 @@ class FakeStorage:
 
         self.displace = FakePulse(unit_amp=unit_amp, sigma=sigma, chop=chop)
 
+        #calculating conversion between DAC and Hamiltonian drive amplitude
+        disp = disp_gaussian(alpha=1.0, sigma=sigma, chop=chop, dt=1)
+        self.epsilon_m_MHz = 1e3*np.real(np.max(np.abs(disp)))/unit_amp/2/np.pi
+
 
 class FakeQubit:
     def __init__(self, unit_amp, sigma, chop, detune=0):
         self.pulse = FakePulse(unit_amp=unit_amp, sigma=sigma, chop=chop, detune=detune)
+        #calculating conversion between DAC and Hamiltonian drive amplitude
+        pi = rotate(np.pi, phi=0, sigma=sigma, chop=chop, dt=1)
+        self.Omega_m_MHz = 1e3*np.real(np.max(np.abs(pi)))/unit_amp/2/np.pi
 
 
 # Solution to linear differential equation
