@@ -52,7 +52,7 @@ class BatchOptimizer(VisualizationMixin):
         name="ECD_control",
         filename=None,
         comment="",
-        use_phase=True,  # include the phase in the optimization cost function. Important for unitaries.
+        use_phase=False,  # include the phase in the optimization cost function. Important for unitaries.
         timestamps=[],
         **kwargs
     ):
