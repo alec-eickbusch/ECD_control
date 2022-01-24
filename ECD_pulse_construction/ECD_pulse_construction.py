@@ -67,9 +67,9 @@ class FakePulse:
 class FakeStorage:
     def __init__(
         self,
-        chi_kHz=-30.0,
+        chi_kHz=30.0,
         chi_prime_Hz=1.0,
-        Ks_Hz=-2.0,
+        Ks_Hz=2.0,
         epsilon_m_MHz=400.0,
         T1_us=340.0,
         unit_amp=0.05,
@@ -86,17 +86,17 @@ class FakeStorage:
 
         self.displace = FakePulse(unit_amp=unit_amp, sigma=sigma, chop=chop)
 
-        #calculating conversion between DAC and Hamiltonian drive amplitude
+        # calculating conversion between DAC and Hamiltonian drive amplitude
         disp = disp_gaussian(alpha=1.0, sigma=sigma, chop=chop, dt=1)
-        self.epsilon_m_MHz = 1e3*np.real(np.max(np.abs(disp)))/unit_amp/2/np.pi
+        self.epsilon_m_MHz = 1e3 * np.real(np.max(np.abs(disp))) / unit_amp / 2 / np.pi
 
 
 class FakeQubit:
     def __init__(self, unit_amp, sigma, chop, detune=0):
         self.pulse = FakePulse(unit_amp=unit_amp, sigma=sigma, chop=chop, detune=detune)
-        #calculating conversion between DAC and Hamiltonian drive amplitude
+        # calculating conversion between DAC and Hamiltonian drive amplitude
         pi = rotate(np.pi, phi=0, sigma=sigma, chop=chop, dt=1)
-        self.Omega_m_MHz = 1e3*np.real(np.max(np.abs(pi)))/unit_amp/2/np.pi
+        self.Omega_m_MHz = 1e3 * np.real(np.max(np.abs(pi))) / unit_amp / 2 / np.pi
 
 
 # Solution to linear differential equation
@@ -130,7 +130,7 @@ def alpha_from_epsilon_nonlinear(
     # todo: find correct rotation...
     dalpha_dt = lambda t, alpha: (
         -1j * delta * alpha
-        - 2j * Ks * np.abs(alpha) ** 2 * alpha
+        + 2j * Ks * np.abs(alpha) ** 2 * alpha
         - (kappa / 2.0) * alpha
         - 1j * epsilon(t)
     )
@@ -160,7 +160,7 @@ def alpha_from_epsilon_nonlinear_finite_difference(
             * dt
             * (
                 -1j * delta * alpha[j]
-                - 2j * Ks * np.abs(alpha[j]) ** 2 * alpha[j]
+                + 2j * Ks * np.abs(alpha[j]) ** 2 * alpha[j]
                 - (kappa / 2.0) * alpha[j]
                 - 1j * epsilon_array[j]
             )
@@ -189,7 +189,7 @@ def alpha_from_epsilon_ge(
     # todo: find correct rotation...
     dalpha_dt_g = lambda t, alpha: (
         -1j * delta * alpha
-        - 2j * Ks * np.abs(alpha) ** 2 * alpha
+        + 2j * Ks * np.abs(alpha) ** 2 * alpha
         - (kappa / 2.0) * alpha
         - 1j * epsilon(t)
     )
@@ -207,10 +207,10 @@ def alpha_from_epsilon_ge(
     else:
         dalpha_dt_e = lambda t, alpha: (
             -1j * delta * alpha
-            - 2j * Ks * np.abs(alpha) ** 2 * alpha
+            + 2j * Ks * np.abs(alpha) ** 2 * alpha
             - (kappa / 2.0) * alpha
             - 1j * epsilon(t)
-            - 1j * (chi + 2 * chi_prime * np.abs(alpha) ** 2) * alpha
+            + 1j * (chi + 2 * chi_prime * np.abs(alpha) ** 2) * alpha
         )
         alpha_e = solve_ivp(
             dalpha_dt_e,
@@ -246,7 +246,7 @@ def alpha_from_epsilon_ge_finite_difference(
             * dt
             * (
                 -1j * delta * alpha_g[j]
-                - 2j * Ks * np.abs(alpha_g[j]) ** 2 * alpha_g[j]
+                + 2j * Ks * np.abs(alpha_g[j]) ** 2 * alpha_g[j]
                 - (kappa / 2.0) * alpha_g[j]
                 - 1j * epsilon_array[j]
             )
@@ -257,10 +257,10 @@ def alpha_from_epsilon_ge_finite_difference(
             * dt
             * (
                 -1j * delta * alpha_e[j]
-                - 2j * Ks * np.abs(alpha_e[j]) ** 2 * alpha_e[j]
+                + 2j * Ks * np.abs(alpha_e[j]) ** 2 * alpha_e[j]
                 - (kappa / 2.0) * alpha_e[j]
                 - 1j * epsilon_array[j]
-                - 1j * (chi + 2 * chi_prime * np.abs(alpha_e[j]) ** 2) * alpha_e[j]
+                + 1j * (chi + 2 * chi_prime * np.abs(alpha_e[j]) ** 2) * alpha_e[j]
             )
             + alpha_e[j - 1]
         )
@@ -370,10 +370,7 @@ def conditional_displacement(
     # is detuned positivly relative to the current frame, so the drive is
     # below the cavity.
 
-    # We expect chi to be negative, so we want to drive below the cavity, hence delta should
-    # be positive.
-
-    delta = -chi / 2.0
+    delta = chi / 2.0
     epsilon_m = 2 * np.pi * 1e-3 * storage.epsilon_m_MHz
     alpha = np.abs(alpha)
     beta_abs = np.abs(beta)
@@ -408,11 +405,7 @@ def conditional_displacement(
             ]
         )
         qubit_dac_pulse = np.concatenate(
-            [
-                np.zeros(tw + 2 * len(d) + buf),
-                p,
-                np.zeros(tw + 2 * len(d) + buf),
-            ]
+            [np.zeros(tw + 2 * len(d) + buf), p, np.zeros(tw + 2 * len(d) + buf),]
         )
         # need to detune the pulse for chi prime
 
@@ -690,7 +683,7 @@ def conditional_displacement_OLD(
     # We expect chi to be negative, so we want to drive below the cavity, hence delta should
     # be positive.
 
-    delta = -chi / 2.0
+    delta = chi / 2.0
     epsilon_m = 2 * np.pi * 1e-3 * storage.epsilon_m_MHz
     alpha = np.abs(alpha)
     beta_abs = np.abs(beta)
@@ -745,11 +738,7 @@ def conditional_displacement_OLD(
             ]
         )
         qubit_dac_pulse = np.concatenate(
-            [
-                np.zeros(tw + 2 * len(d) + buf),
-                p,
-                np.zeros(tw + 2 * len(d) + buf),
-            ]
+            [np.zeros(tw + 2 * len(d) + buf), p, np.zeros(tw + 2 * len(d) + buf),]
         )
         # need to detune the pulse for chi prime
 
@@ -925,7 +914,7 @@ def conditional_displacement_circuit_OLD(
                 analytic_dict = analytic_CD(
                     -1j * 2 * np.pi * 1e-3 * storage.epsilon_m_MHz * e_cd,
                     o_cd,
-                    2 * np.pi * 1e-6 * storage.chi_kHz,
+                    -2 * np.pi * 1e-6 * storage.chi_kHz,
                 )
                 cd_qubit_phases.append(analytic_dict["qubit_phase"])
                 analytic_betas.append(analytic_dict["beta"])
@@ -1091,7 +1080,7 @@ def conditional_displacement_circuit(
             analytic_dict = analytic_CD(
                 -1j * 2 * np.pi * 1e-3 * storage.epsilon_m_MHz * e_cd,
                 o_cd,
-                2 * np.pi * 1e-6 * storage.chi_kHz,
+                -2 * np.pi * 1e-6 * storage.chi_kHz,
             )
             cd_qubit_phases.append(analytic_dict["qubit_phase"])
             analytic_betas.append(analytic_dict["beta"])
