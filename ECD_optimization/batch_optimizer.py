@@ -48,6 +48,7 @@ class BatchOptimizer(VisualizationMixin):
         no_CD_end=False,
         beta_mask=None,
         phi_mask=None,
+        eta_mask=None,
         theta_mask=None,
         alpha_mask=None,
         name="ECD_control",
@@ -134,7 +135,7 @@ class BatchOptimizer(VisualizationMixin):
         # self.set_tf_vars(betas=betas, alphas=alphas, phis=phis, thetas=thetas)
 
         self._construct_needed_matrices()
-        self._construct_optimization_masks(beta_mask, alpha_mask, phi_mask, theta_mask)
+        self._construct_optimization_masks(beta_mask, alpha_mask, phi_mask,eta_mask, theta_mask)
 
         # opt data will be a dictionary of dictonaries used to store optimization data
         # the dictionary will be addressed by timestamps of optmization.
@@ -197,7 +198,7 @@ class BatchOptimizer(VisualizationMixin):
             self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
 
     def _construct_optimization_masks(
-        self, beta_mask=None, alpha_mask=None, phi_mask=None, theta_mask=None
+        self, beta_mask=None, alpha_mask=None, phi_mask=None,eta_mask=None, theta_mask=None
     ):
         if beta_mask is None:
             beta_mask = np.ones(
@@ -229,6 +230,16 @@ class BatchOptimizer(VisualizationMixin):
             raise Exception(
                 "need to implement non-standard masks for batch optimization"
             )
+        if eta_mask is None:
+            eta_mask = np.ones(
+                shape=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+                dtype=np.float32,
+            )
+            phi_mask[0, :] = 0  # stop gradient on first phi entry
+        else:
+            raise Exception(
+                "need to implement non-standard masks for batch optimization"
+            )
         if theta_mask is None:
             theta_mask = np.ones(
                 shape=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
@@ -241,6 +252,7 @@ class BatchOptimizer(VisualizationMixin):
         self.beta_mask = beta_mask
         self.alpha_mask = alpha_mask
         self.phi_mask = phi_mask
+        self.eta_mask = eta_mask
         self.theta_mask = theta_mask
 
     @tf.function
@@ -504,7 +516,7 @@ class BatchOptimizer(VisualizationMixin):
         # start time
         start_time = time.time()
         optimizer = tf.optimizers.Adam(self.parameters["learning_rate"])
-        if self.parameters["use_displacements"]:
+        if self.parameters["use_displacements"] and self.parameters["use_etas"]:
             variables = [
                 self.betas_rho,
                 self.betas_angle,
@@ -514,12 +526,28 @@ class BatchOptimizer(VisualizationMixin):
                 self.etas,
                 self.thetas,
             ]
-        else:
+        elif self.parameters["use_etas"]:
             variables = [
                 self.betas_rho,
                 self.betas_angle,
                 self.phis,
                 self.etas,
+                self.thetas,
+            ]
+        elif self.parameters["use_displacements"]:
+            variables = [
+                self.betas_rho,
+                self.betas_angle,
+                self.alphas_rho,
+                self.alphas_angle,
+                self.phis,
+                self.thetas,
+            ]
+        else:
+            variables = [
+                self.betas_rho,
+                self.betas_angle,
+                self.phis,
                 self.thetas,
             ]
 
@@ -673,7 +701,10 @@ class BatchOptimizer(VisualizationMixin):
                             alphas_rho = self.alphas_rho
                             alphas_angle = self.alphas_angle
                         phis = entry_stop_gradients(self.phis, self.phi_mask)
-                        etas = entry_stop_gradients(self.etas, self.phi_mask)
+                        if self.parameters["use_etas"]:
+                            etas = entry_stop_gradients(self.etas, self.eta_mask)
+                        else:
+                            etas = self.etas
                         thetas = entry_stop_gradients(self.thetas, self.theta_mask)
                         new_fids = self.batch_fidelities(
                             betas_rho,
