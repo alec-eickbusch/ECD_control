@@ -320,11 +320,11 @@ class BatchOptimizer(VisualizationMixin):
         sin = tf.math.sin(Thetas)
         cos_e = tf.math.cos(etas)
         sin_e = tf.math.sin(etas)
-        
+
         # constructing the blocks of the matrix
-        ul = (cos + im * sin*cos_e) * ds_g
-        ll = exp * sin * sin_e*ds_e
-        ur = tf.constant(-1, dtype=tf.complex64) * exp_dag * sin * sin_e*ds_g
+        ul = (cos + im * sin * cos_e) * ds_g
+        ll = exp * sin * sin_e * ds_e
+        ur = tf.constant(-1, dtype=tf.complex64) * exp_dag * sin * sin_e * ds_g
         lr = (cos - im * sin * cos_e) * ds_e
 
         # without pi pulse, block matrix is:
@@ -411,7 +411,7 @@ class BatchOptimizer(VisualizationMixin):
         self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, etas, thetas
     ):
         bs = self.batch_construct_block_operators(
-            betas_rho, betas_angle, alphas_rho, alphas_angle, phis,etas, thetas
+            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, etas, thetas
         )
         psis = tf.stack([self.initial_states] * self.parameters["N_multistart"])
         for U in bs:
@@ -430,10 +430,10 @@ class BatchOptimizer(VisualizationMixin):
     # need to think about how this is related to the fidelity.
     @tf.function
     def batch_state_transfer_fidelities_real_part(
-        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis,etas, thetas
+        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, etas, thetas
     ):
         bs = self.batch_construct_block_operators(
-            betas_rho, betas_angle, alphas_rho, alphas_angle, phis,etas, thetas
+            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, etas, thetas
         )
         psis = tf.stack([self.initial_states] * self.parameters["N_multistart"])
         for U in bs:
@@ -515,7 +515,13 @@ class BatchOptimizer(VisualizationMixin):
                 self.thetas,
             ]
         else:
-            variables = [self.betas_rho, self.betas_angle, self.phis,self.etas, self.thetas]
+            variables = [
+                self.betas_rho,
+                self.betas_angle,
+                self.phis,
+                self.etas,
+                self.thetas,
+            ]
 
         @tf.function
         def entry_stop_gradients(target, mask):
@@ -588,7 +594,7 @@ class BatchOptimizer(VisualizationMixin):
             epochs_left = self.parameters["epochs"] - epoch
             expected_time_remaining = epochs_left * time_per_epoch
             fidelities_np = np.squeeze(np.array(fids))
-            betas_np, alphas_np, phis_np,etas_np, thetas_np = self.get_numpy_vars()
+            betas_np, alphas_np, phis_np, etas_np, thetas_np = self.get_numpy_vars()
             if epoch == 0:
                 self._save_optimization_data(
                     timestamp,
@@ -910,10 +916,7 @@ class BatchOptimizer(VisualizationMixin):
             )
         else:
             self.etas = tf.constant(
-                (np.pi / 2.0) * np.ones_like(phis),
-                dtype=tf.float32,
-                trainable=True,
-                name="etas",
+                (np.pi / 2.0) * np.ones_like(phis), dtype=tf.float32,
             )
 
         self.thetas = tf.Variable(
@@ -949,7 +952,7 @@ class BatchOptimizer(VisualizationMixin):
         thetas = (thetas + np.pi) % (2 * np.pi) - np.pi
 
         # these will have shape N_multistart x N_blocks
-        return betas.T, alphas.T, phis.T,etas.T, thetas.T
+        return betas.T, alphas.T, phis.T, etas.T, thetas.T
 
     def set_tf_vars(self, betas=None, alphas=None, phis=None, etas=None, thetas=None):
         # reshaping for N_multistart = 1
@@ -1022,7 +1025,7 @@ class BatchOptimizer(VisualizationMixin):
         )
         fids = np.atleast_1d(fids.numpy())
         max_idx = np.argmax(fids)
-        all_betas, all_alphas, all_phis,all_etas, all_thetas = self.get_numpy_vars(
+        all_betas, all_alphas, all_phis, all_etas, all_thetas = self.get_numpy_vars(
             self.betas_rho,
             self.betas_angle,
             self.alphas_rho,
@@ -1042,7 +1045,7 @@ class BatchOptimizer(VisualizationMixin):
             "betas": betas,
             "alphas": alphas,
             "phis": phis,
-            "etas":etas,
+            "etas": etas,
             "thetas": thetas,
         }
 
