@@ -19,60 +19,30 @@ import time
 
 
 class GateSet:
+
+    """
+    This class is intended to be a barebones implementation of a specific gate set. Here, we only want to define the blocks in the gate
+    set and the parameters that will be optimized. This class will be passed to the GateSynthesizer class which will call the optimizer
+    your choice to optimize the GateSet parameters.
+    """
     
     def __init__(
         self,
-        optimization_type="state transfer",
-        target_unitary=None,
-        P_cav=None,
-        N_cav=None,
-        initial_states=None,
-        target_states=None,
-        expectation_operators=None,
-        target_expectation_values=None,
-        N_multistart=10,
+        dimension=20,
         N_blocks=20,
-        term_fid=0.99,  # can set >1 to force run all epochs
-        dfid_stop=1e-4,  # can be set= -1 to force run all epochs
-        learning_rate=0.01,
-        epoch_size=10,
-        epochs=100,
-        use_etas=False,
-        use_displacements=False,
-        no_CD_end=False,
+        n_parameters=20,
         name="ECD_control",
-        filename=None,
-        comment="",
-        use_phase=False,  # include the phase in the optimization cost function. Important for unitaries.
-        timestamps=[],
         **kwargs
-    ):
+    ): # some of the above may not be necessary. i.e. dimension, N_blocks, n_parameters are implicit in some of the defs below. think about this
         self.parameters = {
-            'optimization_type' : optimization_type,
-            'target_unitary' : target_unitary,
-            'P_cav' : P_cav,
-            'N_cav' : N_cav,
-            'initial_states' : initial_states,
-            'target_states' : target_states,
-            'expectation_operators' : expectation_operators,
-            'target_expectation_values' : target_expectation_values,
-            'N_multistart' : N_multistart,
+            'dimension' : dimension,
+            'n_parameters' : n_parameters,
             'N_blocks' : N_blocks,
-            'term_fid' : term_fid,
-            'dfid_stop' : dfid_stop,
-            'learning_rate' : learning_rate,
-            'epoch_size' : epoch_size,
-            'epochs' : epochs,
-            'use_etas' : use_etas,
-            'use_displacements' : use_displacements,
-            'no_CD_end' : no_CD_end,
             'name' : name,
-            'filename' : filename,
-            'comment' : comment,
-            'use_phase' : use_phase,
-            'timestamps' : timestamps,
             }
         self.parameters.update(kwargs)
+
+        assert()
         
 
     def modify_parameters(self, **kwargs):
@@ -82,27 +52,10 @@ class GateSet:
         for param, value in self.parameters.items():
             if param not in parameters:
                 parameters[param] = value
-        # handle things that are not in self.parameters:
-        parameters["initial_states"] = (
-            parameters["initial_states"]
-            if "initial_states" in parameters
-            else self.initial_states
-        )
-        parameters["target_states"] = (
-            parameters["target_states"]
-            if "target_states" in parameters
-            else self.target_states
-        )
-        parameters["filename"] = (
-            parameters["filename"] if "filename" in parameters else self.filename
-        )
-        parameters["timestamps"] = (
-            parameters["timestamps"] if "timestamps" in parameters else self.timestamps
-        )
         self.__init__(**parameters)
 
     @tf.function
-    def batch_construct_block_operators(self, opt_params, *args):
+    def batch_construct_block_operators(self, opt_params: list, *args):
         """
         This function must take a list of tf.Variable defined in the same order as randomize_and_set_vars()
         and construct a batch of block operators. Note that the performance of the optimization depends heavily
@@ -128,7 +81,7 @@ class GateSet:
 
         Returns
         -----------
-        This function needs to return a list of tf.Variable of dimension (N_blocks, N_multistart) with initialized values.
+        list of tf.Variable of dimension (N_blocks, N_multistart) with initialized values.
         """
 
         pass
