@@ -185,3 +185,80 @@ class ECDGateSet(GateSet):
             0,
         )
         return blocks
+
+    def randomize_and_set_vars(self):
+        beta_scale = self.parameters["beta_scale"]
+        alpha_scale = self.parameters["alpha_scale"]
+        theta_scale = self.parameters["theta_scale"]
+        betas_rho = np.random.uniform(
+            0,
+            beta_scale,
+            size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+        )
+        betas_angle = np.random.uniform(
+            -np.pi,
+            np.pi,
+            size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+        )
+        if self.parameters["use_displacements"]:
+            alphas_rho = np.random.uniform(
+                0, alpha_scale, size=(1, self.parameters["N_multistart"]),
+            )
+            alphas_angle = np.random.uniform(
+                -np.pi, np.pi, size=(1, self.parameters["N_multistart"]),
+            )
+        phis = np.random.uniform(
+            -np.pi,
+            np.pi,
+            size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+        )
+        if self.parameters["use_etas"]:  # eta range is 0 to pi.
+            etas = np.random.uniform(
+                -np.pi,
+                np.pi,
+                size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+            )
+        thetas = np.random.uniform(
+            -1 * theta_scale,
+            theta_scale,
+            size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+        )
+        phis[0] = 0  # everything is relative to first phi
+        if self.parameters["no_CD_end"]:
+            betas_rho[-1] = 0
+            betas_angle[-1] = 0
+        self.betas_rho = tf.Variable(
+            betas_rho, dtype=tf.float32, trainable=True, name="betas_rho",
+        )
+        self.betas_angle = tf.Variable(
+            betas_angle, dtype=tf.float32, trainable=True, name="betas_angle",
+        )
+        if self.parameters["use_displacements"]:
+            self.alphas_rho = tf.Variable(
+                alphas_rho, dtype=tf.float32, trainable=True, name="alphas_rho",
+            )
+            self.alphas_angle = tf.Variable(
+                alphas_angle, dtype=tf.float32, trainable=True, name="alphas_angle",
+            )
+        else:
+            self.alphas_rho = tf.constant(
+                np.zeros(shape=((1, self.parameters["N_multistart"]))),
+                dtype=tf.float32,
+            )
+            self.alphas_angle = tf.constant(
+                np.zeros(shape=((1, self.parameters["N_multistart"]))),
+                dtype=tf.float32,
+            )
+        self.phis = tf.Variable(phis, dtype=tf.float32, trainable=True, name="phis",)
+        if self.parameters["use_etas"]:
+            self.etas = tf.Variable(
+                etas, dtype=tf.float32, trainable=True, name="etas",
+            )
+        else:
+            self.etas = tf.constant(
+                (np.pi / 2.0) * np.ones_like(phis), dtype=tf.float32,
+            )
+
+        self.thetas = tf.Variable(
+            thetas, dtype=tf.float32, trainable=True, name="thetas",
+        )
