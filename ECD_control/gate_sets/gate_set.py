@@ -80,14 +80,18 @@ class GateSet:
 
         Returns
         -----------
-        list of tf.Variable of dimension (N_blocks, N_multistart) with initialized values.
+        List of tf.Variable of dimension (N_blocks, N_multistart) with initialized values.
+        Note that the variables in this list that will be optimized must have ``trainable=True``
         """
 
         pass
 
     def create_optimization_mask(self, *args):
         """
-        Under construction.
+        Returns
+        -----------
+        Boolean list of the same length as the list returned by ``randomize_and_set_vars``.
+        This mask is used to exclude some parameters from the gradient calculation.
         """
         
         self.optimization_mask = None

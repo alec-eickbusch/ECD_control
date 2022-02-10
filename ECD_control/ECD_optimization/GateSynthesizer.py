@@ -44,6 +44,7 @@ class GateSynthesizer:
         comment="",
         use_phase=False,  # include the phase in the optimization cost function. Important for unitaries.
         timestamps=[],
+        do_prints=False,
         **kwargs
     ):
         self.parameters = {
@@ -65,6 +66,7 @@ class GateSynthesizer:
             'comment' : comment,
             'use_phase' : use_phase,
             'timestamps' : timestamps,
+            'do_prints' : do_prints
             }
         self.parameters.update(kwargs)
         self.gateset = gateset
@@ -93,12 +95,12 @@ class GateSynthesizer:
         path = self.filename.split(".")
         if len(path) < 2 or (len(path) == 2 and path[-1] != ".h5"):
             self.filename = path[0] + ".h5"
-
+        self.batch_fidelities = None
         if (
             self.parameters["optimization_type"] == "state transfer"
             or self.parameters["optimization_type"] == "analysis"
         ):
-            self.batch_fidelities = ( # this line needs modification
+            self.batch_fidelities = ( 
                 self.batch_state_transfer_fidelities
                 if self.parameters["use_phase"]
                 else self.batch_state_transfer_fidelities_real_part
@@ -186,59 +188,169 @@ class GateSynthesizer:
 
 
     def callback_fun(self, fids, dfids, epoch, timestamp, start_time):
-            elapsed_time_s = time.time() - start_time
-            time_per_epoch = elapsed_time_s / epoch if epoch != 0 else 0.0
-            epochs_left = self.parameters["epochs"] - epoch
-            expected_time_remaining = epochs_left * time_per_epoch
-            fidelities_np = np.squeeze(np.array(fids))
-            betas_np, alphas_np, phis_np, etas_np, thetas_np = self.get_numpy_vars()
-            if epoch == 0:
-                self._save_optimization_data(
-                    timestamp,
-                    fidelities_np,
-                    betas_np,
-                    alphas_np,
-                    phis_np,
-                    etas_np,
-                    thetas_np,
-                    elapsed_time_s,
-                    append=False,
+        elapsed_time_s = time.time() - start_time
+        time_per_epoch = elapsed_time_s / epoch if epoch != 0 else 0.0
+        epochs_left = self.parameters["epochs"] - epoch
+        expected_time_remaining = epochs_left * time_per_epoch
+        fidelities_np = np.squeeze(np.array(fids))
+        betas_np, alphas_np, phis_np, etas_np, thetas_np = self.get_numpy_vars()
+        if epoch == 0:
+            self._save_optimization_data(
+                timestamp,
+                fidelities_np,
+                betas_np,
+                alphas_np,
+                phis_np,
+                etas_np,
+                thetas_np,
+                elapsed_time_s,
+                append=False,
+            )
+        else:
+            self._save_optimization_data(
+                timestamp,
+                fidelities_np,
+                betas_np,
+                alphas_np,
+                phis_np,
+                etas_np,
+                thetas_np,
+                elapsed_time_s,
+                append=True,
+            )
+        avg_fid = tf.reduce_sum(fids) / self.parameters["N_multistart"]
+        max_fid = tf.reduce_max(fids)
+        avg_dfid = tf.reduce_sum(dfids) / self.parameters["N_multistart"]
+        max_dfid = tf.reduce_max(dfids)
+        extra_string = " (real part)" if self.parameters["use_phase"] else ""
+        if self.parameters['do_prints']:
+            print(
+                "\r Epoch: %d / %d Max Fid: %.6f Avg Fid: %.6f Max dFid: %.6f Avg dFid: %.6f"
+                % (
+                    epoch,
+                    self.parameters["epochs"],
+                    max_fid,
+                    avg_fid,
+                    max_dfid,
+                    avg_dfid,
                 )
-            else:
-                self._save_optimization_data(
-                    timestamp,
-                    fidelities_np,
-                    betas_np,
-                    alphas_np,
-                    phis_np,
-                    etas_np,
-                    thetas_np,
-                    elapsed_time_s,
-                    append=True,
-                )
-            avg_fid = tf.reduce_sum(fids) / self.parameters["N_multistart"]
-            max_fid = tf.reduce_max(fids)
-            avg_dfid = tf.reduce_sum(dfids) / self.parameters["N_multistart"]
-            max_dfid = tf.reduce_max(dfids)
-            extra_string = " (real part)" if self.parameters["use_phase"] else ""
-            if do_prints:
-                print(
-                    "\r Epoch: %d / %d Max Fid: %.6f Avg Fid: %.6f Max dFid: %.6f Avg dFid: %.6f"
-                    % (
-                        epoch,
-                        self.parameters["epochs"],
-                        max_fid,
-                        avg_fid,
-                        max_dfid,
-                        avg_dfid,
-                    )
-                    + " Elapsed time: "
-                    + str(datetime.timedelta(seconds=elapsed_time_s))
-                    + " Remaing time: "
-                    + str(datetime.timedelta(seconds=expected_time_remaining))
-                    + extra_string,
-                    end="",
-                )
+                + " Elapsed time: "
+                + str(datetime.timedelta(seconds=elapsed_time_s))
+                + " Remaing time: "
+                + str(datetime.timedelta(seconds=expected_time_remaining))
+                + extra_string,
+                end="",
+            )
+        return
+
+    def get_numpy_vars(
+        self,
+        betas_rho=None,
+        betas_angle=None,
+        alphas_rho=None,
+        alphas_angle=None,
+        phis=None,
+        etas=None,
+        thetas=None,
+    ):
+        betas_rho = self.betas_rho if betas_rho is None else betas_rho
+        betas_angle = self.betas_angle if betas_angle is None else betas_angle
+        alphas_rho = self.alphas_rho if alphas_rho is None else alphas_rho
+        alphas_angle = self.alphas_angle if alphas_angle is None else alphas_angle
+        phis = self.phis if phis is None else phis
+        etas = self.etas if etas is None else etas
+        thetas = self.thetas if thetas is None else thetas
+
+        betas = betas_rho.numpy() * np.exp(1j * betas_angle.numpy())
+        alphas = alphas_rho.numpy() * np.exp(1j * alphas_angle.numpy())
+        phis = phis.numpy()
+        etas = etas.numpy()
+        thetas = thetas.numpy()
+        # now, to wrap phis, etas, and thetas so it's in the range [-pi, pi]
+        phis = (phis + np.pi) % (2 * np.pi) - np.pi
+        etas = (etas + np.pi) % (2 * np.pi) - np.pi
+        thetas = (thetas + np.pi) % (2 * np.pi) - np.pi
+
+        # these will have shape N_multistart x N_blocks
+        return betas.T, alphas.T, phis.T, etas.T, thetas.T
+
+    def best_circuit(self):
+        fids = self.batch_fidelities(
+            self.betas_rho,
+            self.betas_angle,
+            self.alphas_rho,
+            self.alphas_angle,
+            self.phis,
+            self.etas,
+            self.thetas,
+        )
+        fids = np.atleast_1d(fids.numpy())
+        max_idx = np.argmax(fids)
+        all_betas, all_alphas, all_phis, all_etas, all_thetas = self.get_numpy_vars(
+            self.betas_rho,
+            self.betas_angle,
+            self.alphas_rho,
+            self.alphas_angle,
+            self.phis,
+            self.etas,
+            self.thetas,
+        )
+        max_fid = fids[max_idx]
+        betas = all_betas[max_idx]
+        alphas = all_alphas[max_idx]
+        phis = all_phis[max_idx]
+        etas = all_etas[max_idx]
+        thetas = all_thetas[max_idx]
+        return {
+            "fidelity": max_fid,
+            "betas": betas,
+            "alphas": alphas,
+            "phis": phis,
+            "etas": etas,
+            "thetas": thetas,
+        }
+
+    def all_fidelities(self):
+        fids = self.batch_fidelities(
+            self.betas_rho,
+            self.betas_angle,
+            self.alphas_rho,
+            self.alphas_angle,
+            self.phis,
+            self.etas,
+            self.thetas,
+        )
+        return fids.numpy()
+
+    def best_fidelity(self):
+        fids = self.batch_fidelities(
+            self.betas_rho,
+            self.betas_angle,
+            self.alphas_rho,
+            self.alphas_angle,
+            self.phis,
+            self.etas,
+            self.thetas,
+        )
+        max_idx = tf.argmax(fids).numpy()
+        max_fid = fids[max_idx].numpy()
+        return max_fid
+
+    def print_info(self):
+        best_circuit = self.best_circuit()
+        with np.printoptions(precision=5, suppress=True):
+            for parameter, value in self.parameters.items():
+                print(parameter + ": " + str(value))
+            print("filename: " + self.filename)
+            print("\nBest circuit parameters found:")
+            print("betas:         " + str(best_circuit["betas"]))
+            print("alphas:        " + str(best_circuit["alphas"]))
+            print("phis (deg):    " + str(best_circuit["phis"] * 180.0 / np.pi))
+            print("etas (deg):    " + str(best_circuit["etas"] * 180.0 / np.pi))
+            print("thetas (deg):  " + str(best_circuit["thetas"] * 180.0 / np.pi))
+            print("Max Fidelity:  %.6f" % best_circuit["fidelity"])
+            print("\n")
+
     def _save_optimization_data(
         self,
         timestamp,

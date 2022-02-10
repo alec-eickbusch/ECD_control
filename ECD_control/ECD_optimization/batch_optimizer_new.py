@@ -38,13 +38,15 @@ class BatchOptimizer(VisualizationMixin):
         self.timestamps = gatesynth.timestamps
         self.parameters = gatesynth.parameters
         self.opt_vars = gatesynth.opt_vars
-        self.loss_fun = gatesynth.loss_fun # this may not work due to lack of 'self' in function call
+        self.loss_fun = gatesynth.loss_fun # this may not work due to lack of 'self' in function call, but can just save and pass gatesynth if need be
         self.callback_fun = gatesynth.callback_fun
+        self.batch_fidelities = gatesynth.batch_fidelities
+        self.mask = gatesynth.optimization_mask
 
         return
 
 
-    def optimize(self, do_prints=True):
+    def optimize(self):
 
         timestamp = datetime.datetime.now().strftime(TIMESTAMP_FORMAT)
         self.timestamps.append(timestamp)
@@ -55,65 +57,44 @@ class BatchOptimizer(VisualizationMixin):
         
 
         @tf.function
-        def entry_stop_gradients(target, mask):
-            mask_h = tf.abs(mask - 1)
-            return tf.stop_gradient(mask_h * target) + mask * target
+        def entry_stop_gradients(vars, mask):
+            """
+            This function masks certain trainable parameters from the gradient calculator.
+            This is useful if one of the block parameters is a constant.
 
-        
+            Parameters
+            -----------
+            vars    :   List of tf.variable. This list should be of the same length as
+                        self.opt_vars.
+            mask    :   List of masks of the same length as target.
+
+            Returns
+            -----------
+            list of tf.tensor with some block parameters masked out of the gradient calculation
+            """
+
+            mask_list = []
+            for k in zip(vars, mask): # I think this for loop should be fine. It's no different than calling all these in a row. Could also reshape all inputs into one large tf.variable
+                mask_h = tf.abs(k[1] - 1)
+                mask_list.append(tf.stop_gradient(mask_h * k[0]) + k[1] * k[0])
+            return mask_list
 
 
-        
-
-        initial_fids = self.batch_fidelities(
-            self.betas_rho,
-            self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
-            self.phis,
-            self.etas,
-            self.thetas,
-        )
+        initial_fids = self.batch_fidelities(self.opt_vars)
         fids = initial_fids
-        callback_fun(self, fids, 0, 0)
+        self.callback_fun(fids, 0, 0, timestamp, start_time)
         try:  # will catch keyboard inturrupt
             for epoch in range(self.parameters["epochs"] + 1)[1:]:
                 for _ in range(self.parameters["epoch_size"]):
                     with tf.GradientTape() as tape:
-                        betas_rho = entry_stop_gradients(self.betas_rho, self.beta_mask)
-                        betas_angle = entry_stop_gradients(
-                            self.betas_angle, self.beta_mask
-                        )
-                        if self.parameters["use_displacements"]:
-                            alphas_rho = entry_stop_gradients(
-                                self.alphas_rho, self.alpha_mask
-                            )
-                            alphas_angle = entry_stop_gradients(
-                                self.alphas_angle, self.alpha_mask
-                            )
-                        else:
-                            alphas_rho = self.alphas_rho
-                            alphas_angle = self.alphas_angle
-                        phis = entry_stop_gradients(self.phis, self.phi_mask)
-                        if self.parameters["use_etas"]:
-                            etas = entry_stop_gradients(self.etas, self.eta_mask)
-                        else:
-                            etas = self.etas
-                        thetas = entry_stop_gradients(self.thetas, self.theta_mask)
-                        new_fids = self.batch_fidelities(
-                            betas_rho,
-                            betas_angle,
-                            alphas_rho,
-                            alphas_angle,
-                            phis,
-                            etas,
-                            thetas,
-                        )
+                        masked_vars = entry_stop_gradients(self.opt_vars, self.mask)
+                        new_fids = self.batch_fidelities(masked_vars)
                         new_loss = self.loss_fun(new_fids)
                         dloss_dvar = tape.gradient(new_loss, self.opt_vars)
                     optimizer.apply_gradients(zip(dloss_dvar, self.opt_vars))
                 dfids = new_fids - fids
                 fids = new_fids
-                callback_fun(self, fids, dfids, epoch)
+                self.callback_fun(self, fids, dfids, epoch, timestamp, start_time)
                 condition_fid = tf.greater(fids, self.parameters["term_fid"])
                 condition_dfid = tf.greater(dfids, self.parameters["dfid_stop"])
                 if tf.reduce_any(condition_fid):
@@ -165,115 +146,3 @@ class BatchOptimizer(VisualizationMixin):
     # if append is True, it will assume the dataset is already created and append only the
     # last aquired values to it.
     # TODO: if needed, could use compression when saving data.
-    
-
-    
-
-    def get_numpy_vars(
-        self,
-        betas_rho=None,
-        betas_angle=None,
-        alphas_rho=None,
-        alphas_angle=None,
-        phis=None,
-        etas=None,
-        thetas=None,
-    ):
-        betas_rho = self.betas_rho if betas_rho is None else betas_rho
-        betas_angle = self.betas_angle if betas_angle is None else betas_angle
-        alphas_rho = self.alphas_rho if alphas_rho is None else alphas_rho
-        alphas_angle = self.alphas_angle if alphas_angle is None else alphas_angle
-        phis = self.phis if phis is None else phis
-        etas = self.etas if etas is None else etas
-        thetas = self.thetas if thetas is None else thetas
-
-        betas = betas_rho.numpy() * np.exp(1j * betas_angle.numpy())
-        alphas = alphas_rho.numpy() * np.exp(1j * alphas_angle.numpy())
-        phis = phis.numpy()
-        etas = etas.numpy()
-        thetas = thetas.numpy()
-        # now, to wrap phis, etas, and thetas so it's in the range [-pi, pi]
-        phis = (phis + np.pi) % (2 * np.pi) - np.pi
-        etas = (etas + np.pi) % (2 * np.pi) - np.pi
-        thetas = (thetas + np.pi) % (2 * np.pi) - np.pi
-
-        # these will have shape N_multistart x N_blocks
-        return betas.T, alphas.T, phis.T, etas.T, thetas.T
-
-
-    def best_circuit(self):
-        fids = self.batch_fidelities(
-            self.betas_rho,
-            self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
-            self.phis,
-            self.etas,
-            self.thetas,
-        )
-        fids = np.atleast_1d(fids.numpy())
-        max_idx = np.argmax(fids)
-        all_betas, all_alphas, all_phis, all_etas, all_thetas = self.get_numpy_vars(
-            self.betas_rho,
-            self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
-            self.phis,
-            self.etas,
-            self.thetas,
-        )
-        max_fid = fids[max_idx]
-        betas = all_betas[max_idx]
-        alphas = all_alphas[max_idx]
-        phis = all_phis[max_idx]
-        etas = all_etas[max_idx]
-        thetas = all_thetas[max_idx]
-        return {
-            "fidelity": max_fid,
-            "betas": betas,
-            "alphas": alphas,
-            "phis": phis,
-            "etas": etas,
-            "thetas": thetas,
-        }
-
-    def all_fidelities(self):
-        fids = self.batch_fidelities(
-            self.betas_rho,
-            self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
-            self.phis,
-            self.etas,
-            self.thetas,
-        )
-        return fids.numpy()
-
-    def best_fidelity(self):
-        fids = self.batch_fidelities(
-            self.betas_rho,
-            self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
-            self.phis,
-            self.etas,
-            self.thetas,
-        )
-        max_idx = tf.argmax(fids).numpy()
-        max_fid = fids[max_idx].numpy()
-        return max_fid
-
-    def print_info(self):
-        best_circuit = self.best_circuit()
-        with np.printoptions(precision=5, suppress=True):
-            for parameter, value in self.parameters.items():
-                print(parameter + ": " + str(value))
-            print("filename: " + self.filename)
-            print("\nBest circuit parameters found:")
-            print("betas:         " + str(best_circuit["betas"]))
-            print("alphas:        " + str(best_circuit["alphas"]))
-            print("phis (deg):    " + str(best_circuit["phis"] * 180.0 / np.pi))
-            print("etas (deg):    " + str(best_circuit["etas"] * 180.0 / np.pi))
-            print("thetas (deg):  " + str(best_circuit["thetas"] * 180.0 / np.pi))
-            print("Max Fidelity:  %.6f" % best_circuit["fidelity"])
-            print("\n")
