@@ -7,7 +7,7 @@ setup(
     author='Alec Eickbusch',
     author_email='alec.eickbusch@yale.edu',
     url='https://github.com/alec-eickbusch/ECD_control/branches',
-    packages=['ECD_control/ECD_pulse_construction', 'ECD_control/ECD_optimization'],
+    packages=['ECD_control/ECD_pulse_construction', 'ECD_control/ECD_optimization', 'ECD_control/gate_sets'],
     install_requires=[
         'qutip', 'tensorflow', 'h5py', 'tqdm', 'scikit-learn'
     ],
