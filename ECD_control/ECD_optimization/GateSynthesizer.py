@@ -17,6 +17,7 @@ from ECD_control.ECD_optimization.batch_optimizer_new import BatchOptimizer
 import qutip as qt
 import datetime
 import time
+from typing import List
 
 # might want to have a separate set of optmizer parameters that are specific to the optimizer.
 # these can be passed as another dictionary
@@ -145,7 +146,7 @@ class GateSynthesizer:
             )
 
     @tf.function
-    def batch_state_transfer_fidelities(self, opt_params):
+    def batch_state_transfer_fidelities(self, opt_params : List[tf.Variable]):
         bs = self.gateset.batch_construct_block_operators(opt_params)
         psis = tf.stack([self.initial_states] * self.parameters["N_multistart"])
         for U in bs:
@@ -163,7 +164,7 @@ class GateSynthesizer:
     # here, including the relative phase in the cost function by taking the real part of the overlap then squaring it.
     # need to think about how this is related to the fidelity.
     @tf.function
-    def batch_state_transfer_fidelities_real_part(self, opt_params):
+    def batch_state_transfer_fidelities_real_part(self, opt_params : List[tf.Variable]):
         bs = self.gateset.batch_construct_block_operators(opt_params)
         psis = tf.stack([self.initial_states] * self.parameters["N_multistart"])
         for U in bs:
@@ -193,16 +194,11 @@ class GateSynthesizer:
         epochs_left = self.parameters["epochs"] - epoch
         expected_time_remaining = epochs_left * time_per_epoch
         fidelities_np = np.squeeze(np.array(fids))
-        betas_np, alphas_np, phis_np, etas_np, thetas_np = self.get_numpy_vars()
+
         if epoch == 0:
             self._save_optimization_data(
                 timestamp,
                 fidelities_np,
-                betas_np,
-                alphas_np,
-                phis_np,
-                etas_np,
-                thetas_np,
                 elapsed_time_s,
                 append=False,
             )
@@ -210,11 +206,6 @@ class GateSynthesizer:
             self._save_optimization_data(
                 timestamp,
                 fidelities_np,
-                betas_np,
-                alphas_np,
-                phis_np,
-                etas_np,
-                thetas_np,
                 elapsed_time_s,
                 append=True,
             )
@@ -243,95 +234,30 @@ class GateSynthesizer:
             )
         return
 
-    def get_numpy_vars(
-        self,
-        betas_rho=None,
-        betas_angle=None,
-        alphas_rho=None,
-        alphas_angle=None,
-        phis=None,
-        etas=None,
-        thetas=None,
-    ):
-        betas_rho = self.betas_rho if betas_rho is None else betas_rho
-        betas_angle = self.betas_angle if betas_angle is None else betas_angle
-        alphas_rho = self.alphas_rho if alphas_rho is None else alphas_rho
-        alphas_angle = self.alphas_angle if alphas_angle is None else alphas_angle
-        phis = self.phis if phis is None else phis
-        etas = self.etas if etas is None else etas
-        thetas = self.thetas if thetas is None else thetas
+    def get_numpy_vars(self, opt_vars : List[tf.Variable]):
 
-        betas = betas_rho.numpy() * np.exp(1j * betas_angle.numpy())
-        alphas = alphas_rho.numpy() * np.exp(1j * alphas_angle.numpy())
-        phis = phis.numpy()
-        etas = etas.numpy()
-        thetas = thetas.numpy()
-        # now, to wrap phis, etas, and thetas so it's in the range [-pi, pi]
-        phis = (phis + np.pi) % (2 * np.pi) - np.pi
-        etas = (etas + np.pi) % (2 * np.pi) - np.pi
-        thetas = (thetas + np.pi) % (2 * np.pi) - np.pi
-
-        # these will have shape N_multistart x N_blocks
-        return betas.T, alphas.T, phis.T, etas.T, thetas.T
+        return [k.numpy().T for k in self.gateset.preprocess_params_before_saving(opt_vars)]
 
     def best_circuit(self):
-        fids = self.batch_fidelities(
-            self.betas_rho,
-            self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
-            self.phis,
-            self.etas,
-            self.thetas,
-        )
+        fids = self.batch_fidelities(self.opt_vars)
         fids = np.atleast_1d(fids.numpy())
         max_idx = np.argmax(fids)
-        all_betas, all_alphas, all_phis, all_etas, all_thetas = self.get_numpy_vars(
-            self.betas_rho,
-            self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
-            self.phis,
-            self.etas,
-            self.thetas,
-        )
+        np_vars = self.get_numpy_vars(self.opt_vars)
         max_fid = fids[max_idx]
-        betas = all_betas[max_idx]
-        alphas = all_alphas[max_idx]
-        phis = all_phis[max_idx]
-        etas = all_etas[max_idx]
-        thetas = all_thetas[max_idx]
-        return {
-            "fidelity": max_fid,
-            "betas": betas,
-            "alphas": alphas,
-            "phis": phis,
-            "etas": etas,
-            "thetas": thetas,
-        }
+        best_params = []
+        for k in np_vars:
+            best_params.append((k.name, k[max_idx]))
+
+        param_dict = dict(best_params)
+        param_dict['fidelity'] = max_fid
+        return param_dict
 
     def all_fidelities(self):
-        fids = self.batch_fidelities(
-            self.betas_rho,
-            self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
-            self.phis,
-            self.etas,
-            self.thetas,
-        )
+        fids = self.batch_fidelities(self.opt_vars)
         return fids.numpy()
 
     def best_fidelity(self):
-        fids = self.batch_fidelities(
-            self.betas_rho,
-            self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
-            self.phis,
-            self.etas,
-            self.thetas,
-        )
+        fids = self.batch_fidelities(self.opt_vars)
         max_idx = tf.argmax(fids).numpy()
         max_fid = fids[max_idx].numpy()
         return max_fid
@@ -343,23 +269,15 @@ class GateSynthesizer:
                 print(parameter + ": " + str(value))
             print("filename: " + self.filename)
             print("\nBest circuit parameters found:")
-            print("betas:         " + str(best_circuit["betas"]))
-            print("alphas:        " + str(best_circuit["alphas"]))
-            print("phis (deg):    " + str(best_circuit["phis"] * 180.0 / np.pi))
-            print("etas (deg):    " + str(best_circuit["etas"] * 180.0 / np.pi))
-            print("thetas (deg):  " + str(best_circuit["thetas"] * 180.0 / np.pi))
-            print("Max Fidelity:  %.6f" % best_circuit["fidelity"])
+
+            for k in best_circuit.keys():
+                print(k + str(best_circuit[k]))
             print("\n")
 
     def _save_optimization_data(
         self,
         timestamp,
         fidelities_np,
-        betas_np,
-        alphas_np,
-        phis_np,
-        etas_np,
-        thetas_np,
         elapsed_time_s,
         append,
     ):
@@ -376,80 +294,36 @@ class GateSynthesizer:
                     )
                 grp.create_dataset("initial_states", data=self.initial_states.numpy())
                 grp.create_dataset("target_states", data=self.target_states.numpy())
-                # dims = [[2, int(self.initial_states[0].numpy().shape[0] / 2)], [1, 1]]
+                
                 grp.create_dataset(
                     "fidelities",
                     chunks=True,
                     data=[fidelities_np],
                     maxshape=(None, self.parameters["N_multistart"]),
                 )
-                grp.create_dataset(
-                    "betas",
-                    data=[betas_np],
-                    chunks=True,
-                    maxshape=(
-                        None,
-                        self.parameters["N_multistart"],
-                        self.parameters["N_blocks"],
-                    ),
-                )
-                grp.create_dataset(
-                    "alphas",
-                    data=[alphas_np],
-                    chunks=True,
-                    maxshape=(None, self.parameters["N_multistart"], 1,),
-                )
-                grp.create_dataset(
-                    "phis",
-                    data=[phis_np],
-                    chunks=True,
-                    maxshape=(
-                        None,
-                        self.parameters["N_multistart"],
-                        self.parameters["N_blocks"],
-                    ),
-                )
-                grp.create_dataset(
-                    "etas",
-                    data=[etas_np],
-                    chunks=True,
-                    maxshape=(
-                        None,
-                        self.parameters["N_multistart"],
-                        self.parameters["N_blocks"],
-                    ),
-                )
-                grp.create_dataset(
-                    "thetas",
-                    data=[thetas_np],
-                    chunks=True,
-                    maxshape=(
-                        None,
-                        self.parameters["N_multistart"],
-                        self.parameters["N_blocks"],
-                    ),
-                )
+
+                for k in self.gateset.preprocess_params_before_saving(self.opt_vars):
+                    grp.create_dataset(
+                        k.name,
+                        data=[k.numpy().T],
+                        chunks=True,
+                        maxshape=(
+                            None,
+                            self.parameters["N_multistart"],
+                            self.parameters["N_blocks"],
+                        ),
+                    )
+
         else:  # just append the data
             with h5py.File(self.filename, "a") as f:
-                f[timestamp]["fidelities"].resize(
-                    f[timestamp]["fidelities"].shape[0] + 1, axis=0
-                )
-                f[timestamp]["betas"].resize(f[timestamp]["betas"].shape[0] + 1, axis=0)
-                f[timestamp]["alphas"].resize(
-                    f[timestamp]["alphas"].shape[0] + 1, axis=0
-                )
-                f[timestamp]["phis"].resize(f[timestamp]["phis"].shape[0] + 1, axis=0)
-                f[timestamp]["etas"].resize(f[timestamp]["etas"].shape[0] + 1, axis=0)
-                f[timestamp]["thetas"].resize(
-                    f[timestamp]["thetas"].shape[0] + 1, axis=0
-                )
 
+                f[timestamp]["fidelities"].resize(f[timestamp][k].shape[0] + 1, axis=0)
                 f[timestamp]["fidelities"][-1] = fidelities_np
-                f[timestamp]["betas"][-1] = betas_np
-                f[timestamp]["alphas"][-1] = alphas_np
-                f[timestamp]["phis"][-1] = phis_np
-                f[timestamp]["etas"][-1] = etas_np
-                f[timestamp]["thetas"][-1] = thetas_np
+
+                for k in self.gateset.preprocess_params_before_saving(self.opt_vars):
+                    f[timestamp][k.name].resize(f[timestamp][k.name].shape[0] + 1, axis=0)
+                    f[timestamp][k.name][-1] = k.numpy().T
+
                 f[timestamp].attrs["elapsed_time_s"] = elapsed_time_s
 
     def _save_termination_reason(self, timestamp, termination_reason):

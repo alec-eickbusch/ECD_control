@@ -15,6 +15,7 @@ import ECD_control.ECD_optimization.tf_quantum as tfq
 import qutip as qt
 import datetime
 import time
+from typing import List
 
 
 class GateSet:
@@ -54,7 +55,7 @@ class GateSet:
         self.__init__(**parameters)
 
     @tf.function
-    def batch_construct_block_operators(self, opt_params: list, *args):
+    def batch_construct_block_operators(self, opt_params: List[tf.Variable], *args):
         """
         This function must take a list of tf.Variable defined in the same order as randomize_and_set_vars()
         and construct a batch of block operators. Note that the performance of the optimization depends heavily
@@ -96,3 +97,23 @@ class GateSet:
         
         self.optimization_mask = None
         pass
+
+    def preprocess_params_before_saving(self, opt_params: List[tf.Variable], *args):
+        """
+        When defined, this function defines a way to process the optimization parameters before they are saved
+        in the h5 file. See the ECD_gate_set for an example of this in action.
+
+        Parameters
+        -----------
+        opt_params  :   List of optimization parameters. This list must be of the same length
+                        as the one defined in ``randomize_and_set_vars``. Each element in the list
+                        should be of dimension (N_blocks, N_multistart).
+
+        Returns
+        -----------
+        List of tf.Variable of the same length as opt_params. Conversion to numpy arrays is handled in the
+        batch optimizer.
+
+        """
+        
+        return opt_params
