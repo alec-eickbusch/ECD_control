@@ -6,14 +6,9 @@ import tensorflow as tf
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)  # supress warnings
 import h5py
 
-print(
-    "\nNeed tf version 2.3.0 or later. Using tensorflow version: "
-    + tf.__version__
-    + "\n"
-)
+
 import ECD_control.ECD_optimization.tf_quantum as tfq
 from ECD_control.gate_sets.gate_set import GateSet
-from ECD_control.ECD_optimization.batch_optimizer_new import BatchOptimizer
 import qutip as qt
 import datetime
 import time
@@ -76,11 +71,11 @@ class GateSynthesizer:
         # self.parameters = self.GateSet.parameters
 
         # TODO: handle case when you pass initial params. In that case, don't randomize, but use "set_tf_vars()"
-        self.opt_vars = self.gateset.randomize_and_set_vars()
+        self.opt_vars = self.gateset.randomize_and_set_vars(self.parameters['N_multistart'])
 
         # self._construct_optimization_masks(beta_mask, alpha_mask, phi_mask,eta_mask, theta_mask)
 
-        self.optimization_mask = self.gateset.create_optimization_mask()
+        self.optimization_mask = self.gateset.create_optimization_mask(self.parameters['N_multistart'])
 
         # opt data will be a dictionary of dictonaries used to store optimization data
         # the dictionary will be addressed by timestamps of optmization.

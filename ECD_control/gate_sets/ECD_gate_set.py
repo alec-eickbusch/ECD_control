@@ -6,11 +6,6 @@ import tensorflow as tf
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)  # supress warnings
 import h5py
 
-print(
-    "\nNeed tf version 2.3.0 or later. Using tensorflow version: "
-    + tf.__version__
-    + "\n"
-)
 import ECD_control.ECD_optimization.tf_quantum as tfq
 from ECD_control.gate_sets.gate_set import GateSet
 import qutip as qt
@@ -19,9 +14,31 @@ import time
 
 class ECDGateSet(GateSet):
 
-    def __init__(self, **kwargs):
-        super.__init__(kwargs)
-    
+    def __init__(self, N_blocks=20, name="ECD_control", **kwargs):
+        super().__init__(N_blocks, name)
+        self.parameters = {**self.parameters, **kwargs} # python 3.9: self.parameters | kwargs
+        self._construct_needed_matrices()
+
+    @tf.function
+    def _construct_needed_matrices(self):
+        N_cav = self.parameters["N_cav"]
+        q = tfq.position(N_cav)
+        p = tfq.momentum(N_cav)
+
+        # Pre-diagonalize
+        (self._eig_q, self._U_q) = tf.linalg.eigh(q)
+        (self._eig_p, self._U_p) = tf.linalg.eigh(p)
+
+        self._qp_comm = tf.linalg.diag_part(q @ p - p @ q)
+
+        # if self.parameters["optimization_type"] == "unitary":
+        #     P_cav = self.parameters["P_cav"]
+        #     partial_I = np.array(qt.identity(N_cav))
+        #     for j in range(P_cav, N_cav):
+        #         partial_I[j, j] = 0
+        #     partial_I = qt.Qobj(partial_I)
+        #     self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
+
     
     def create_optimization_masks(self, length):
 

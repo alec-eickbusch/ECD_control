@@ -6,11 +6,6 @@ import tensorflow as tf
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)  # supress warnings
 import h5py
 
-print(
-    "\nNeed tf version 2.3.0 or later. Using tensorflow version: "
-    + tf.__version__
-    + "\n"
-)
 import ECD_control.ECD_optimization.tf_quantum as tfq
 import qutip as qt
 import datetime
@@ -28,21 +23,15 @@ class GateSet:
     
     def __init__(
         self,
-        dimension=20,
         N_blocks=20,
-        n_parameters=20,
         name="ECD_control",
         **kwargs
     ): # some of the above may not be necessary. i.e. dimension, N_blocks, n_parameters are implicit in some of the defs below. think about this
         self.parameters = {
-            'dimension' : dimension,
-            'n_parameters' : n_parameters,
             'N_blocks' : N_blocks,
             'name' : name,
             }
         self.parameters.update(kwargs)
-
-        assert()
         
 
     def modify_parameters(self, **kwargs):
