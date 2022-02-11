@@ -12,71 +12,76 @@ print(
     + "\n"
 )
 import ECD_control.ECD_optimization.tf_quantum as tfq
-from ECD_control.ECD_gate_sets.gate_set import GateSet
+from ECD_control.gate_sets.gate_set import GateSet
 import qutip as qt
 import datetime
 import time
 
 class ECDGateSet(GateSet):
+
+    def __init__(self, **kwargs):
+        super.__init__(kwargs)
     
     
-    def create_optimization_masks(
-        self, beta_mask=None, alpha_mask=None, phi_mask=None, eta_mask=None, theta_mask=None
-    ):
-        if beta_mask is None:
+    def create_optimization_masks(self, length):
+
+        masks = []
+        if self.parameters['beta_mask'] is None:
             beta_mask = np.ones(
-                shape=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+                shape=(self.parameters["N_blocks"], length),
                 dtype=np.float32,
             )
             if self.parameters["no_CD_end"]:
                 beta_mask[-1, :] = 0  # don't optimize final CD
+            masks.append(beta_mask)
         else:
             # TODO: add mask to self.parameters for saving if it's non standard!
             raise Exception(
                 "need to implement non-standard masks for batch optimization"
             )
-        if alpha_mask is None:
+        if self.parameters['alpha_mask'] is None:
             alpha_mask = np.ones(
-                shape=(1, self.parameters["N_multistart"]), dtype=np.float32,
+                shape=(1, length), dtype=np.float32,
             )
+            masks.append(alpha_mask)
         else:
             raise Exception(
                 "need to implement non-standard masks for batch optimization"
             )
-        if phi_mask is None:
+        if self.parameters['phi_mask'] is None:
             phi_mask = np.ones(
-                shape=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+                shape=(self.parameters["N_blocks"], length),
                 dtype=np.float32,
             )
             phi_mask[0, :] = 0  # stop gradient on first phi entry
+            masks.append(phi_mask)
         else:
             raise Exception(
                 "need to implement non-standard masks for batch optimization"
             )
-        if eta_mask is None:
+        if self.parameters['eta_mask'] is None:
             eta_mask = np.ones(
-                shape=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+                shape=(self.parameters["N_blocks"], length),
                 dtype=np.float32,
             )
             phi_mask[0, :] = 0  # stop gradient on first phi entry
+            masks.append(eta_mask)
         else:
             raise Exception(
                 "need to implement non-standard masks for batch optimization"
             )
-        if theta_mask is None:
+        if self.parameters['theta_mask'] is None:
             theta_mask = np.ones(
-                shape=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+                shape=(self.parameters["N_blocks"], length),
                 dtype=np.float32,
             )
+            masks.append(theta_mask)
         else:
             raise Exception(
                 "need to implement non-standard masks for batch optimization"
             )
-        self.beta_mask = beta_mask
-        self.alpha_mask = alpha_mask
-        self.phi_mask = phi_mask
-        self.eta_mask = eta_mask
-        self.theta_mask = theta_mask
+        
+        return masks
 
 
     @tf.function
@@ -111,9 +116,16 @@ class ECDGateSet(GateSet):
         )
 
     @tf.function
-    def batch_construct_block_operators(
-        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, etas, thetas
-    ):
+    def batch_construct_block_operators(self, opt_vars):
+
+        betas_rho = opt_vars[0]
+        betas_angle = opt_vars[1]
+        alphas_rho = opt_vars[2]
+        alphas_angle = opt_vars[3]
+        phis = opt_vars[4]
+        etas = opt_vars[5]
+        thetas = opt_vars[6]
+        
         # conditional displacements
         Bs = (
             tf.cast(betas_rho, dtype=tf.complex64)
@@ -186,79 +198,104 @@ class ECDGateSet(GateSet):
         )
         return blocks
 
-    def randomize_and_set_vars(self):
+    def randomize_and_set_vars(self, parallel):
+
+        init_vars = []
+
         beta_scale = self.parameters["beta_scale"]
         alpha_scale = self.parameters["alpha_scale"]
         theta_scale = self.parameters["theta_scale"]
         betas_rho = np.random.uniform(
             0,
             beta_scale,
-            size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+            size=(self.parameters["N_blocks"], parallel),
         )
         betas_angle = np.random.uniform(
             -np.pi,
             np.pi,
-            size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+            size=(self.parameters["N_blocks"], parallel),
         )
         if self.parameters["use_displacements"]:
             alphas_rho = np.random.uniform(
-                0, alpha_scale, size=(1, self.parameters["N_multistart"]),
+                0, alpha_scale, size=(1, parallel),
             )
             alphas_angle = np.random.uniform(
-                -np.pi, np.pi, size=(1, self.parameters["N_multistart"]),
+                -np.pi, np.pi, size=(1, parallel),
             )
         phis = np.random.uniform(
             -np.pi,
             np.pi,
-            size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+            size=(self.parameters["N_blocks"], parallel),
         )
         if self.parameters["use_etas"]:  # eta range is 0 to pi.
             etas = np.random.uniform(
                 -np.pi,
                 np.pi,
-                size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+                size=(self.parameters["N_blocks"], parallel),
             )
         thetas = np.random.uniform(
             -1 * theta_scale,
             theta_scale,
-            size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+            size=(self.parameters["N_blocks"], parallel),
         )
         phis[0] = 0  # everything is relative to first phi
         if self.parameters["no_CD_end"]:
             betas_rho[-1] = 0
             betas_angle[-1] = 0
-        self.betas_rho = tf.Variable(
+        init_vars.append(tf.Variable(
             betas_rho, dtype=tf.float32, trainable=True, name="betas_rho",
-        )
-        self.betas_angle = tf.Variable(
+        ))
+        init_vars.append(tf.Variable(
             betas_angle, dtype=tf.float32, trainable=True, name="betas_angle",
-        )
+        ))
         if self.parameters["use_displacements"]:
-            self.alphas_rho = tf.Variable(
+            init_vars.append(tf.Variable(
                 alphas_rho, dtype=tf.float32, trainable=True, name="alphas_rho",
-            )
-            self.alphas_angle = tf.Variable(
+            ))
+            init_vars.append(tf.Variable(
                 alphas_angle, dtype=tf.float32, trainable=True, name="alphas_angle",
-            )
+            ))
         else:
-            self.alphas_rho = tf.constant(
-                np.zeros(shape=((1, self.parameters["N_multistart"]))),
+            init_vars.append(tf.constant(
+                np.zeros(shape=((1, parallel))), name="alphas_rho",
                 dtype=tf.float32,
-            )
-            self.alphas_angle = tf.constant(
-                np.zeros(shape=((1, self.parameters["N_multistart"]))),
+            ))
+            init_vars.append(tf.constant(
+                np.zeros(shape=((1, parallel))), name="alphas_angle",
                 dtype=tf.float32,
-            )
-        self.phis = tf.Variable(phis, dtype=tf.float32, trainable=True, name="phis",)
+            ))
+        init_vars.append(tf.Variable(phis, dtype=tf.float32, trainable=True, name="phis",))
         if self.parameters["use_etas"]:
-            self.etas = tf.Variable(
+            init_vars.append(tf.Variable(
                 etas, dtype=tf.float32, trainable=True, name="etas",
-            )
+            ))
         else:
-            self.etas = tf.constant(
-                (np.pi / 2.0) * np.ones_like(phis), dtype=tf.float32,
-            )
+            init_vars.append(tf.constant(
+                (np.pi / 2.0) * np.ones_like(phis), name="etas", dtype=tf.float32,
+            ))
 
-        self.thetas = tf.Variable(
+        init_vars.append(tf.Variable(
             thetas, dtype=tf.float32, trainable=True, name="thetas",
-        )
+        ))
+
+        return init_vars
+
+    @tf.function
+    def preprocess_params_before_saving(self, opt_params, *args):
+        processed_params = []
+        processed_params.append(tf.Variable(opt_params[0] * tf.math.exp(1j * opt_params[1])), name='betas')
+        processed_params.append(tf.Variable(opt_params[2] * tf.math.exp(1j * opt_params[3])), name='alphas')
+        processed_params.append((opt_params[4] + np.pi) % (2 * np.pi) - np.pi)
+        processed_params.append((opt_params[5] + np.pi) % (2 * np.pi) - np.pi)
+        processed_params.append((opt_params[6] + np.pi) % (2 * np.pi) - np.pi)
+
+"""
+order of variables:
+betas_rho
+betas_angle
+alphas_rho
+alphas_angle
+phis
+etas
+thetas
+"""

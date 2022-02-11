@@ -75,20 +75,31 @@ class GateSet:
         
         pass
 
-    def randomize_and_set_vars(self):
+    def randomize_and_set_vars(self, parallel):
         """
         This function creates the tf variables over which we will optimize and randomizes their initial values.
 
+        Parameters
+        -----------
+        parallel    :   Second dimension of initial variables. This is the length of the batch axis which the optimizer
+                        optimizes simultaneously.
+
         Returns
         -----------
-        List of tf.Variable of dimension (N_blocks, N_multistart) with initialized values.
+        List of tf.Variable of dimension (N_blocks, parallel) with initialized values.
         Note that the variables in this list that will be optimized must have ``trainable=True``
         """
 
         pass
 
-    def create_optimization_mask(self, *args):
+    def create_optimization_mask(self, length, *args):
         """
+        Parameters
+        -----------
+        length  :   Length of optimization mask to create. This is the length of the batch axis which the optimizer
+                    optimizes simultaneously.
+                    
+
         Returns
         -----------
         Boolean list of the same length as the list returned by ``randomize_and_set_vars``.
@@ -111,9 +122,9 @@ class GateSet:
 
         Returns
         -----------
-        List of tf.Variable of the same length as opt_params. Conversion to numpy arrays is handled in the
-        batch optimizer.
-
+        List of tf.Variable. This list does not need to be the same length as opt_params. Conversion to numpy 
+        arrays is handled in the batch optimizer.
+        
         """
         
         return opt_params
