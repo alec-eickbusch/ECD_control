@@ -238,14 +238,11 @@ class GateSynthesizer:
         fids = np.atleast_1d(fids.numpy())
         max_idx = np.argmax(fids)
         tf_vars = self.gateset.preprocess_params_before_saving(self.opt_vars)
-        max_fid = fids[max_idx]
-        best_params = []
-        for k in tf_vars:
-            best_params.append((k.name, k[max_idx]))
+        best_params = {}
+        for key, value in tf_vars.items():
+            best_params[key] = value[:, max_idx] # first index is always N_multistart
 
-        param_dict = dict(best_params)
-        param_dict['fidelity'] = max_fid
-        return param_dict
+        return best_params
 
     def all_fidelities(self):
         fids = self.batch_fidelities(self.opt_vars)
@@ -261,6 +258,7 @@ class GateSynthesizer:
         best_circuit = self.best_circuit()
         with np.printoptions(precision=5, suppress=True):
             for parameter, value in self.parameters.items():
+                if parameter is "initial_states" or "final_states": continue
                 print(parameter + ": " + str(value))
             print("filename: " + self.filename)
             print("\nBest circuit parameters found:")
@@ -280,6 +278,7 @@ class GateSynthesizer:
             with h5py.File(self.filename, "a") as f:
                 grp = f.create_group(timestamp)
                 for parameter, value in self.parameters.items():
+                    if value is None: continue
                     grp.attrs[parameter] = value
                 grp.attrs["termination_reason"] = "outside termination"
                 grp.attrs["elapsed_time_s"] = elapsed_time_s
@@ -297,10 +296,10 @@ class GateSynthesizer:
                     maxshape=(None, self.parameters["N_multistart"]),
                 )
 
-                for k in self.gateset.preprocess_params_before_saving(self.opt_vars):
+                for key, value in self.gateset.preprocess_params_before_saving(self.opt_vars).items():
                     grp.create_dataset(
-                        k.name,
-                        data=[k.numpy().T],
+                        key,
+                        data=[value.numpy().T],
                         chunks=True,
                         maxshape=(
                             None,
@@ -312,12 +311,12 @@ class GateSynthesizer:
         else:  # just append the data
             with h5py.File(self.filename, "a") as f:
 
-                f[timestamp]["fidelities"].resize(f[timestamp][k].shape[0] + 1, axis=0)
+                f[timestamp]["fidelities"].resize(f[timestamp]["fidelities"].shape[0] + 1, axis=0)
                 f[timestamp]["fidelities"][-1] = fidelities_np
 
-                for k in self.gateset.preprocess_params_before_saving(self.opt_vars):
-                    f[timestamp][k.name].resize(f[timestamp][k.name].shape[0] + 1, axis=0)
-                    f[timestamp][k.name][-1] = k.numpy().T
+                for key, value in self.gateset.preprocess_params_before_saving(self.opt_vars).items():
+                    f[timestamp][key].resize(f[timestamp][value.name].shape[0] + 1, axis=0)
+                    f[timestamp][key][-1] = value.numpy().T
 
                 f[timestamp].attrs["elapsed_time_s"] = elapsed_time_s
 

@@ -10,7 +10,7 @@ import ECD_control.ECD_optimization.tf_quantum as tfq
 import qutip as qt
 import datetime
 import time
-from typing import List
+from typing import List, Dict
 
 
 class GateSet:
@@ -44,17 +44,17 @@ class GateSet:
         self.__init__(**parameters)
 
     @tf.function
-    def batch_construct_block_operators(self, opt_params: List[tf.Variable], *args):
+    def batch_construct_block_operators(self, opt_params: Dict[str, tf.Variable], *args):
         """
-        This function must take a list of tf.Variable defined in the same order as randomize_and_set_vars()
+        This function must take a dict of tf.Variable defined in the same order as randomize_and_set_vars()
         and construct a batch of block operators. Note that the performance of the optimization depends heavily
         on your implementation of this function. For the best performance, do everything with vectorized operations
         and decorate your implementation with @tf.function.
 
         Parameters
         -----------
-        opt_params  :   List of optimization parameters. This list must be of the same length
-                        as the one defined in ``randomize_and_set_vars``. Each element in the list
+        opt_params  :   dict of optimization parameters. This dict must be of the same length
+                        as the one defined in ``randomize_and_set_vars``. Each element in the dict
                         should be of dimension (N_blocks, N_multistart).
         
         Returns
@@ -75,8 +75,8 @@ class GateSet:
 
         Returns
         -----------
-        List of tf.Variable of dimension (N_blocks, parallel) with initialized values.
-        Note that the variables in this list that will be optimized must have ``trainable=True``
+        dict of tf.Variable of dimension (N_blocks, parallel) with initialized values.
+        Note that the variables in this dict that will be optimized must have ``trainable=True``
         """
 
         pass
@@ -91,27 +91,27 @@ class GateSet:
 
         Returns
         -----------
-        Boolean list of the same length as the list returned by ``randomize_and_set_vars``.
+        Boolean dict with as many items as the dict returned by ``randomize_and_set_vars``.
         This mask is used to exclude some parameters from the gradient calculation.
         """
         
         self.optimization_mask = None
         pass
 
-    def preprocess_params_before_saving(self, opt_params: List[tf.Variable], *args):
+    def preprocess_params_before_saving(self, opt_params: Dict[str, tf.Variable], *args):
         """
         When defined, this function defines a way to process the optimization parameters before they are saved
         in the h5 file. See the ECD_gate_set for an example of this in action.
 
         Parameters
         -----------
-        opt_params  :   List of optimization parameters. This list must be of the same length
-                        as the one defined in ``randomize_and_set_vars``. Each element in the list
+        opt_params  :   Dict of optimization parameters. This dict must be of the same length
+                        as the one defined in ``randomize_and_set_vars``. Each element in the dict
                         should be of dimension (N_blocks, N_multistart).
 
         Returns
         -----------
-        List of tf.Variable. This list does not need to be the same length as opt_params. Conversion to numpy 
+        Dict of tf.Variable. This dict does not need to be the same length as opt_params. Conversion to numpy 
         arrays is handled in the batch optimizer.
         
         """

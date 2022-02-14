@@ -16,10 +16,10 @@ class ECDGateSet(GateSet):
 
     def __init__(self, N_blocks=20, name="ECD_control", **kwargs):
         super().__init__(N_blocks, name)
+        # combine all keywork arguments
         self.parameters = {**self.parameters, **kwargs} # python 3.9: self.parameters | kwargs
         self._construct_needed_matrices()
 
-    @tf.function
     def _construct_needed_matrices(self):
         N_cav = self.parameters["N_cav"]
         q = tfq.position(N_cav)
@@ -56,7 +56,7 @@ class ECDGateSet(GateSet):
             raise Exception(
                 "need to implement non-standard masks for batch optimization"
             )
-        if self.parameters['alpha_mask'] is None:
+        if self.parameters['alpha_mask'] is None and self.parameters['use_displacements']:
             alpha_mask = np.ones(
                 shape=(1, length), dtype=np.float32,
             )
@@ -135,13 +135,14 @@ class ECDGateSet(GateSet):
     @tf.function
     def batch_construct_block_operators(self, opt_vars):
 
-        betas_rho = opt_vars[0]
-        betas_angle = opt_vars[1]
-        alphas_rho = opt_vars[2]
-        alphas_angle = opt_vars[3]
-        phis = opt_vars[4]
-        etas = opt_vars[5]
-        thetas = opt_vars[6]
+        if self.parameters['use_displacements']:
+            alphas_rho = opt_vars["alphas_rho"]
+            alphas_angle = opt_vars["alphas_angle"]
+        betas_rho = opt_vars["betas_rho"]
+        betas_angle = opt_vars["betas_angle"]
+        phis = opt_vars["phis"]
+        etas = opt_vars["etas"]
+        thetas = opt_vars["thetas"]
         
         # conditional displacements
         Bs = (
@@ -154,12 +155,17 @@ class ECDGateSet(GateSet):
         )
 
         # final displacement
-        D = tf.cast(alphas_rho, dtype=tf.complex64) * tf.math.exp(
-            tf.constant(1j, dtype=tf.complex64)
-            * tf.cast(alphas_angle, dtype=tf.complex64)
-        )
-
-        ds_end = self.batch_construct_displacement_operators(D)
+        if self.parameters['use_displacements']:
+            D = tf.cast(alphas_rho, dtype=tf.complex64) * tf.math.exp(
+                tf.constant(1j, dtype=tf.complex64)
+                * tf.cast(alphas_angle, dtype=tf.complex64)
+            )
+            ds_end = self.batch_construct_displacement_operators(D)
+        else:
+            D = tf.zeros((1, betas_rho.shape[1]))
+            ds_end = self.batch_construct_displacement_operators(D)
+            # ds_end = tf.eye(self.parameters['N_cav'], batch_shape=) # figure this out; faster
+        
         ds_g = self.batch_construct_displacement_operators(Bs)
         ds_e = tf.linalg.adjoint(ds_g)
 
@@ -217,7 +223,7 @@ class ECDGateSet(GateSet):
 
     def randomize_and_set_vars(self, parallel):
 
-        init_vars = []
+        init_vars = {}
 
         beta_scale = self.parameters["beta_scale"]
         alpha_scale = self.parameters["alpha_scale"]
@@ -259,52 +265,47 @@ class ECDGateSet(GateSet):
         if self.parameters["no_CD_end"]:
             betas_rho[-1] = 0
             betas_angle[-1] = 0
-        init_vars.append(tf.Variable(
+        init_vars["betas_rho"] = tf.Variable(
             betas_rho, dtype=tf.float32, trainable=True, name="betas_rho",
-        ))
-        init_vars.append(tf.Variable(
+        )
+        init_vars["betas_angle"] = tf.Variable(
             betas_angle, dtype=tf.float32, trainable=True, name="betas_angle",
-        ))
+        )
         if self.parameters["use_displacements"]:
-            init_vars.append(tf.Variable(
+            init_vars["alphas_rho"] = tf.Variable(
                 alphas_rho, dtype=tf.float32, trainable=True, name="alphas_rho",
-            ))
-            init_vars.append(tf.Variable(
+            )
+            init_vars["alphas_angle"] = tf.Variable(
                 alphas_angle, dtype=tf.float32, trainable=True, name="alphas_angle",
-            ))
-        else:
-            init_vars.append(tf.constant(
-                np.zeros(shape=((1, parallel))), name="alphas_rho",
-                dtype=tf.float32,
-            ))
-            init_vars.append(tf.constant(
-                np.zeros(shape=((1, parallel))), name="alphas_angle",
-                dtype=tf.float32,
-            ))
-        init_vars.append(tf.Variable(phis, dtype=tf.float32, trainable=True, name="phis",))
+            )
+        init_vars["phis"] = tf.Variable(phis, dtype=tf.float32, trainable=True, name="phis",)
         if self.parameters["use_etas"]:
-            init_vars.append(tf.Variable(
+            init_vars["etas"] = tf.Variable(
                 etas, dtype=tf.float32, trainable=True, name="etas",
-            ))
+            )
         else:
-            init_vars.append(tf.constant(
+            init_vars["etas"] = (tf.constant(
                 (np.pi / 2.0) * np.ones_like(phis), name="etas", dtype=tf.float32,
             ))
 
-        init_vars.append(tf.Variable(
+        init_vars["thetas"] = (tf.Variable(
             thetas, dtype=tf.float32, trainable=True, name="thetas",
         ))
 
         return init_vars
 
-    @tf.function
     def preprocess_params_before_saving(self, opt_params, *args):
-        processed_params = []
-        processed_params.append(tf.Variable(opt_params[0] * tf.math.exp(1j * opt_params[1])), name='betas')
-        processed_params.append(tf.Variable(opt_params[2] * tf.math.exp(1j * opt_params[3])), name='alphas')
-        processed_params.append((opt_params[4] + np.pi) % (2 * np.pi) - np.pi)
-        processed_params.append((opt_params[5] + np.pi) % (2 * np.pi) - np.pi)
-        processed_params.append((opt_params[6] + np.pi) % (2 * np.pi) - np.pi)
+        processed_params = {}
+        processed_params["betas"] = tf.Variable(tf.cast(opt_params["betas_rho"], dtype=tf.complex64) * tf.math.exp(1j * tf.cast(opt_params["betas_angle"], dtype=tf.complex64)), name='betas', dtype=tf.complex64)
+        if self.parameters['use_displacements']:
+            processed_params["alphas"] = tf.Variable(tf.cast(opt_params["alphas_rho"], dtype=tf.complex64) * tf.math.exp(1j * tf.cast(opt_params["alphas_angle"], dtype=tf.complex64)), name='alphas', dtype=tf.complex64)
+        processed_params["phis"] = ((opt_params["phis"] + np.pi) % (2 * np.pi) - np.pi)
+        processed_params["etas"] = ((opt_params["etas"] + np.pi) % (2 * np.pi) - np.pi)
+        processed_params["thetas"] = ((opt_params["thetas"] + np.pi) % (2 * np.pi) - np.pi)
+
+        return processed_params
+
+        # can do this better if we switch to a dict, then names are also automatic
 
 """
 order of variables:
