@@ -75,24 +75,25 @@ class GateSet:
 
         Returns
         -----------
-        dict of tf.Variable of dimension (N_blocks, parallel) with initialized values.
+        dict of tf.Variable (no tf.constants are allowed) of dimension (N_blocks, parallel) with initialized values.
         Note that the variables in this dict that will be optimized must have ``trainable=True``
         """
 
         pass
 
-    def create_optimization_mask(self, length, *args):
+    def create_optimization_mask(self, parallel, *args):
         """
         Parameters
         -----------
-        length  :   Length of optimization mask to create. This is the length of the batch axis which the optimizer
+        parallel  :   Length of optimization mask to create. This is the length of the batch axis which the optimizer
                     optimizes simultaneously.
                     
 
         Returns
         -----------
-        Boolean dict with as many items as the dict returned by ``randomize_and_set_vars``.
-        This mask is used to exclude some parameters from the gradient calculation.
+        Dict of integer arrays with as many items as the dict returned by ``randomize_and_set_vars``.
+        This mask is used to exclude some parameters from the gradient calculation. The shape of each array
+        should be (N_blocks, parallel)
         """
         
         self.optimization_mask = None

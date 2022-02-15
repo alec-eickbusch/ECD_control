@@ -315,7 +315,7 @@ class GateSynthesizer:
                 f[timestamp]["fidelities"][-1] = fidelities_np
 
                 for key, value in self.gateset.preprocess_params_before_saving(self.opt_vars).items():
-                    f[timestamp][key].resize(f[timestamp][value.name].shape[0] + 1, axis=0)
+                    f[timestamp][key].resize(f[timestamp][key].shape[0] + 1, axis=0)
                     f[timestamp][key][-1] = value.numpy().T
 
                 f[timestamp].attrs["elapsed_time_s"] = elapsed_time_s

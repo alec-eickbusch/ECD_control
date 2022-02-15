@@ -45,6 +45,28 @@ class BatchOptimizer(VisualizationMixin):
 
         return
 
+    @tf.function
+    def entry_stop_gradients(self, vars, mask_var):
+        """
+        This function masks certain trainable parameters from the gradient calculator.
+        This is useful if one of the block parameters is a constant.
+
+        Parameters
+        -----------
+        vars    :   List of tf.variable. This list should be of the same length as
+                    self.opt_vars.
+        mask    :   List of masks of the same length as target.
+
+        Returns
+        -----------
+        list of tf.tensor with some block parameters masked out of the gradient calculation
+        """
+
+        mask_list = {}
+        for key, value in vars.items():
+            mask_h = tf.abs(mask_var[key] - 1)
+            mask_list[key] = tf.stop_gradient(mask_h * value) + mask_var[key] * value
+        return mask_list
 
     def optimize(self):
 
@@ -54,30 +76,6 @@ class BatchOptimizer(VisualizationMixin):
         # start time
         start_time = time.time()
         optimizer = tf.optimizers.Adam(self.parameters["learning_rate"])
-        
-
-        @tf.function
-        def entry_stop_gradients(vars, mask):
-            """
-            This function masks certain trainable parameters from the gradient calculator.
-            This is useful if one of the block parameters is a constant.
-
-            Parameters
-            -----------
-            vars    :   List of tf.variable. This list should be of the same length as
-                        self.opt_vars.
-            mask    :   List of masks of the same length as target.
-
-            Returns
-            -----------
-            list of tf.tensor with some block parameters masked out of the gradient calculation
-            """
-
-            mask_list = []
-            for k in zip(vars, mask): # I think this for loop should be fine. It's no different than calling all these in a row. Could also reshape all inputs into one large tf.variable
-                mask_h = tf.abs(k[1] - 1)
-                mask_list.append(tf.stop_gradient(mask_h * k[0]) + k[1] * k[0])
-            return mask_list
 
 
         initial_fids = self.batch_fidelities(self.opt_vars)
@@ -87,14 +85,14 @@ class BatchOptimizer(VisualizationMixin):
             for epoch in range(self.parameters["epochs"] + 1)[1:]:
                 for _ in range(self.parameters["epoch_size"]):
                     with tf.GradientTape() as tape:
-                        masked_vars = entry_stop_gradients(self.opt_vars, self.mask)
+                        masked_vars = self.entry_stop_gradients(self.opt_vars, self.mask)
                         new_fids = self.batch_fidelities(masked_vars)
                         new_loss = self.loss_fun(new_fids)
-                        dloss_dvar = tape.gradient(new_loss, self.opt_vars)
-                    optimizer.apply_gradients(zip(dloss_dvar, self.opt_vars))
+                        dloss_dvar = tape.gradient(new_loss, list(self.opt_vars.values()))
+                    optimizer.apply_gradients(zip(dloss_dvar, list(self.opt_vars.values())))
                 dfids = new_fids - fids
                 fids = new_fids
-                self.callback_fun(self, fids, dfids, epoch, timestamp, start_time)
+                self.callback_fun(fids, dfids, epoch, timestamp, start_time)
                 condition_fid = tf.greater(fids, self.parameters["term_fid"])
                 condition_dfid = tf.greater(dfids, self.parameters["dfid_stop"])
                 if tf.reduce_any(condition_fid):

@@ -40,9 +40,9 @@ class ECDGateSet(GateSet):
         #     self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
 
     
-    def create_optimization_masks(self, length):
+    def create_optimization_mask(self, length):
 
-        masks = []
+        masks = {}
         if self.parameters['beta_mask'] is None:
             beta_mask = np.ones(
                 shape=(self.parameters["N_blocks"], length),
@@ -50,7 +50,8 @@ class ECDGateSet(GateSet):
             )
             if self.parameters["no_CD_end"]:
                 beta_mask[-1, :] = 0  # don't optimize final CD
-            masks.append(beta_mask)
+            masks["betas_rho"] = beta_mask
+            masks["betas_angle"] = beta_mask
         else:
             # TODO: add mask to self.parameters for saving if it's non standard!
             raise Exception(
@@ -60,18 +61,19 @@ class ECDGateSet(GateSet):
             alpha_mask = np.ones(
                 shape=(1, length), dtype=np.float32,
             )
-            masks.append(alpha_mask)
-        else:
-            raise Exception(
-                "need to implement non-standard masks for batch optimization"
-            )
+            masks["alphas_rho"] = alpha_mask
+            masks["alphas_angle"] = alpha_mask
+        # else:
+        #     raise Exception(
+        #         "need to implement non-standard masks for batch optimization"
+        #     )
         if self.parameters['phi_mask'] is None:
             phi_mask = np.ones(
                 shape=(self.parameters["N_blocks"], length),
                 dtype=np.float32,
             )
             phi_mask[0, :] = 0  # stop gradient on first phi entry
-            masks.append(phi_mask)
+            masks["phis"] = phi_mask
         else:
             raise Exception(
                 "need to implement non-standard masks for batch optimization"
@@ -82,7 +84,7 @@ class ECDGateSet(GateSet):
                 dtype=np.float32,
             )
             phi_mask[0, :] = 0  # stop gradient on first phi entry
-            masks.append(eta_mask)
+            masks["etas"] = eta_mask
         else:
             raise Exception(
                 "need to implement non-standard masks for batch optimization"
@@ -92,7 +94,7 @@ class ECDGateSet(GateSet):
                 shape=(self.parameters["N_blocks"], length),
                 dtype=np.float32,
             )
-            masks.append(theta_mask)
+            masks["thetas"] = theta_mask
         else:
             raise Exception(
                 "need to implement non-standard masks for batch optimization"
@@ -141,8 +143,11 @@ class ECDGateSet(GateSet):
         betas_rho = opt_vars["betas_rho"]
         betas_angle = opt_vars["betas_angle"]
         phis = opt_vars["phis"]
-        etas = opt_vars["etas"]
         thetas = opt_vars["thetas"]
+        if self.parameters['use_etas']:
+            etas = opt_vars["etas"]
+        else:
+            etas = np.pi / 2.0 * tf.ones_like(thetas)
         
         # conditional displacements
         Bs = (
@@ -283,10 +288,6 @@ class ECDGateSet(GateSet):
             init_vars["etas"] = tf.Variable(
                 etas, dtype=tf.float32, trainable=True, name="etas",
             )
-        else:
-            init_vars["etas"] = (tf.constant(
-                (np.pi / 2.0) * np.ones_like(phis), name="etas", dtype=tf.float32,
-            ))
 
         init_vars["thetas"] = (tf.Variable(
             thetas, dtype=tf.float32, trainable=True, name="thetas",
@@ -300,7 +301,8 @@ class ECDGateSet(GateSet):
         if self.parameters['use_displacements']:
             processed_params["alphas"] = tf.Variable(tf.cast(opt_params["alphas_rho"], dtype=tf.complex64) * tf.math.exp(1j * tf.cast(opt_params["alphas_angle"], dtype=tf.complex64)), name='alphas', dtype=tf.complex64)
         processed_params["phis"] = ((opt_params["phis"] + np.pi) % (2 * np.pi) - np.pi)
-        processed_params["etas"] = ((opt_params["etas"] + np.pi) % (2 * np.pi) - np.pi)
+        if self.parameters['use_etas']:
+            processed_params["etas"] = ((opt_params["etas"] + np.pi) % (2 * np.pi) - np.pi)
         processed_params["thetas"] = ((opt_params["thetas"] + np.pi) % (2 * np.pi) - np.pi)
 
         return processed_params
