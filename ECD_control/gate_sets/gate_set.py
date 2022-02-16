@@ -20,19 +20,38 @@ class GateSet:
     set and the parameters that will be optimized. This class will be passed to the GateSynthesizer class which will call the optimizer
     your choice to optimize the GateSet parameters.
     """
-    
+
     def __init__(
-        self,
-        N_blocks=20,
-        name="ECD_control",
-        **kwargs
-    ): # some of the above may not be necessary. i.e. dimension, N_blocks, n_parameters are implicit in some of the defs below. think about this
+        self, name="ECD_control", **kwargs
+    ):  # some of the above may not be necessary. i.e. dimension, N_blocks, n_parameters are implicit in some of the defs below. think about this
         self.parameters = {
-            'N_blocks' : N_blocks,
-            'name' : name,
-            }
+            "name": name,
+        }
         self.parameters.update(kwargs)
+
+    @property
+    def parameter_names(self):
+        """
+        Returns name of parameters for this gate set in order. 
         
+        Returns
+        -----------
+        list of strings
+        """
+        pass
+
+    def randomization_ranges(self):
+        """
+        For each parameter, specify the range to use for random initialization.
+        
+        Returns
+        -----------
+        dictionary of tuples.
+        Keys: parameter names
+        items: tuple of (low, high) range for randomization.
+        """
+        pass
+
 
     def modify_parameters(self, **kwargs):
         # currently, does not support changing optimization type.
@@ -44,7 +63,9 @@ class GateSet:
         self.__init__(**parameters)
 
     @tf.function
-    def batch_construct_block_operators(self, opt_params: Dict[str, tf.Variable], *args):
+    def batch_construct_block_operators(
+        self, opt_params: Dict[str, tf.Variable], *args
+    ):
         """
         This function must take a dict of tf.Variable defined in the same order as randomize_and_set_vars()
         and construct a batch of block operators. Note that the performance of the optimization depends heavily
@@ -61,7 +82,7 @@ class GateSet:
         -----------
         tf.tensor of block operators U of size (N_multistart, U.shape)
         """
-        
+
         pass
 
     def randomize_and_set_vars(self, parallel):
@@ -95,11 +116,13 @@ class GateSet:
         This mask is used to exclude some parameters from the gradient calculation. The shape of each array
         should be (N_blocks, parallel)
         """
-        
+
         self.optimization_mask = None
         pass
 
-    def preprocess_params_before_saving(self, opt_params: Dict[str, tf.Variable], *args):
+    def preprocess_params_before_saving(
+        self, opt_params: Dict[str, tf.Variable], *args
+    ):
         """
         When defined, this function defines a way to process the optimization parameters before they are saved
         in the h5 file. See the ECD_gate_set for an example of this in action.
@@ -116,5 +139,5 @@ class GateSet:
         arrays is handled in the batch optimizer.
         
         """
-        
+
         return opt_params

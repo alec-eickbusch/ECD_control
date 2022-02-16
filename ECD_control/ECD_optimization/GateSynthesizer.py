@@ -17,19 +17,20 @@ from typing import List
 # might want to have a separate set of optmizer parameters that are specific to the optimizer.
 # these can be passed as another dictionary
 
-class GateSynthesizer:
 
+class GateSynthesizer:
     def __init__(
         self,
         gateset: GateSet,
+        N_blocks: 10,
         optimization_type="state transfer",
+        optimization_masks=None,  # optional dictionary of masks
         target_unitary=None,
         initial_states=None,
         target_states=None,
         expectation_operators=None,
         target_expectation_values=None,
         N_multistart=10,
-        N_blocks=20,
         term_fid=0.99,  # can set >1 to force run all epochs
         dfid_stop=1e-4,  # can be set= -1 to force run all epochs
         learning_rate=0.01,
@@ -44,26 +45,27 @@ class GateSynthesizer:
         **kwargs
     ):
         self.parameters = {
-            'optimization_type' : optimization_type,
-            'target_unitary' : target_unitary,
-            'initial_states' : initial_states,
-            'target_states' : target_states,
-            'expectation_operators' : expectation_operators,
-            'target_expectation_values' : target_expectation_values,
-            'N_multistart' : N_multistart,
-            'N_blocks' : N_blocks,
-            'term_fid' : term_fid,
-            'dfid_stop' : dfid_stop,
-            'learning_rate' : learning_rate,
-            'epoch_size' : epoch_size,
-            'epochs' : epochs,
-            'name' : name,
-            'filename' : filename,
-            'comment' : comment,
-            'use_phase' : use_phase,
-            'timestamps' : timestamps,
-            'do_prints' : do_prints
-            }
+            "N_blocks": N_blocks,
+            "optimization_type": optimization_type,
+            "optimization_masks": optimization_masks,
+            "target_unitary": target_unitary,
+            "initial_states": initial_states,
+            "target_states": target_states,
+            "expectation_operators": expectation_operators,
+            "target_expectation_values": target_expectation_values,
+            "N_multistart": N_multistart,
+            "term_fid": term_fid,
+            "dfid_stop": dfid_stop,
+            "learning_rate": learning_rate,
+            "epoch_size": epoch_size,
+            "epochs": epochs,
+            "name": name,
+            "filename": filename,
+            "comment": comment,
+            "use_phase": use_phase,
+            "timestamps": timestamps,
+            "do_prints": do_prints,
+        }
         self.parameters.update(kwargs)
         self.gateset = gateset
 
@@ -71,21 +73,24 @@ class GateSynthesizer:
         # self.parameters = self.GateSet.parameters
 
         # TODO: handle case when you pass initial params. In that case, don't randomize, but use "set_tf_vars()"
-        self.opt_vars = self.gateset.randomize_and_set_vars(self.parameters['N_multistart'])
+        self.opt_vars = self.randomize_and_set_vars()
 
         # self._construct_optimization_masks(beta_mask, alpha_mask, phi_mask,eta_mask, theta_mask)
 
-        self.optimization_mask = self.gateset.create_optimization_mask(self.parameters['N_multistart'])
+        self.optimization_mask = self.create_optimization_mask()
 
         # opt data will be a dictionary of dictonaries used to store optimization data
         # the dictionary will be addressed by timestamps of optmization.
         # each opt will append to opt_data a dictionary
         # this dictionary will contain optimization parameters and results
 
-        self.timestamps = self.parameters['timestamps']
+        self.timestamps = self.parameters["timestamps"]
         self.filename = (
-            self.parameters['filename']
-            if (self.parameters['filename'] is not None and self.parameters['filename'] != "")
+            self.parameters["filename"]
+            if (
+                self.parameters["filename"] is not None
+                and self.parameters["filename"] != ""
+            )
             else self.parameters["name"]
         )
         path = self.filename.split(".")
@@ -96,7 +101,7 @@ class GateSynthesizer:
             self.parameters["optimization_type"] == "state transfer"
             or self.parameters["optimization_type"] == "analysis"
         ):
-            self.batch_fidelities = ( 
+            self.batch_fidelities = (
                 self.batch_state_transfer_fidelities
                 if self.parameters["use_phase"]
                 else self.batch_state_transfer_fidelities_real_part
@@ -104,16 +109,18 @@ class GateSynthesizer:
             # set fidelity function
 
             self.initial_states = tf.stack(
-                [tfq.qt2tf(state) for state in self.parameters['initial_states']]
+                [tfq.qt2tf(state) for state in self.parameters["initial_states"]]
             )
 
-            self.target_unitary = tfq.qt2tf(self.parameters['target_unitary'])
+            self.target_unitary = tfq.qt2tf(self.parameters["target_unitary"])
 
             # if self.target_unitary is not None: TODO
             #     raise Exception("Need to fix target_unitary multi-state transfer generation!")
 
             self.target_states = (  # store dag
-                tf.stack([tfq.qt2tf(state) for state in self.parameters['target_states']])
+                tf.stack(
+                    [tfq.qt2tf(state) for state in self.parameters["target_states"]]
+                )
                 if self.target_unitary is None
                 else self.target_unitary @ self.initial_states
             )
@@ -124,9 +131,13 @@ class GateSynthesizer:
 
             N_cav = self.initial_states[0].numpy().shape[0] // 2
         elif self.parameters["optimization_type"] == "unitary":
-            self.target_unitary = tfq.qt2tf(self.parameters['target_unitary'])
+            self.target_unitary = tfq.qt2tf(self.parameters["target_unitary"])
             N_cav = self.target_unitary.numpy().shape[0] // 2
-            P_cav = self.parameters['P_cav'] if self.parameters['P_cav'] is not None else N_cav
+            P_cav = (
+                self.parameters["P_cav"]
+                if self.parameters["P_cav"] is not None
+                else N_cav
+            )
             raise Exception("Need to implement unitary optimization")
 
         elif self.parameters["optimization_type"] == "expectation":
@@ -141,7 +152,7 @@ class GateSynthesizer:
             )
 
     @tf.function
-    def batch_state_transfer_fidelities(self, opt_params : List[tf.Variable]):
+    def batch_state_transfer_fidelities(self, opt_params: List[tf.Variable]):
         bs = self.gateset.batch_construct_block_operators(opt_params)
         psis = tf.stack([self.initial_states] * self.parameters["N_multistart"])
         for U in bs:
@@ -159,7 +170,7 @@ class GateSynthesizer:
     # here, including the relative phase in the cost function by taking the real part of the overlap then squaring it.
     # need to think about how this is related to the fidelity.
     @tf.function
-    def batch_state_transfer_fidelities_real_part(self, opt_params : List[tf.Variable]):
+    def batch_state_transfer_fidelities_real_part(self, opt_params: List[tf.Variable]):
         bs = self.gateset.batch_construct_block_operators(opt_params)
         psis = tf.stack([self.initial_states] * self.parameters["N_multistart"])
         for U in bs:
@@ -182,7 +193,6 @@ class GateSynthesizer:
         avg_loss = tf.reduce_sum(losses) / self.parameters["N_multistart"]
         return avg_loss
 
-
     def callback_fun(self, fids, dfids, epoch, timestamp, start_time):
         elapsed_time_s = time.time() - start_time
         time_per_epoch = elapsed_time_s / epoch if epoch != 0 else 0.0
@@ -192,24 +202,18 @@ class GateSynthesizer:
 
         if epoch == 0:
             self._save_optimization_data(
-                timestamp,
-                fidelities_np,
-                elapsed_time_s,
-                append=False,
+                timestamp, fidelities_np, elapsed_time_s, append=False,
             )
         else:
             self._save_optimization_data(
-                timestamp,
-                fidelities_np,
-                elapsed_time_s,
-                append=True,
+                timestamp, fidelities_np, elapsed_time_s, append=True,
             )
         avg_fid = tf.reduce_sum(fids) / self.parameters["N_multistart"]
         max_fid = tf.reduce_max(fids)
         avg_dfid = tf.reduce_sum(dfids) / self.parameters["N_multistart"]
         max_dfid = tf.reduce_max(dfids)
         extra_string = " (real part)" if self.parameters["use_phase"] else ""
-        if self.parameters['do_prints']:
+        if self.parameters["do_prints"]:
             print(
                 "\r Epoch: %d / %d Max Fid: %.6f Avg Fid: %.6f Max dFid: %.6f Avg dFid: %.6f"
                 % (
@@ -229,9 +233,12 @@ class GateSynthesizer:
             )
         return
 
-    def get_numpy_vars(self, opt_vars : List[tf.Variable]):
+    def get_numpy_vars(self, opt_vars: List[tf.Variable]):
 
-        return [(k.numpy().T) for k in self.gateset.preprocess_params_before_saving(opt_vars)]
+        return [
+            (k.numpy().T)
+            for k in self.gateset.preprocess_params_before_saving(opt_vars)
+        ]
 
     def best_circuit(self):
         fids = self.batch_fidelities(self.opt_vars)
@@ -240,7 +247,7 @@ class GateSynthesizer:
         tf_vars = self.gateset.preprocess_params_before_saving(self.opt_vars)
         best_params = {}
         for key, value in tf_vars.items():
-            best_params[key] = value[:, max_idx] # first index is always N_multistart
+            best_params[key] = value[:, max_idx]  # first index is always N_multistart
 
         return best_params
 
@@ -258,7 +265,8 @@ class GateSynthesizer:
         best_circuit = self.best_circuit()
         with np.printoptions(precision=5, suppress=True):
             for parameter, value in self.parameters.items():
-                if parameter is "initial_states" or "final_states": continue
+                if parameter is "initial_states" or "final_states":
+                    continue
                 print(parameter + ": " + str(value))
             print("filename: " + self.filename)
             print("\nBest circuit parameters found:")
@@ -268,18 +276,19 @@ class GateSynthesizer:
             print("\n")
 
     def _save_optimization_data(
-        self,
-        timestamp,
-        fidelities_np,
-        elapsed_time_s,
-        append,
+        self, timestamp, fidelities_np, elapsed_time_s, append,
     ):
         if not append:
             with h5py.File(self.filename, "a") as f:
                 grp = f.create_group(timestamp)
                 for parameter, value in self.parameters.items():
-                    if value is None: continue
-                    grp.attrs[parameter] = value
+                    if value is None:
+                        continue
+                    if type(value) is dict:
+                        for key,item in value.items():
+                            if item is None:
+                                continue
+                            grp.attrs[key] = item
                 grp.attrs["termination_reason"] = "outside termination"
                 grp.attrs["elapsed_time_s"] = elapsed_time_s
                 if self.target_unitary is not None:
@@ -288,7 +297,7 @@ class GateSynthesizer:
                     )
                 grp.create_dataset("initial_states", data=self.initial_states.numpy())
                 grp.create_dataset("target_states", data=self.target_states.numpy())
-                
+
                 grp.create_dataset(
                     "fidelities",
                     chunks=True,
@@ -296,7 +305,9 @@ class GateSynthesizer:
                     maxshape=(None, self.parameters["N_multistart"]),
                 )
 
-                for key, value in self.gateset.preprocess_params_before_saving(self.opt_vars).items():
+                for key, value in self.gateset.preprocess_params_before_saving(
+                    self.opt_vars
+                ).items():
                     grp.create_dataset(
                         key,
                         data=[value.numpy().T],
@@ -311,10 +322,14 @@ class GateSynthesizer:
         else:  # just append the data
             with h5py.File(self.filename, "a") as f:
 
-                f[timestamp]["fidelities"].resize(f[timestamp]["fidelities"].shape[0] + 1, axis=0)
+                f[timestamp]["fidelities"].resize(
+                    f[timestamp]["fidelities"].shape[0] + 1, axis=0
+                )
                 f[timestamp]["fidelities"][-1] = fidelities_np
 
-                for key, value in self.gateset.preprocess_params_before_saving(self.opt_vars).items():
+                for key, value in self.gateset.preprocess_params_before_saving(
+                    self.opt_vars
+                ).items():
                     f[timestamp][key].resize(f[timestamp][key].shape[0] + 1, axis=0)
                     f[timestamp][key][-1] = value.numpy().T
 
@@ -323,6 +338,53 @@ class GateSynthesizer:
     def _save_termination_reason(self, timestamp, termination_reason):
         with h5py.File(self.filename, "a") as f:
             f[timestamp].attrs["termination_reason"] = termination_reason
+
+    def randomize_and_set_vars(self):
+
+        init_vars = {}
+
+        init_scales = self.gateset.randomization_ranges()
+        init_vars = {}
+        for var_name in self.gateset.parameter_names:
+            scale = init_scales[var_name]
+            var_np = np.random.uniform(
+                scale[0],
+                scale[1],
+                size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+            )
+            var_tf = tf.Variable(
+                var_np, dtype=tf.float32, trainable=True, name=var_name
+            )
+            init_vars[var_name] = var_tf
+        return init_vars
+
+    def create_optimization_mask(self):
+        masks = {}
+        if self.parameters['optimization_masks'] is None:
+            self.parameters['optimization_masks'] = {
+                var_name: None for var_name in self.gateset.parameter_names
+            }
+        for var_name in self.gateset.parameter_names:
+            if self.parameters['optimization_masks'][var_name] is None:
+                var_mask = np.ones(
+                    shape=(
+                        self.parameters["N_blocks"],
+                        self.parameters["N_multistart"],
+                    ),
+                    dtype=np.float32,
+                )
+            else:
+                var_mask = np.array(
+                    np.tile(
+                        self.parameters['optimization_masks'][var_name],
+                        self.parameters["N_multistart"],
+                    ).reshape(
+                        self.parameters["N_blocks"], self.parameters["N_multistart"]
+                    ),
+                    dtype=np.float32,
+                )
+            masks[var_name] = var_mask
+        return masks
 
         """
     @tf.function
