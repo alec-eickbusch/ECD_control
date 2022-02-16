@@ -41,7 +41,7 @@ class GateSynthesizer:
         comment="",
         use_phase=False,  # include the phase in the optimization cost function. Important for unitaries.
         timestamps=[],
-        do_prints=False,
+        do_prints=True,
         **kwargs
     ):
         self.parameters = {
