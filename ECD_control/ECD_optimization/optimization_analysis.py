@@ -16,8 +16,7 @@ import qutip as qt
 from matplotlib.ticker import MaxNLocator
 from ECD_control.ECD_optimization.batch_optimizer import BatchOptimizer
 from scipy.interpolate import interp2d
-from tqdm import tqdm
-from sklearn.manifold import TSNE
+
 
 plt.rcParams.update(
     {
@@ -306,16 +305,13 @@ class OptimizationAnalysis:
         plt.show()
 
     def plot_tSNE(self, X, y, fig=None, ax=None, log=True, **kwargs):
+        from sklearn.manifold import TSNE
+
         tsne = TSNE()
         X_embedded = tsne.fit_transform(X)
 
         cm = plt.cm.get_cmap("plasma")
-        sc = plt.scatter(
-            x=X_embedded[:, 0],
-            y=X_embedded[:, 1],
-            c=y,
-            cmap=cm,
-        )
+        sc = plt.scatter(x=X_embedded[:, 0], y=X_embedded[:, 1], c=y, cmap=cm,)
         plt.colorbar(sc)
 
     def plot_average_magnitude_beta(self, timestamp=None, fig=None, ax=None):
@@ -487,7 +483,7 @@ class OptimizationSweepsAnalysis:
 
                 remaining_sweep_param_values = []
 
-                for remaining_param_unique_val in tqdm(remaining_param_unique_values):
+                for remaining_param_unique_val in remaining_param_unique_values:
                     indxs = self.get_fixed_indx(
                         sweep_name=sweep_name,
                         fixed_param_names=remaining_param_names,
@@ -654,7 +650,7 @@ class OptimizationSweepsAnalysis:
         timestamps = timestamps[indxs]
         sweep_param_values = sweep_param_values[indxs]
 
-        for i in tqdm(range(0, len(timestamps))):
+        for i in range(0, len(timestamps)):
             timestamp = timestamps[i].split(TIMESTAMP_SEP)[0]
             sweep_param_value = sweep_param_values[i]
             self.opt_analysis_obj.plot_best_fidelity(
@@ -834,7 +830,7 @@ class OptimizationSweepsAnalysis:
         timestamps = self.timestamps(sweep_name)
 
         self.get_data(sweep_name)[benchmark_name] = np.zeros(len(timestamps))
-        for i in tqdm(range(len(timestamps))):
+        for i in range(len(timestamps)):
             N = self.opt_analysis_obj.get_data(timestamps[i])["N"]
             initial_state = initial_state_func(N)
             target_state = target_state_func(N)

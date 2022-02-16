@@ -12,7 +12,7 @@ This repository can be used to optimize circuit parameters and generate ECD puls
 
 ---
 ## Requirements
-[qutip](https://qutip.org/) (4.0.0 or later), [Tensorflow](https://www.tensorflow.org/) (2.3.0 or later), [h5py](https://www.h5py.org/) (working with 3.1.0), [tqdm](https://github.com/tqdm/tqdm), [scikit-learn](https://scikit-learn.org/stable/install.html)
+[qutip](https://qutip.org/) (4.0.0 or later), [Tensorflow](https://www.tensorflow.org/) (2.3.0 or later), [h5py](https://www.h5py.org/) (working with 3.1.0)
 
 ---
 ## Installation
