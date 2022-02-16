@@ -11,17 +11,18 @@ from ECD_control.gate_sets.gate_set import GateSet
 import qutip as qt
 import datetime
 import time
+from .operators import DisplacementOperator
 
 
 class ECDGateSet(GateSet):
     def __init__(self, N_blocks=20, name="ECD_control", **kwargs):
         super().__init__(name)
-        # combine all keywork arguments
+        # combine all keyword arguments
         self.parameters = {
             **self.parameters,
             **kwargs,
         }  # python 3.9: self.parameters | kwargs
-        self._construct_needed_matrices()
+        self.disp_op = DisplacementOperator(self.parameters["N_cav"])
 
     @property
     def parameter_names(self):
@@ -45,55 +46,6 @@ class ECDGateSet(GateSet):
             "thetas": (-np.pi, np.pi),
         }
 
-    def _construct_needed_matrices(self):
-        N_cav = self.parameters["N_cav"]
-        q = tfq.position(N_cav)
-        p = tfq.momentum(N_cav)
-
-        # Pre-diagonalize
-        (self._eig_q, self._U_q) = tf.linalg.eigh(q)
-        (self._eig_p, self._U_p) = tf.linalg.eigh(p)
-
-        self._qp_comm = tf.linalg.diag_part(q @ p - p @ q)
-
-        # if self.parameters["optimization_type"] == "unitary":
-        #     P_cav = self.parameters["P_cav"]
-        #     partial_I = np.array(qt.identity(N_cav))
-        #     for j in range(P_cav, N_cav):
-        #         partial_I[j, j] = 0
-        #     partial_I = qt.Qobj(partial_I)
-        #     self.P_matrix = tfq.qt2tf(qt.tensor(qt.identity(2), partial_I))
-
-    @tf.function
-    def batch_construct_displacement_operators(self, alphas):
-
-        # Reshape amplitudes for broadcast against diagonals
-        sqrt2 = tf.math.sqrt(tf.constant(2, dtype=tf.complex64))
-        re_a = tf.reshape(
-            sqrt2 * tf.cast(tf.math.real(alphas), dtype=tf.complex64),
-            [alphas.shape[0], alphas.shape[1], 1],
-        )
-        im_a = tf.reshape(
-            sqrt2 * tf.cast(tf.math.imag(alphas), dtype=tf.complex64),
-            [alphas.shape[0], alphas.shape[1], 1],
-        )
-
-        # Exponentiate diagonal matrices
-        expm_q = tf.linalg.diag(tf.math.exp(1j * im_a * self._eig_q))
-        expm_p = tf.linalg.diag(tf.math.exp(-1j * re_a * self._eig_p))
-        expm_c = tf.linalg.diag(tf.math.exp(-0.5 * re_a * im_a * self._qp_comm))
-
-        # Apply Baker-Campbell-Hausdorff
-        return tf.cast(
-            self._U_q
-            @ expm_q
-            @ tf.linalg.adjoint(self._U_q)
-            @ self._U_p
-            @ expm_p
-            @ tf.linalg.adjoint(self._U_p)
-            @ expm_c,
-            dtype=tf.complex64,
-        )
 
     @tf.function
     def batch_construct_block_operators(self, opt_vars):
@@ -115,10 +67,10 @@ class ECDGateSet(GateSet):
 
         #TODO: remove this old stuff: related to displacements in ECD gate set. 
         D = tf.zeros((1, betas_rho.shape[1]))
-        ds_end = self.batch_construct_displacement_operators(D)
+        ds_end = self.disp_op(D)
         # ds_end = tf.eye(self.parameters['N_cav'], batch_shape=) # figure this out; faster
 
-        ds_g = self.batch_construct_displacement_operators(Bs)
+        ds_g = self.disp_op(Bs)
         ds_e = tf.linalg.adjoint(ds_g)
 
         Phis = phis - tf.constant(np.pi, dtype=tf.float32) / tf.constant(

@@ -12,5 +12,5 @@ setup(
         "ECD_control/ECD_optimization",
         "ECD_control/gate_sets",
     ],
-    install_requires=["qutip", "tensorflow", "h5py"],
+    install_requires=["qutip", "tensorflow", "h5py", "tensorflow-probability"],
 )
