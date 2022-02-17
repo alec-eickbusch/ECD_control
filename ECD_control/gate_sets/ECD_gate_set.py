@@ -142,17 +142,3 @@ class ECDGateSet(GateSet):
         ) - np.pi
 
         return processed_params
-
-        # can do this better if we switch to a dict, then names are also automatic
-
-
-"""
-order of variables:
-betas_rho
-betas_angle
-alphas_rho
-alphas_angle
-phis
-etas
-thetas
-"""

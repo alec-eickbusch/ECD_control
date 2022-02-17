@@ -12,7 +12,7 @@ from ECD_control.gate_sets.gate_set import GateSet
 import qutip as qt
 import datetime
 import time
-from typing import List
+from typing import List, Dict
 
 # might want to have a separate set of optmizer parameters that are specific to the optimizer.
 # these can be passed as another dictionary
@@ -152,7 +152,7 @@ class GateSynthesizer:
             )
 
     @tf.function
-    def batch_state_transfer_fidelities(self, opt_params: List[tf.Variable]):
+    def batch_state_transfer_fidelities(self, opt_params: Dict[str, tf.Variable]):
         bs = self.gateset.batch_construct_block_operators(opt_params)
         psis = tf.stack([self.initial_states] * self.parameters["N_multistart"])
         for U in bs:
@@ -170,7 +170,7 @@ class GateSynthesizer:
     # here, including the relative phase in the cost function by taking the real part of the overlap then squaring it.
     # need to think about how this is related to the fidelity.
     @tf.function
-    def batch_state_transfer_fidelities_real_part(self, opt_params: List[tf.Variable]):
+    def batch_state_transfer_fidelities_real_part(self, opt_params: Dict[str, tf.Variable]):
         bs = self.gateset.batch_construct_block_operators(opt_params)
         psis = tf.stack([self.initial_states] * self.parameters["N_multistart"])
         for U in bs:
