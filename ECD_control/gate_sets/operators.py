@@ -372,15 +372,18 @@ class SNAP(ParametrizedOperator):
     def compute(self, theta):
         """Calculates ideal SNAP(theta) for a batch of SNAP parameters.
         Args:
-            theta (Tensor([block, N_multistart, ], c64)): A batch of parameters.
+            theta (Tensor([block index, ..., batch, SNAP phase], c64)): A batch of parameters.
+            Note that the length of the SNAP phase axis does NOT need to be equal to N.
+            One only need specify the first n non-zero SNAP phases. This function will
+            pad the phase axis with N-n zeros to make the NxN unitary
         Returns:
-            Tensor([B1, ..., Bb, N, N], c64): A batch of SNAP(theta)
+            Tensor([block index, batch, N, N], c64): A batch of SNAP(theta)
         """
-        # S = theta.shape[-1]  # SNAP truncation
-        # D = len(theta.shape) - 1
-        # paddings = tf.constant([[0, 0]] * D + [[0, self.N - S]])
+        S = theta.shape[-1]  # number of SNAP phases provided
+        D = len(theta.shape) - 1 # remaining dimension of the thetas array ignoring the phase index
+        paddings = tf.convert_to_tensor([[0, 0]] * D + [[0, self.N - S]])
         theta = tf.cast(theta, dtype=c64)
-        # theta = tf.pad(theta, paddings)
-        # theta -= self.phase_offset
+        theta = tf.pad(theta, paddings)
+        theta -= self.phase_offset
         exp_diag = tf.math.exp(1j * theta)
         return tf.linalg.diag(exp_diag)

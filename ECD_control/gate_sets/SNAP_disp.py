@@ -31,10 +31,11 @@ class SNAP_disp(GateSet):
         params = [
             "betas_rho",
             "betas_angle",
-            "thetas",
+            "thetas"
         ]
 
-        for k in range(self.parameters[""])
+        # for k in range(self.parameters["N_snap"]):
+        #     params.append("theta" + str(k))
 
         return params
 
@@ -45,7 +46,7 @@ class SNAP_disp(GateSet):
                 1 * self.parameters["beta_scale"],
             ),
             "betas_angle": (-np.pi, np.pi),
-            "thetas": (-np.pi, np.pi),
+            "thetas": (-np.pi, np.pi, self.parameters["N_snap"])
         }
 
 

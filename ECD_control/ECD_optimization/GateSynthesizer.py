@@ -308,16 +308,31 @@ class GateSynthesizer:
                 for key, value in self.gateset.preprocess_params_before_saving(
                     self.opt_vars
                 ).items():
-                    grp.create_dataset(
-                        key,
-                        data=[value.numpy().T],
-                        chunks=True,
-                        maxshape=(
-                            None,
-                            self.parameters["N_multistart"],
-                            self.parameters["N_blocks"],
-                        ),
-                    )
+                    if len(value.shape) == 2:
+                        grp.create_dataset(
+                            key,
+                            data=[np.swapaxes(value.numpy(), 0, 1)],
+                            chunks=True,
+                            maxshape=(
+                                None,
+                                self.parameters["N_multistart"],
+                                self.parameters["N_blocks"],
+                            ),
+                        )
+                    elif len(value.shape) == 3:
+                        grp.create_dataset(
+                            key,
+                            data=[np.swapaxes(value.numpy(), 0, 1)],
+                            chunks=True,
+                            maxshape=(
+                                None,
+                                self.parameters["N_multistart"],
+                                self.parameters["N_blocks"],
+                                value.shape[-1]
+                            ),
+                        )
+                    else:
+                        raise ValueError(key + " has more than three indices. This is not currently supported.")
 
         else:  # just append the data
             with h5py.File(self.filename, "a") as f:
@@ -331,7 +346,7 @@ class GateSynthesizer:
                     self.opt_vars
                 ).items():
                     f[timestamp][key].resize(f[timestamp][key].shape[0] + 1, axis=0)
-                    f[timestamp][key][-1] = value.numpy().T
+                    f[timestamp][key][-1] = np.swapaxes(value.numpy(), 0, 1)
 
                 f[timestamp].attrs["elapsed_time_s"] = elapsed_time_s
 
@@ -347,11 +362,20 @@ class GateSynthesizer:
         init_vars = {}
         for var_name in self.gateset.parameter_names:
             scale = init_scales[var_name]
-            var_np = np.random.uniform(
-                scale[0],
-                scale[1],
-                size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
-            )
+            if len(scale) == 2:
+                var_np = np.random.uniform(
+                    scale[0],
+                    scale[1],
+                    size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
+                )
+            elif len(scale) == 3:
+                var_np = np.random.uniform(
+                    scale[0],
+                    scale[1],
+                    size=(self.parameters["N_blocks"], self.parameters["N_multistart"], scale[2]),
+                )
+            else:
+                raise ValueError("You have not specified the correct number of parameters to initialize " + var_name)
             var_tf = tf.Variable(
                 var_np, dtype=tf.float32, trainable=True, name=var_name
             )
@@ -383,7 +407,17 @@ class GateSynthesizer:
                     ),
                     dtype=np.float32,
                 )
-            masks[var_name] = var_mask
+
+            if var_mask.shape == self.opt_vars[var_name].shape:
+                masks[var_name] = var_mask
+
+            elif abs(len(var_mask.shape) - len(self.opt_vars[var_name].shape)) == 1:
+                # in this case there may be a third dimension to one of the variables
+                var_mask_dim = np.repeat(var_mask[:, :, None], self.opt_vars[var_name].shape[2], axis=2)
+                masks[var_name] = var_mask_dim
+            else:
+                raise ValueError("Cannot create mask for variable " + var_name)
+
         return masks
 
         """
