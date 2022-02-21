@@ -15,7 +15,7 @@ from .operators import DisplacementOperator, SNAP
 
 
 class SNAP_disp(GateSet):
-    def __init__(self, N_blocks=20, name="SNAP_control", **kwargs):
+    def __init__(self, name="SNAP_control", **kwargs):
         super().__init__(name)
         # combine all keyword arguments
         self.parameters = {
@@ -33,9 +33,6 @@ class SNAP_disp(GateSet):
             "betas_angle",
             "thetas"
         ]
-
-        # for k in range(self.parameters["N_snap"]):
-        #     params.append("theta" + str(k))
 
         return params
 

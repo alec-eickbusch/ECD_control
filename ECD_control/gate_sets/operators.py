@@ -169,23 +169,62 @@ class ParametrizedOperator:
 class HamiltonianEvolutionOperator(ParametrizedOperator):
     """ Unitary evolution according to some Hamiltonian. """
 
-    def __init__(self, H, *args, **kwargs):
+    def __init__(self, N, H_static, delta_t, *args, **kwargs):
         """
         Args:
-            H (Tensor([N, N], c64)): Hamiltonian in Hz
+            H_static: the static portion of the Hamiltonian
         """
-        N = H.shape[-1]
-        (self.eigvals, self.U) = tf.linalg.eigh(H)
+        self.H_static = H_static
+        self.delta_t = tf.cast(delta_t, c64)
+        
         super().__init__(N=N, *args, **kwargs)
 
-    def compute(self, t):
+    @tf.function
+    def compute(self, H_controls):
+        """
+        This function calculates a set of time propagators given piecewise-constant controls.
+        Args:
+            H_static: a tf.constant of dimensions NxN
+            H_controls: a tf.Variable of dimensions [block, batch, row, column] with shape (block, batch, N, N). Note that batch can have multiple dimensions
+        Returns:
+            a tf.Variable of dimensions [block, batch, row, column] with shape (block, batch, N, N) where each [i, :, :] is a piecewise-constant time propagator
+        """
+        eigvals, U = tf.linalg.eigh(self.H_static + H_controls)
+        exp_diag = tf.linalg.diag(tf.math.exp(-1j * 2 * pi * self.delta_t * eigvals))
+        return tf.cast(U @ exp_diag @ tf.linalg.adjoint(U), c64)
+
+class HamiltonianEvolutionOperatorInPlace(ParametrizedOperator):
+    """ Unitary evolution according to some Hamiltonian. """
+
+    def __init__(self, N, H_static, delta_t, *args, **kwargs):
         """
         Args:
-            t: time in seconds
+            H_static: the static portion of the Hamiltonian
         """
-        t = tf.cast(t, c64)
-        exp_diag = tf.linalg.diag(tf.math.exp(-1j * 2 * pi * t * self.eigvals))
-        return tf.cast(self.U @ exp_diag @ tf.linalg.adjoint(self.U), c64)
+        self.H_static = H_static
+        self.delta_t = tf.cast(delta_t, c64)
+        
+        super().__init__(N=N, *args, **kwargs)
+
+    @tf.function
+    def compute(self, H_controls):
+        """
+        (Under construction). This function calculates a set of time propagators given piecewise-constant controls by calculating a propagator for each circuit and multiplying it
+        into the previous propagator. It is not yet behaving in this way though.
+        Args:
+            H_static: a tf.constant of dimensions NxN
+            H_controls: a tf.Variable of dimensions [block, batch, row, column] with shape (block, batch, N, N). Note that batch can have multiple dimensions
+        Returns:
+            a tf.Variable of dimensions [batch, row, column] with shape (batch, N, N) where each [i, :, :] is a piecewise-constant time propagator
+        """
+        U_total = tf.eye(self.N, batch_shape=[H_controls.shape[1]], dtype=c64)
+        U = tf.eye(self.N, batch_shape=[H_controls.shape[1]],)
+        exp_diag = tf.eye(self.N, batch_shape=[H_controls.shape[1]], dtype=c64)
+        for k in tf.range(H_controls.shape[0]):
+            eigvals, U = tf.linalg.eigh(self.H_static + H_controls[k, :, :, :])
+            exp_diag = tf.linalg.diag(tf.math.exp(-1j * 2 * pi * self.delta_t * eigvals))
+            U_total = tf.cast(U @ exp_diag @ tf.linalg.adjoint(U), c64) @ U_total
+        return tf.reshape(U_total, (1, H_controls.shape[1], self.N, self.N))
 
 
 class TranslationOperator(ParametrizedOperator):
