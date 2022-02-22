@@ -70,7 +70,7 @@ class AdamOptimizer(VisualizationMixin):
             mask_list[key] = tf.stop_gradient(mask_h * value) + mask_var[key] * value
         return mask_list
 
-    def optimize(self):
+    def optimize(self, logdir):
 
         timestamp = datetime.datetime.now().strftime(TIMESTAMP_FORMAT)
         self.timestamps.append(timestamp)
@@ -78,6 +78,7 @@ class AdamOptimizer(VisualizationMixin):
         # start time
         start_time = time.time()
         optimizer = tf.optimizers.Adam(self.parameters["learning_rate"])
+        tf.profiler.experimental.start(logdir)
 
 
         initial_fids = self.batch_fidelities(self.opt_vars)
@@ -85,13 +86,14 @@ class AdamOptimizer(VisualizationMixin):
         self.callback_fun(fids, 0, 0, timestamp, start_time)
         try:  # will catch keyboard inturrupt
             for epoch in range(self.parameters["epochs"] + 1)[1:]:
-                for _ in range(self.parameters["epoch_size"]):
-                    with tf.GradientTape() as tape:
-                        masked_vars = self.entry_stop_gradients(self.opt_vars, self.mask)
-                        new_fids = self.batch_fidelities(masked_vars)
-                        new_loss = self.loss_fun(new_fids)
-                        dloss_dvar = tape.gradient(new_loss, list(self.opt_vars.values()))
-                    optimizer.apply_gradients(zip(dloss_dvar, list(self.opt_vars.values())))
+                for substep in range(self.parameters["epoch_size"]):
+                    with tf.profiler.experimental.Trace('opt_trace', step_num=substep + epoch * self.parameters["epoch_size"], _r=1):
+                        with tf.GradientTape() as tape:
+                            masked_vars = self.entry_stop_gradients(self.opt_vars, self.mask)
+                            new_fids = self.batch_fidelities(masked_vars)
+                            new_loss = self.loss_fun(new_fids)
+                            dloss_dvar = tape.gradient(new_loss, list(self.opt_vars.values()))
+                        optimizer.apply_gradients(zip(dloss_dvar, list(self.opt_vars.values())))
                 dfids = new_fids - fids
                 fids = new_fids
                 self.callback_fun(fids, dfids, epoch, timestamp, start_time)
@@ -141,6 +143,7 @@ class AdamOptimizer(VisualizationMixin):
             + str(datetime.timedelta(seconds=step_time_s))
         )
         print(END_OPT_STRING)
+        tf.profiler.experimental.stop()
         return timestamp
 
     # if append is True, it will assume the dataset is already created and append only the
