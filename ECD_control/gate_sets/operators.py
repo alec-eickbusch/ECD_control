@@ -189,12 +189,11 @@ class HamiltonianEvolutionOperator(ParametrizedOperator):
         Returns:
             a tf.Variable of dimensions [block, batch, row, column] with shape (block, batch, N, N) where each [i, :, :] is a piecewise-constant time propagator
         """
-        eigvals, U = tf.linalg.eigh(self.H_static + H_controls)
-        exp_diag = tf.linalg.diag(tf.math.exp(-1j * 2 * pi * self.delta_t * eigvals))
-        return tf.cast(U @ exp_diag @ tf.linalg.adjoint(U), c64)
+        U_control = tf.linalg.expm(-1j * 2 * pi * self.delta_t * (H_controls + self.H_static))
+        return U_control
 
 class HamiltonianEvolutionOperatorInPlace(ParametrizedOperator):
-    """ Unitary evolution according to some Hamiltonian. """
+    """ Unitary evolution according to some Hamiltonian, but requires less memory at the cost of running slower."""
 
     def __init__(self, N, H_static, delta_t, *args, **kwargs):
         """
@@ -209,22 +208,18 @@ class HamiltonianEvolutionOperatorInPlace(ParametrizedOperator):
     @tf.function
     def compute(self, H_controls):
         """
-        (Under construction). This function calculates a set of time propagators given piecewise-constant controls by calculating a propagator for each circuit and multiplying it
-        into the previous propagator. It is not yet behaving in this way though.
+        This function calculates a set of time propagators given piecewise-constant controls by calculating a propagator for each circuit and multiplying it
+        into the previous propagator.
         Args:
             H_static: a tf.constant of dimensions NxN
             H_controls: a tf.Variable of dimensions [block, batch, row, column] with shape (block, batch, N, N). Note that batch can have multiple dimensions
         Returns:
             a tf.Variable of dimensions [batch, row, column] with shape (batch, N, N) where each [i, :, :] is a piecewise-constant time propagator
         """
-        U_total = tf.eye(self.N, batch_shape=[H_controls.shape[1]], dtype=c64)
-        U = tf.eye(self.N, batch_shape=[H_controls.shape[1]],)
-        exp_diag = tf.eye(self.N, batch_shape=[H_controls.shape[1]], dtype=c64)
+        U = tf.eye(self.N, batch_shape=[H_controls.shape[1]], dtype=c64)
         for k in tf.range(H_controls.shape[0]):
-            eigvals, U = tf.linalg.eigh(self.H_static + H_controls[k, :, :, :])
-            exp_diag = tf.linalg.diag(tf.math.exp(-1j * 2 * pi * self.delta_t * eigvals))
-            U_total = tf.cast(U @ exp_diag @ tf.linalg.adjoint(U), c64) @ U_total
-        return tf.reshape(U_total, (1, H_controls.shape[1], self.N, self.N))
+            U = tf.linalg.expm(-1j * 2 * pi * self.delta_t * (self.H_static + H_controls[k, :, :, :])) @ U
+        return tf.reshape(U, (1, H_controls.shape[1], self.N, self.N))
 
 
 class TranslationOperator(ParametrizedOperator):

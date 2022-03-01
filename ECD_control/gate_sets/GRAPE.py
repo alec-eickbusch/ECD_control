@@ -16,7 +16,7 @@ from typing import List, Dict
 
 
 class GRAPE(GateSet):
-    def __init__(self, H_static, H_control: List, pulse_delta_t = 10, DAC_delta_t = 2, bandwidth = None, name="GRAPE_control", **kwargs):
+    def __init__(self, H_static, H_control: List, pulse_delta_t = 10, DAC_delta_t = 2, bandwidth = None, inplace = False, name="GRAPE_control", **kwargs):
         super().__init__(name)
         # combine all keyword arguments
         self.parameters = {
@@ -33,7 +33,10 @@ class GRAPE(GateSet):
         for k in H_control:
             self.H_control.append(tfq.qt2tf(k))
 
-        self.U = HamiltonianEvolutionOperator(N = self.H_static.shape[-1], H_static = self.H_static, delta_t = DAC_delta_t)
+        if inplace:
+            self.U = HamiltonianEvolutionOperatorInPlace(N = self.H_static.shape[-1], H_static = self.H_static, delta_t = DAC_delta_t)
+        else:
+            self.U = HamiltonianEvolutionOperator(N = self.H_static.shape[-1], H_static = self.H_static, delta_t = DAC_delta_t)
         # create interpolation object here
         # self.interpolate = something.interpolator(arguments)
 

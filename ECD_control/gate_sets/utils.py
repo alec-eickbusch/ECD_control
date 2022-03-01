@@ -253,3 +253,30 @@ def postselect(psi_batch, measurement_results):
     psi_plus_batch = tf.gather(psi_batch, plus_idxs)
     psi_minus_batch = tf.gather(psi_batch, minus_idxs)
     return psi_plus_batch, psi_minus_batch
+
+
+class Interpolator:
+    def __init__(self, pulse_delta_t = 10, DAC_delta_t = 2, bandwidth = None, *args, **kwargs):
+        """
+        Args:
+            pulse_delta_t: the time in ns between IQ values in the optimizer. This value must be an integer multiple of DAC_delta_t
+            DAC_delta_t: the time in ns between DAC samples. This value and the above determine the factor of interpolation
+            bandwidth: in cycles/ns (not radians/ns). That is, 1 MHz = 10^-3 cycles/ns. This defaults to 2 / DAC_delta_t unless the specified value is smaller
+        """
+        self.pulse_delta_t = tf.cast(pulse_delta_t, c64)
+        self.DAC_delta_t = tf.cast(DAC_delta_t, c64)
+        if pulse_delta_t % DAC_delta_t != 0:
+            raise ValueError("pulse_delta_t must be an integer multiple of DAC_delta_t")
+
+        self.interp_factor = pulse_delta_t / DAC_delta_t
+
+        if bandwidth is None:
+            self.bandwidth = 2 / DAC_delta_t # units of cycles/ns
+        elif bandwidth <= 2 / DAC_delta_t:
+            self.bandwidth = bandwidth
+        else:
+            raise ValueError("Invalid choice of bandwidth parameters.")
+        
+    def __call__(self, *args, **kwds):
+        pass
+        
