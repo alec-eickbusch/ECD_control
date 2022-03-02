@@ -10,6 +10,8 @@ Based on the paper **Fast universal control of an oscillator with a weak dispers
 
 This repository can be used to optimize circuit parameters and generate ECD pulse sequences to be used in an experiment.
 
+For any issues, comments, or questions, please open a github issue or contact: [alec.eickbusch@yale.edu](mailto:alec.eickbusch@yale.edu).
+
 ---
 ## Requirements
 [qutip](https://qutip.org/) (4.0.0 or later), [Tensorflow](https://www.tensorflow.org/) (2.3.0 or later), [h5py](https://www.h5py.org/) (working with 3.1.0)
@@ -39,6 +41,11 @@ Given a quantum control problem, optimization is performed in two steps:
 
 ---
 
-For any issues, comments, or questions, please open a github issue or contact: [alec.eickbusch@yale.edu](mailto:alec.eickbusch@yale.edu).
-Note: The codebase, examples, and documentation is under active developement.
+## Generalization to other gate sets
+
+Our ongoing project is to generalize the GPU tensor-based optimization methods used for ECD to other parameterized gate-sets, including SNAP+Displacements. Please see our new repository [Quantum Optimal Gate Synthesis (QOGS)](https://github.com/alec-eickbusch/QOGS) for more information. If you would like to contribute, please contact [alec.eickbusch@yale.edu](mailto:alec.eickbusch@yale.edu).
+
+---
+
+
 
