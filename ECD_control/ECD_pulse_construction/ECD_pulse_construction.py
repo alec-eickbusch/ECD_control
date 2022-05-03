@@ -10,7 +10,7 @@ from scipy.optimize import fmin
 
 def gaussian_wave(sigma, chop=4):
     ts = np.linspace(-chop / 2 * sigma, chop / 2 * sigma, chop * sigma)
-    P = np.exp(-(ts ** 2) / (2.0 * sigma ** 2))
+    P = np.exp(-(ts**2) / (2.0 * sigma**2))
     ofs = P[0]
     return (P - ofs) / (1 - ofs)
 
@@ -18,13 +18,13 @@ def gaussian_wave(sigma, chop=4):
 def ring_up_smootherstep(length):
     dt = 1.0 / length
     ts = np.arange(length) * dt
-    return 6 * ts ** 5 - 15 * ts ** 4 + 10 * ts ** 3
+    return 6 * ts**5 - 15 * ts**4 + 10 * ts**3
 
 
 def ring_up_smoothstep(length):
     dt = 1.0 / length
     ts = np.arange(length) * dt
-    return 3 * ts ** 2 - 2 * ts ** 3
+    return 3 * ts**2 - 2 * ts**3
 
 
 def rotate(theta, phi=0, sigma=8, chop=6, dt=1):
@@ -121,6 +121,8 @@ def get_flip_idxs(qubit_dac_pulse):
 
 
 # solution to nonlinear differential equation
+# Here, following the notation and conventions in arXiv:2111.06414.
+# using eq. (S3).
 def alpha_from_epsilon_nonlinear(
     epsilon_array, delta=0, Ks=0, kappa=0, alpha_init=0 + 0j
 ):
@@ -147,6 +149,8 @@ def alpha_from_epsilon_nonlinear(
 
 
 # solution to nonlinear differential equation
+# Here, following the notation and conventions in arXiv:2111.06414.
+# using eq. (S3).
 def alpha_from_epsilon_nonlinear_finite_difference(
     epsilon_array, delta=0, Ks=0, kappa=0, alpha_init=0 + 0j
 ):
@@ -169,7 +173,8 @@ def alpha_from_epsilon_nonlinear_finite_difference(
     return alpha
 
 
-# refer to "Full Hamiltonian in the displaced frame" notes
+# Here, following the notation and conventions in arXiv:2111.06414.
+# using eq. (S5) for the trajectories associated with qubit states g and e.
 def alpha_from_epsilon_ge(
     epsilon_array,
     delta=0,
@@ -224,6 +229,8 @@ def alpha_from_epsilon_ge(
     return alpha_g, alpha_e
 
 
+# Here, following the notation and conventions in arXiv:2111.06414.
+# using eq. (S5) for the trajectories associated with qubit states g and e.
 def alpha_from_epsilon_ge_finite_difference(
     epsilon_array,
     delta=0,
@@ -315,14 +322,44 @@ def get_ge_trajectories(
     return alpha_g, alpha_e
 
 
-def plot_trajs_complex(alpha_g, alpha_e=None, bound=None, ax=None):
+def plot_trajs_complex(alpha_g, alpha_e=None, bound=None, ax=None, flip_idxs=[]):
     if ax is None:
         fig, ax = plt.subplots()
-    ax.plot(np.real(alpha_g), np.imag(alpha_g), label="g")
-    ax.fill_between(np.real(alpha_g), np.imag(alpha_g), alpha=0.2)
-    if alpha_e is not None:
-        ax.plot(np.real(alpha_e), np.imag(alpha_e), label="e")
-        ax.fill_between(np.real(alpha_e), np.imag(alpha_e), alpha=0.2)
+    last_flip_idx = 0
+    flip_idxs = np.concatenate([np.array(flip_idxs), [-1]])
+    for flip_idx in flip_idxs:
+        flip_idx = int(flip_idx)
+        label = "g" if flip_idx == -1 else None
+        ax.plot(
+            np.real(alpha_g[last_flip_idx:flip_idx]),
+            np.imag(alpha_g[last_flip_idx:flip_idx]),
+            label=label,
+            color="blue",
+        )
+        ax.fill_between(
+            np.real(alpha_g[last_flip_idx:flip_idx]),
+            np.imag(alpha_g[last_flip_idx:flip_idx]),
+            alpha=0.2,
+            color="blue",
+        )
+        if alpha_e is not None:
+            label = "e" if flip_idx == -1 else None
+            ax.plot(
+                np.real(alpha_e[last_flip_idx:flip_idx]),
+                np.imag(alpha_e[last_flip_idx:flip_idx]),
+                label=label,
+                color="red",
+            )
+            ax.fill_between(
+                np.real(alpha_e[last_flip_idx:flip_idx]),
+                np.imag(alpha_e[last_flip_idx:flip_idx]),
+                alpha=0.2,
+                color="red",
+            )
+        last_flip_idx = flip_idx
+        alpha_tmp = alpha_g
+        alpha_g = alpha_e
+        alpha_e = alpha_tmp
     if bound is not None:
         ax.set_xlim([-bound, bound])
         ax.set_ylim([-bound, bound])
@@ -347,6 +384,8 @@ def plot_trajs_linear(alpha_g, alpha_e=None):
 # Buffer time can be a negative number if you wish to perform the pi pulse while the cavity is being displaced
 # conditional displacement is defined as:
 # D(beta/2)|eXg| + D(-beta/2) |gXe|
+
+# Following the sign conventions in the paper, supplement eq. (S3)
 def conditional_displacement(
     beta,
     alpha,
@@ -359,17 +398,13 @@ def conditional_displacement(
     pad=True,
     finite_difference=True,
     output=False,
+    qubit_pulse_detuning=0,
 ):
     beta = float(beta) if isinstance(beta, int) else beta
     alpha = float(alpha) if isinstance(alpha, int) else alpha
     chi = 2 * np.pi * 1e-6 * storage.chi_kHz
     chi_prime = 2 * np.pi * 1e-9 * storage.chi_prime_Hz if chi_prime_correction else 0.0
     Ks = 2 * np.pi * 1e-9 * storage.Ks_Hz
-
-    # delta is the Hamiltonian parameter, so if it is positive, that means the cavity
-    # is detuned positivly relative to the current frame, so the drive is
-    # below the cavity.
-
     delta = chi / 2.0
     epsilon_m = 2 * np.pi * 1e-3 * storage.epsilon_m_MHz
     alpha = np.abs(alpha)
@@ -383,7 +418,7 @@ def conditional_displacement(
     d = storage.displace.unit_amp * (dr + 1j * di)
     pr, pi = qubit.pulse.make_wave(pad=False)
     # doing the same thing the FPGA does
-    detune = qubit.pulse.detune
+    detune = 2 * np.pi * qubit.pulse.detune + qubit_pulse_detuning
     if np.abs(detune) > 0:
         ts = np.arange(len(pr)) * 1e-9
         c_wave = (pr + 1j * pi) * np.exp(-2j * np.pi * ts * detune)
@@ -405,7 +440,11 @@ def conditional_displacement(
             ]
         )
         qubit_dac_pulse = np.concatenate(
-            [np.zeros(tw + 2 * len(d) + buf), p, np.zeros(tw + 2 * len(d) + buf),]
+            [
+                np.zeros(tw + 2 * len(d) + buf),
+                p,
+                np.zeros(tw + 2 * len(d) + buf),
+            ]
         )
         # need to detune the pulse for chi prime
 
@@ -657,342 +696,6 @@ def double_circuit(betas, phis, thetas, final_disp=True):
     return betas2, phis2, thetas2
 
 
-def conditional_displacement_OLD(
-    beta,
-    alpha,
-    storage,
-    qubit,
-    buffer_time=4,
-    curvature_correction=True,
-    chi_prime_correction=True,
-    kerr_correction=True,
-    pad=True,
-    finite_difference=True,
-    output=False,
-):
-    beta = float(beta) if isinstance(beta, int) else beta
-    alpha = float(alpha) if isinstance(alpha, int) else alpha
-    chi = 2 * np.pi * 1e-6 * storage.chi_kHz
-    chi_prime = 2 * np.pi * 1e-9 * storage.chi_prime_Hz if chi_prime_correction else 0.0
-    Ks = 2 * np.pi * 1e-9 * storage.Ks_Hz
-
-    # delta is the Hamiltonian parameter, so if it is positive, that means the cavity
-    # is detuned positivly relative to the current frame, so the drive is
-    # below the cavity.
-
-    # We expect chi to be negative, so we want to drive below the cavity, hence delta should
-    # be positive.
-
-    delta = chi / 2.0
-    epsilon_m = 2 * np.pi * 1e-3 * storage.epsilon_m_MHz
-    alpha = np.abs(alpha)
-    beta_abs = np.abs(beta)
-    beta_phase = np.angle(beta)
-
-    def ratios(alpha, tw):
-        n = np.abs(alpha) ** 2
-        chi_effective = chi + 2 * chi_prime * n
-        r = np.cos((chi_effective / 2.0) * tw)
-        r2 = np.cos(chi_effective * tw)
-        # r = np.cos((chi/2.0)*(tw + 2*tp))/np.cos((chi/2.0)*tp)
-        # r2 = np.cos((chi/2.0)*(tw + 2*tp)) - np.cos((chi/2.0)*(tw + tp))
-        return r, r2
-
-    # the initial guesses
-    # phase of the displacements.
-    phase = beta_phase + np.pi / 2.0
-    n = np.abs(alpha) ** 2
-    chi_effective = chi + 2 * chi_prime * n
-    # initial tw
-    tw = int(np.abs(np.arcsin(beta_abs / (2 * alpha)) / chi_effective))
-
-    # note, even with pad =False, there is a leading and trailing 0 because
-    # every gaussian pulse will start / end at 0. Could maybe remove some of these
-    # later to save a few ns.
-    dr, di = storage.displace.make_wave(pad=False)
-    d = storage.displace.unit_amp * (dr + 1j * di)
-    pr, pi = qubit.pulse.make_wave(pad=False)
-    # doing the same thing the FPGA does
-    detune = qubit.pulse.detune
-    if np.abs(detune) > 0:
-        ts = np.arange(len(pr)) * 1e-9
-        c_wave = (pr + 1j * pi) * np.exp(-2j * np.pi * ts * detune)
-        pr, pi = np.real(c_wave), np.imag(c_wave)
-    p = qubit.pulse.unit_amp * (pr + 1j * pi)
-
-    # ratios of the displacements
-    r, r2 = ratios(alpha, tw)
-
-    # only add buffer time at the final setp
-    def construct_CD(alpha, tw, r, r2, buf=0):
-
-        cavity_dac_pulse = np.concatenate(
-            [
-                alpha * d * np.exp(1j * phase),
-                np.zeros(tw),
-                r * alpha * d * np.exp(1j * (phase + np.pi)),
-                np.zeros(len(p) + 2 * buf),
-                r * alpha * d * np.exp(1j * (phase + np.pi)),
-                np.zeros(tw),
-                r2 * alpha * d * np.exp(1j * phase),
-            ]
-        )
-        qubit_dac_pulse = np.concatenate(
-            [np.zeros(tw + 2 * len(d) + buf), p, np.zeros(tw + 2 * len(d) + buf),]
-        )
-        # need to detune the pulse for chi prime
-
-        # if chi_prime_correction:
-        #    ts = np.arange(len(cavity_dac_pulse))
-        #    cavity_dac_pulse = cavity_dac_pulse * np.exp(-1j * ts * chi_prime * n)
-        return cavity_dac_pulse, qubit_dac_pulse
-
-    cavity_dac_pulse, qubit_dac_pulse = construct_CD(alpha, tw, r, r2)
-
-    if curvature_correction:
-
-        def integrated_beta(epsilon):
-            # note that the trajectories are first solved without kerr.
-            flip_idx = int(len(epsilon) / 2)
-            alpha_g, alpha_e = get_ge_trajectories(
-                epsilon,
-                delta=delta,
-                chi=chi,
-                chi_prime=chi_prime,
-                Ks=Ks,
-                flip_idxs=[flip_idx],
-                finite_difference=finite_difference,
-            )
-            return np.abs(alpha_g[-1] - alpha_e[-1])
-
-        epsilon = cavity_dac_pulse * epsilon_m
-        current_beta = integrated_beta(epsilon)
-        diff = np.abs(current_beta) - np.abs(beta)
-        ratio = np.abs(current_beta) / np.abs(beta)
-        if output:
-            print("tw: " + str(tw))
-            print("alpha: " + str(alpha))
-            print("beta: " + str(current_beta))
-            print("diff: " + str(diff))
-        #  could look at real/imag part...
-        # for now, will only consider absolute value
-        # first step: lower tw
-        #
-        if diff < 0:
-            tw = int(tw * 1.5)
-            ratio = 1.01
-        tw_flag = True
-        while np.abs(diff) / np.abs(beta) > 1e-3:
-            if ratio > 1.0 and tw > 0 and tw_flag:
-                tw = int(tw / ratio)
-            else:
-                tw_flag = False
-                # if ratio > 1.02:
-                #    ratio = 1.02
-                # if ratio < 0.98:
-                #    ratio = 0.98
-                alpha = alpha / ratio
-
-            # update the ratios for the new tw and alpha given chi_prime
-            r, r2 = ratios(alpha, tw)
-            cavity_dac_pulse, qubit_dac_pulse = construct_CD(alpha, tw, r, r2)
-            epsilon = cavity_dac_pulse * epsilon_m
-            current_beta = integrated_beta(epsilon)
-            diff = np.abs(current_beta) - np.abs(beta)
-            ratio = np.abs(current_beta) / np.abs(beta)
-            if output:
-                print("tw: " + str(tw))
-                print("alpha: " + str(alpha))
-                print("beta: " + str(current_beta))
-                print("diff: " + str(diff))
-    # need to add back in the buffer time to the pulse
-    cavity_dac_pulse, qubit_dac_pulse = construct_CD(alpha, tw, r, r2, buf=buffer_time)
-
-    # the final step is kerr correction. Now, the trajectories are solved with kerr, and there is a frame update.
-    # This is not yet implemented/tested fully because Kerr correction is not important with Alec's parameters.
-    # Can include it when using larger Kerr.
-    # Don't trust the below code, it needs to be looked at in more detail. In particular, the rate of local rotation
-    # And the rate of center of mass rotation differs by a factor of 2.
-    """
-    if kerr_correction:
-        #here, we want to get the trajectory without kerr!
-        alpha_g, alpha_e = get_ge_trajectories(epsilon, chi=chi, chi_prime=chi_prime, kerr=0.0, flip_half_way=True)
-        nbar_g = np.abs(alpha_g)**2
-        nbar_e = np.abs(alpha_e)**2
-        det_g = kerr*nbar_g
-        det_e = kerr*nbar_e
-        avg_det = (det_g + det_e)/2.0 #note, that the dets should be the same
-        accumulated_phase = np.cumsum(avg_det)
-        cavity_dac_pulse = cavity_dac_pulse*np.exp(-1j*accumulated_phase)
-    else:
-        accumulated_phase = np.zeros_like(epsilon)
-    """
-    if pad:
-        while len(cavity_dac_pulse) % 4 != 0:
-            cavity_dac_pulse = np.pad(cavity_dac_pulse, (0, 1), mode="constant")
-            qubit_dac_pulse = np.pad(qubit_dac_pulse, (0, 1), mode="constant")
-            # accumulated_phase = np.pad(accumulated_phase, (0,1), mode='edge')
-
-    return cavity_dac_pulse, qubit_dac_pulse, alpha, tw
-
-
-def conditional_displacement_circuit_OLD(
-    betas,
-    phis,
-    thetas,
-    storage,
-    qubit,
-    alpha_CD,
-    final_disp=True,
-    buffer_time=4,
-    curvature_correction=True,
-    qubit_phase_correction=True,
-    chi_prime_correction=True,
-    kerr_correction=False,
-    pad=True,
-    double_CD=False,
-    finite_difference=True,
-    output=False,
-):
-    cavity_dac_pulse = []
-    if type(thetas) is not list:
-        thetas = [thetas]
-    if type(phis) is not list:
-        phis = [phis]
-    qubit_dac_pulse = [[] for _ in thetas]
-    alphas = []
-    tws = []
-    cd_qubit_phases = []
-    analytic_betas = []
-    last_beta = 0
-
-    if double_CD:
-        betas, phis, thetas = double_circuit(betas, phis, thetas, final_disp=final_disp)
-
-    for i, beta in enumerate(betas):
-        if output:
-            print(i)
-        if (
-            np.abs(beta) > 1e-3
-        ):  # if it's a disp at the end less than 1e-3, it won't matter anyway. Need to handle the pi pulse in this case...
-            if (
-                i == len(betas) - 1 and final_disp
-            ):  # todo: could put this final displacement at the g frequency...
-                dr, di = storage.displace.make_wave(pad=False)
-                e_cd = (
-                    np.abs(beta / 2.0)
-                    * storage.displace.unit_amp
-                    * (dr + 1j * di)
-                    * np.exp(1j * np.angle(beta))
-                )
-                o_cd = np.zeros_like(e_cd)
-                ap = np.zeros_like(
-                    e_cd
-                )  # todo: update this... Can accumulate phase on this displacement also...
-            elif beta == -1 * last_beta:
-                e_cd = -1 * e_cd
-            else:
-                if (
-                    beta != last_beta
-                ):  # don't construct the next one if it's the same beta...no need...
-                    e_cd, o_cd, alpha, tw = conditional_displacement_OLD(
-                        beta,
-                        alpha=alpha_CD,
-                        storage=storage,
-                        qubit=qubit,
-                        buffer_time=buffer_time,
-                        curvature_correction=curvature_correction,
-                        chi_prime_correction=chi_prime_correction,
-                        kerr_correction=kerr_correction,
-                        finite_difference=finite_difference,
-                        output=output,
-                    )
-                alphas.append(alpha)
-                tws.append(tw)
-
-                # getting the phase for the phase correction
-                analytic_dict = analytic_CD(
-                    -1j * 2 * np.pi * 1e-3 * storage.epsilon_m_MHz * e_cd,
-                    o_cd,
-                    -2 * np.pi * 1e-6 * storage.chi_kHz,
-                )
-                cd_qubit_phases.append(analytic_dict["qubit_phase"])
-                analytic_betas.append(analytic_dict["beta"])
-
-        else:
-            e_cd, o_cd = np.array([]), np.array([])
-        last_beta = beta
-
-        # constructing qubit part
-        pr, pi = qubit.pulse.make_wave(pad=False)
-        # doing the same thing the FPGA does
-        detune = qubit.pulse.detune
-        if np.abs(detune) > 0:
-            ts = np.arange(len(pr)) * 1e-9
-            c_wave = (pr + 1j * pi) * np.exp(-2j * np.pi * ts * detune)
-            pr, pi = np.real(c_wave), np.imag(c_wave)
-        for j in range(len(thetas)):
-            theta = thetas[j][i]
-            phi = phis[j][i] - qubit_phase_correction * cd_qubit_phases[-1]
-            o_r = (
-                qubit.pulse.unit_amp
-                * (theta / np.pi)
-                * (pr + 1j * pi)
-                * np.exp(1j * phi)
-            )  # todo: check phase convention. I believe by default it uses the built in mixer.
-            qubit_dac_pulse[j].append(o_r)
-            if buffer_time > 0 and len(qubit_dac_pulse[0]) > 0:
-                qubit_dac_pulse[j].append(np.zeros(buffer_time))
-            qubit_dac_pulse[j].append(o_cd)
-            if buffer_time > 0 and len(qubit_dac_pulse[0]) > 0:
-                qubit_dac_pulse[j].append(np.zeros(buffer_time))
-
-        # constructing cavity part
-        cavity_dac_pulse.append(np.zeros(len(o_r)))
-        if buffer_time > 0 and len(qubit_dac_pulse[0]) > 0:
-            cavity_dac_pulse.append(np.zeros(buffer_time))
-        cavity_dac_pulse.append(e_cd)
-        if buffer_time > 0 and len(qubit_dac_pulse[0]) > 0:
-            cavity_dac_pulse.append(np.zeros(buffer_time))
-
-    cavity_dac_pulse = np.concatenate(cavity_dac_pulse)
-    qubit_dac_pulse = [np.concatenate(qp) for qp in qubit_dac_pulse]
-
-    flip_idxs = [
-        find_peaks(np.abs(qp), height=np.max(np.abs(qp)) * 0.975)[0]
-        for qp in qubit_dac_pulse
-    ]
-
-    if kerr_correction:
-        print("Kerr correction not implemented yet!")
-    accumulated_phase = np.zeros_like(cavity_dac_pulse)
-
-    if pad:
-        while len(cavity_dac_pulse) % 4 != 0 and len(cavity_dac_pulse) < 24:
-            cavity_dac_pulse = np.pad(cavity_dac_pulse, (0, 1), mode="constant")
-            qubit_dac_pulse = [
-                np.pad(qp, (0, 1), mode="constant") for qp in qubit_dac_pulse
-            ]
-
-    # backwards compatibility:
-    qubit_dac_pulse = (
-        qubit_dac_pulse[0] if len(qubit_dac_pulse) == 1 else qubit_dac_pulse
-    )
-    flip_idxs = flip_idxs[0] if len(flip_idxs) == 1 else flip_idxs
-
-    return_dict = {
-        "cavity_dac_pulse": cavity_dac_pulse,
-        "qubit_dac_pulse": qubit_dac_pulse,
-        "accumulated_phase": accumulated_phase,
-        "flip_idxs": flip_idxs,
-        "alphas": alphas,
-        "tws": tws,
-        "cd_qubit_phases": cd_qubit_phases,
-        "analytic_betas": analytic_betas,
-    }
-    return return_dict
-
-
 # if final disp is true, the final CD will be treated as a displacement of beta/2. NOTE THE IMPORTANT FACTOR OF 2
 # Optionally, thetas and phis can be an array of arrays of thetas and phis, to specify circuits with the same cavity
 # drives but with different qubit circuits. Useful for tomography!
@@ -1017,8 +720,18 @@ def conditional_displacement_circuit(
     finite_difference=True,
     output=False,
     echo_qubit_pulses=False,
+    qubit_pulse_detunings=None,  # if desired, can supply an array of detunings for the qubit pulses. This can help with the stark shift
 ):
+    betas = np.array(betas)
+    phis = np.array(phis)
+    thetas = np.array(thetas)
+    qubit_pulse_detunings = (
+        np.zeros(shape=(len(thetas), 2))
+        if qubit_pulse_detunings is None
+        else np.array(qubit_pulse_detunings)
+    )
     cavity_dac_pulse = []
+    # TODO: FIX THIS!
     if type(thetas) is not list:
         thetas = [thetas]
     if type(phis) is not list:
@@ -1072,11 +785,14 @@ def conditional_displacement_circuit(
                         kerr_correction=kerr_correction,
                         finite_difference=finite_difference,
                         output=output,
+                        qubit_pulse_detuning=qubit_pulse_detunings[i][1],
                     )
                 alphas.append(alpha)
                 tws.append(tw)
 
             # getting the phase for the phase correction
+
+            # TODO: minus sign.
             analytic_dict = analytic_CD(
                 -1j * 2 * np.pi * 1e-3 * storage.epsilon_m_MHz * e_cd,
                 o_cd,
@@ -1093,10 +809,10 @@ def conditional_displacement_circuit(
         # constructing qubit part
         pr, pi = qubit.pulse.make_wave(pad=False)
         # doing the same thing the FPGA does
-        detune = qubit.pulse.detune
+        detune = 2 * np.pi * qubit.pulse.detune + qubit_pulse_detunings[i][0]
         if np.abs(detune) > 0:
             ts = np.arange(len(pr)) * 1e-9
-            c_wave = (pr + 1j * pi) * np.exp(-2j * np.pi * ts * detune)
+            c_wave = (pr + 1j * pi) * np.exp(-1j * ts * detune)
             pr, pi = np.real(c_wave), np.imag(c_wave)
         for j in range(len(thetas)):
             theta = thetas[j][i]
@@ -1141,7 +857,7 @@ def conditional_displacement_circuit(
             cavity_dac_pulse.append(np.zeros(buffer_time))
 
         # update the frame of the qubit
-        cumulative_qubit_phase += cd_qubit_phases[-1]
+        cumulative_qubit_phase += cd_qubit_phases[-1] if qubit_phase_correction else 0
 
     cavity_dac_pulse = np.concatenate(cavity_dac_pulse)
     qubit_dac_pulse = [np.concatenate(qp) for qp in qubit_dac_pulse]
