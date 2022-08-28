@@ -22,9 +22,9 @@ opt_params = {
 'filename' : None,
 }
 
-    opt = BatchOptimizer(**opt_params)
-    opt.optimize()
+opt = BatchOptimizer(**opt_params)
+opt.optimize()
 
-    #can print info, including the best circuit found.
-    opt.print_info()
+#can print info, including the best circuit found.
+opt.print_info()
 # %%
