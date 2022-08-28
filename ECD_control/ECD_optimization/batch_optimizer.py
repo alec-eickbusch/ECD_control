@@ -43,7 +43,6 @@ class BatchOptimizer(VisualizationMixin):
         beta_scale=1.0,
         alpha_scale=1.0,
         theta_scale=np.pi,
-        use_displacements=False,
         no_CD_end=False,
         beta_mask=None,
         phi_mask=None,
@@ -69,7 +68,6 @@ class BatchOptimizer(VisualizationMixin):
             "beta_scale": beta_scale,
             "alpha_scale": alpha_scale,
             "theta_scale": theta_scale,
-            "use_displacements": use_displacements,
             "use_phase": use_phase,
             "name": name,
             "comment": comment,
@@ -129,7 +127,6 @@ class BatchOptimizer(VisualizationMixin):
 
         # TODO: handle case when you pass initial params. In that case, don't randomize, but use "set_tf_vars()"
         self.randomize_and_set_vars()
-        # self.set_tf_vars(betas=betas, alphas=alphas, phis=phis, thetas=thetas)
 
         self._construct_needed_matrices()
         self._construct_optimization_masks(beta_mask, alpha_mask, phi_mask,theta_mask)
@@ -274,7 +271,7 @@ class BatchOptimizer(VisualizationMixin):
 
     @tf.function
     def batch_construct_block_operators(
-        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+        self, betas_rho, betas_angle, phis, thetas
     ):
         # conditional displacements
         Bs = (
@@ -286,13 +283,6 @@ class BatchOptimizer(VisualizationMixin):
             )
         )
 
-        # final displacement
-        D = tf.cast(alphas_rho, dtype=tf.complex64) * tf.math.exp(
-            tf.constant(1j, dtype=tf.complex64)
-            * tf.cast(alphas_angle, dtype=tf.complex64)
-        )
-
-        ds_end = self.batch_construct_displacement_operators(D)
         ds_g = self.batch_construct_displacement_operators(Bs)
         ds_e = tf.linalg.adjoint(ds_g)
 
@@ -330,13 +320,6 @@ class BatchOptimizer(VisualizationMixin):
         blocks = tf.concat(
             [
                 -1j * tf.concat([tf.concat([ll, lr], 3), tf.concat([ul, ur], 3)], 2),
-                tf.concat(
-                    [
-                        tf.concat([ds_end, tf.zeros_like(ds_end)], 3),
-                        tf.concat([tf.zeros_like(ds_end), ds_end], 3),
-                    ],
-                    2,
-                ),
             ],
             0,
         )
@@ -368,42 +351,12 @@ class BatchOptimizer(VisualizationMixin):
         C = tf.linalg.trace(Ds @ rhos)
         return np.squeeze(C.numpy()).reshape(betas.shape)
 
-    """
-    @tf.function
-    def state(
-        self,
-        i=0,
-        betas_rho=None,
-        betas_angle=None,
-        alphas_rho=None,
-        alphas_angle=None,
-        phis=None,
-        thetas=None,
-    ):
-        betas_rho = self.betas_rho if betas_rho is None else betas_rho
-        betas_angle = self.betas_angle if betas_angle is None else betas_angle
-        alphas_rho = self.alphas_rho if alphas_rho is None else alphas_rho
-        alphas_angle = self.alphas_angle if alphas_angle is None else alphas_angle
-        phis = self.phis if phis is None else phis
-        thetas = self.thetas if thetas is None else thetas
-        if self.parameters["use_displacements"]:
-            bs = self.construct_block_operators_with_displacements(
-                betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-            )
-        else:
-            bs = self.construct_block_operators(betas_rho, betas_angle, phis, thetas)
-        psi = self.initial_states[0]
-        for U in bs[:i]:
-            psi = U @ psi
-        return psi
-    """
-
     @tf.function
     def batch_state_transfer_fidelities(
-        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+        self, betas_rho, betas_angle, phis, thetas
     ):
         bs = self.batch_construct_block_operators(
-            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+            betas_rho, betas_angle, phis, thetas
         )
         psis = tf.stack([self.initial_states] * self.parameters["N_multistart"])
         for U in bs:
@@ -422,10 +375,10 @@ class BatchOptimizer(VisualizationMixin):
     # need to think about how this is related to the fidelity.
     @tf.function
     def batch_state_transfer_fidelities_real_part(
-        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+        self, betas_rho, betas_angle, phis, thetas
     ):
         bs = self.batch_construct_block_operators(
-            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
+            betas_rho, betas_angle, phis, thetas
         )
         psis = tf.stack([self.initial_states] * self.parameters["N_multistart"])
         for U in bs:
@@ -456,8 +409,6 @@ class BatchOptimizer(VisualizationMixin):
         bs = self.batch_construct_block_operators(
             self.betas_rho,
             self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
             self.phis,
             self.thetas,
         )
@@ -470,23 +421,6 @@ class BatchOptimizer(VisualizationMixin):
         #     U_c = U @ U_c
         return U_c
 
-    """
-    @tf.function
-    def unitary_fidelity(
-        self, betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-    ):
-        U_circuit = self.U_tot(
-            betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-        )
-        D = tf.constant(self.parameters["P_cav"] * 2, dtype=tf.complex64)
-        overlap = tf.linalg.trace(
-            tf.linalg.adjoint(self.target_unitary) @ self.P_matrix @ U_circuit
-        )
-        return tf.cast(
-            (1.0 / D) ** 2 * overlap * tf.math.conj(overlap), dtype=tf.float32
-        )
-    """
-
     def optimize(self, do_prints=True):
 
         timestamp = datetime.datetime.now().strftime(TIMESTAMP_FORMAT)
@@ -495,80 +429,17 @@ class BatchOptimizer(VisualizationMixin):
         # start time
         start_time = time.time()
         optimizer = tf.optimizers.Adam(self.parameters["learning_rate"])
-        if self.parameters["use_displacements"]:
-            variables = [
-                self.betas_rho,
-                self.betas_angle,
-                self.alphas_rho,
-                self.alphas_angle,
-                self.phis,
-                self.thetas,
-            ]
-        else:
-            variables = [
-                self.betas_rho,
-                self.betas_angle,
-                self.phis,
-                self.thetas,
-            ]
+        variables = [
+            self.betas_rho,
+            self.betas_angle,
+            self.phis,
+            self.thetas,
+        ]
 
         @tf.function
         def entry_stop_gradients(target, mask):
             mask_h = tf.abs(mask - 1)
             return tf.stop_gradient(mask_h * target) + mask * target
-
-        """
-        if self.optimize_expectation:
-
-            @tf.function
-            def loss_fun(
-                betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-            ):
-                expect = self.expectation_value(
-                    betas_rho,
-                    betas_angle,
-                    alphas_rho,
-                    alphas_angle,
-                    phis,
-                    thetas,
-                    self.O,
-                )
-                return tf.math.log(1 - tf.math.real(expect))
-
-        if self.unitary_optimization:
-            if self.unitary_optimization == "states":
-
-                @tf.function
-                def loss_fun(
-                    betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-                ):
-                    fid = self.unitary_fidelity_state_decomp(
-                        betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-                    )
-                    return tf.math.log(1 - fid)
-
-            else:
-
-                @tf.function
-                def loss_fun(
-                    betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-                ):
-                    fid = self.unitary_fidelity(
-                        betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-                    )
-                    return tf.math.log(1 - fid)
-
-        else:
-
-            @tf.function
-            def loss_fun(
-                betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-            ):
-                fid = self.state_fidelity(
-                    betas_rho, betas_angle, alphas_rho, alphas_angle, phis, thetas
-                )e
-                return tf.math.log(1 - fid)
-        """
 
         @tf.function
         def loss_fun(fids):
@@ -583,13 +454,12 @@ class BatchOptimizer(VisualizationMixin):
             epochs_left = self.parameters["epochs"] - epoch
             expected_time_remaining = epochs_left * time_per_epoch
             fidelities_np = np.squeeze(np.array(fids))
-            betas_np, alphas_np, phis_np, thetas_np = self.get_numpy_vars()
+            betas_np, phis_np, thetas_np = self.get_numpy_vars()
             if epoch == 0:
                 self._save_optimization_data(
                     timestamp,
                     fidelities_np,
                     betas_np,
-                    alphas_np,
                     phis_np,
                     thetas_np,
                     elapsed_time_s,
@@ -600,7 +470,6 @@ class BatchOptimizer(VisualizationMixin):
                     timestamp,
                     fidelities_np,
                     betas_np,
-                    alphas_np,
                     phis_np,
                     thetas_np,
                     elapsed_time_s,
@@ -633,8 +502,6 @@ class BatchOptimizer(VisualizationMixin):
         initial_fids = self.batch_fidelities(
             self.betas_rho,
             self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
             self.phis,
             self.thetas,
         )
@@ -648,23 +515,11 @@ class BatchOptimizer(VisualizationMixin):
                         betas_angle = entry_stop_gradients(
                             self.betas_angle, self.beta_mask
                         )
-                        if self.parameters["use_displacements"]:
-                            alphas_rho = entry_stop_gradients(
-                                self.alphas_rho, self.alpha_mask
-                            )
-                            alphas_angle = entry_stop_gradients(
-                                self.alphas_angle, self.alpha_mask
-                            )
-                        else:
-                            alphas_rho = self.alphas_rho
-                            alphas_angle = self.alphas_angle
                         phis = entry_stop_gradients(self.phis, self.phi_mask)
                         thetas = entry_stop_gradients(self.thetas, self.theta_mask)
                         new_fids = self.batch_fidelities(
                             betas_rho,
                             betas_angle,
-                            alphas_rho,
-                            alphas_angle,
                             phis,
                             thetas,
                         )
@@ -730,7 +585,6 @@ class BatchOptimizer(VisualizationMixin):
         timestamp,
         fidelities_np,
         betas_np,
-        alphas_np,
         phis_np,
         thetas_np,
         elapsed_time_s,
@@ -767,12 +621,6 @@ class BatchOptimizer(VisualizationMixin):
                     ),
                 )
                 grp.create_dataset(
-                    "alphas",
-                    data=[alphas_np],
-                    chunks=True,
-                    maxshape=(None, self.parameters["N_multistart"], 1,),
-                )
-                grp.create_dataset(
                     "phis",
                     data=[phis_np],
                     chunks=True,
@@ -798,9 +646,6 @@ class BatchOptimizer(VisualizationMixin):
                     f[timestamp]["fidelities"].shape[0] + 1, axis=0
                 )
                 f[timestamp]["betas"].resize(f[timestamp]["betas"].shape[0] + 1, axis=0)
-                f[timestamp]["alphas"].resize(
-                    f[timestamp]["alphas"].shape[0] + 1, axis=0
-                )
                 f[timestamp]["phis"].resize(f[timestamp]["phis"].shape[0] + 1, axis=0)
                 f[timestamp]["thetas"].resize(
                     f[timestamp]["thetas"].shape[0] + 1, axis=0
@@ -808,7 +653,6 @@ class BatchOptimizer(VisualizationMixin):
 
                 f[timestamp]["fidelities"][-1] = fidelities_np
                 f[timestamp]["betas"][-1] = betas_np
-                f[timestamp]["alphas"][-1] = alphas_np
                 f[timestamp]["phis"][-1] = phis_np
                 f[timestamp]["thetas"][-1] = thetas_np
                 f[timestamp].attrs["elapsed_time_s"] = elapsed_time_s
@@ -831,13 +675,6 @@ class BatchOptimizer(VisualizationMixin):
             np.pi,
             size=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
         )
-        if self.parameters["use_displacements"]:
-            alphas_rho = np.random.uniform(
-                0, alpha_scale, size=(1, self.parameters["N_multistart"]),
-            )
-            alphas_angle = np.random.uniform(
-                -np.pi, np.pi, size=(1, self.parameters["N_multistart"]),
-            )
         phis = np.random.uniform(
             -np.pi,
             np.pi,
@@ -858,22 +695,6 @@ class BatchOptimizer(VisualizationMixin):
         self.betas_angle = tf.Variable(
             betas_angle, dtype=tf.float32, trainable=True, name="betas_angle",
         )
-        if self.parameters["use_displacements"]:
-            self.alphas_rho = tf.Variable(
-                alphas_rho, dtype=tf.float32, trainable=True, name="alphas_rho",
-            )
-            self.alphas_angle = tf.Variable(
-                alphas_angle, dtype=tf.float32, trainable=True, name="alphas_angle",
-            )
-        else:
-            self.alphas_rho = tf.constant(
-                np.zeros(shape=((1, self.parameters["N_multistart"]))),
-                dtype=tf.float32,
-            )
-            self.alphas_angle = tf.constant(
-                np.zeros(shape=((1, self.parameters["N_multistart"]))),
-                dtype=tf.float32,
-            )
         self.phis = tf.Variable(phis, dtype=tf.float32, trainable=True, name="phis",)
         self.thetas = tf.Variable(
             thetas, dtype=tf.float32, trainable=True, name="thetas",
@@ -883,20 +704,15 @@ class BatchOptimizer(VisualizationMixin):
         self,
         betas_rho=None,
         betas_angle=None,
-        alphas_rho=None,
-        alphas_angle=None,
         phis=None,
         thetas=None,
     ):
         betas_rho = self.betas_rho if betas_rho is None else betas_rho
         betas_angle = self.betas_angle if betas_angle is None else betas_angle
-        alphas_rho = self.alphas_rho if alphas_rho is None else alphas_rho
-        alphas_angle = self.alphas_angle if alphas_angle is None else alphas_angle
         phis = self.phis if phis is None else phis
         thetas = self.thetas if thetas is None else thetas
 
         betas = betas_rho.numpy() * np.exp(1j * betas_angle.numpy())
-        alphas = alphas_rho.numpy() * np.exp(1j * alphas_angle.numpy())
         phis = phis.numpy()
         thetas = thetas.numpy()
         # now, to wrap phis, etas, and thetas so it's in the range [-pi, pi]
@@ -904,9 +720,9 @@ class BatchOptimizer(VisualizationMixin):
         thetas = (thetas + np.pi) % (2 * np.pi) - np.pi
 
         # these will have shape N_multistart x N_blocks
-        return betas.T, alphas.T, phis.T, thetas.T
+        return betas.T, phis.T, thetas.T
 
-    def set_tf_vars(self, betas=None, alphas=None, phis=None,thetas=None):
+    def set_tf_vars(self, betas=None, phis=None,thetas=None):
         # reshaping for N_multistart = 1
         if betas is not None:
             if len(betas.shape) < 2:
@@ -920,29 +736,6 @@ class BatchOptimizer(VisualizationMixin):
             self.betas_angle = tf.Variable(
                 betas_angle, dtype=tf.float32, trainable=True, name="betas_angle",
             )
-        if alphas is not None:
-            if len(alphas.shape) < 2:
-                alphas = alphas.reshape(alphas.shape + (1,))
-                self.parameters["N_multistart"] = 1
-            alphas_rho = np.abs(alphas)
-            alphas_angle = np.angle(alphas)
-            if self.parameters["use_displacements"]:
-                self.alphas_rho = tf.Variable(
-                    alphas_rho, dtype=tf.float32, trainable=True, name="alphas_rho",
-                )
-                self.alphas_angle = tf.Variable(
-                    alphas_angle, dtype=tf.float32, trainable=True, name="alphas_angle",
-                )
-            else:
-                self.alphas_rho = tf.constant(
-                    np.zeros(shape=((1, self.parameters["N_multistart"],))),
-                    dtype=tf.float32,
-                )
-                self.alphas_angle = tf.constant(
-                    np.zeros(shape=((1, self.parameters["N_multistart"],))),
-                    dtype=tf.float32,
-                )
-
         if phis is not None:
             if len(phis.shape) < 2:
                 phis = phis.reshape(phis.shape + (1,))
@@ -962,30 +755,24 @@ class BatchOptimizer(VisualizationMixin):
         fids = self.batch_fidelities(
             self.betas_rho,
             self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
             self.phis,
             self.thetas,
         )
         fids = np.atleast_1d(fids.numpy())
         max_idx = np.argmax(fids)
-        all_betas, all_alphas, all_phis, all_thetas = self.get_numpy_vars(
+        all_betas, all_phis, all_thetas = self.get_numpy_vars(
             self.betas_rho,
             self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
             self.phis,
             self.thetas,
         )
         max_fid = fids[max_idx]
         betas = all_betas[max_idx]
-        alphas = all_alphas[max_idx]
         phis = all_phis[max_idx]
         thetas = all_thetas[max_idx]
         return {
             "fidelity": max_fid,
             "betas": betas,
-            "alphas": alphas,
             "phis": phis,
             "thetas": thetas,
         }
@@ -994,8 +781,6 @@ class BatchOptimizer(VisualizationMixin):
         fids = self.batch_fidelities(
             self.betas_rho,
             self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
             self.phis,
             self.thetas,
         )
@@ -1005,8 +790,6 @@ class BatchOptimizer(VisualizationMixin):
         fids = self.batch_fidelities(
             self.betas_rho,
             self.betas_angle,
-            self.alphas_rho,
-            self.alphas_angle,
             self.phis,
             self.thetas,
         )
@@ -1022,7 +805,6 @@ class BatchOptimizer(VisualizationMixin):
             print("filename: " + self.filename)
             print("\nBest circuit parameters found:")
             print("betas:         " + str(best_circuit["betas"]))
-            print("alphas:        " + str(best_circuit["alphas"]))
             print("phis (deg):    " + str(best_circuit["phis"] * 180.0 / np.pi))
             print("thetas (deg):  " + str(best_circuit["thetas"] * 180.0 / np.pi))
             print("Max Fidelity:  %.6f" % best_circuit["fidelity"])
