@@ -51,7 +51,7 @@ class BatchOptimizer(VisualizationMixin):
         name="ECD_control",
         filename=None,
         comment="",
-        use_phase=False,  # include the phase in the optimization cost function. Important for unitaries.
+        real_part_only=False,  # use only the real part in the cost function when performing optimization
         timestamps=[],
         **kwargs
     ):
@@ -68,7 +68,7 @@ class BatchOptimizer(VisualizationMixin):
             "beta_scale": beta_scale,
             "alpha_scale": alpha_scale,
             "theta_scale": theta_scale,
-            "use_phase": use_phase,
+            "real_part_only": real_part_only,
             "name": name,
             "comment": comment,
         }
@@ -77,10 +77,10 @@ class BatchOptimizer(VisualizationMixin):
             self.parameters["optimization_type"] == "state transfer"
             or self.parameters["optimization_type"] == "analysis"
         ):
-            self.batch_fidelities = (
-                self.batch_state_transfer_fidelities
-                if self.parameters["use_phase"]
-                else self.batch_state_transfer_fidelities_real_part
+            self.batch_fidelities = ( 
+                self.batch_state_transfer_fidelities_real_part
+                if self.parameters["real_part_only"]
+                else self.batch_state_transfer_fidelities
             )
             # set fidelity function
 
@@ -478,7 +478,7 @@ class BatchOptimizer(VisualizationMixin):
             max_fid = tf.reduce_max(fids)
             avg_dfid = tf.reduce_sum(dfids) / self.parameters["N_multistart"]
             max_dfid = tf.reduce_max(dfids)
-            extra_string = " (real part)" if self.parameters["use_phase"] else ""
+            extra_string = " (real part only)" if self.parameters["real_part_only"] else ""
             if do_prints:
                 print(
                     "\r Epoch: %d / %d Max Fid: %.6f Avg Fid: %.6f Max dFid: %.6f Avg dFid: %.6f"
