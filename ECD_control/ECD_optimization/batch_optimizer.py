@@ -219,7 +219,6 @@ class BatchOptimizer(VisualizationMixin):
                 shape=(self.parameters["N_blocks"], self.parameters["N_multistart"]),
                 dtype=np.float32,
             )
-            phi_mask[0, :] = 0  # stop gradient on first phi entry
         else:
             raise Exception(
                 "need to implement non-standard masks for batch optimization"
