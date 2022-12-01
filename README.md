@@ -40,12 +40,17 @@ Given a quantum control problem, optimization is performed in two steps:
 **Please see examples folder for more information. Current documentation is contained in these examples.**
 
 ---
+## Other info 
 
-## Generalization to other gate sets
+### Running on Apple silicon
+updated Aug 2022
 
-Our ongoing project is to generalize the GPU tensor-based optimization methods used for ECD to other parameterized gate-sets, including SNAP+Displacements. Please see our new repository [Quantum Optimal Gate Synthesis (QOGS)](https://github.com/alec-eickbusch/QOGS) for more information. If you would like to contribute, please contact [alec.eickbusch@yale.edu](mailto:alec.eickbusch@yale.edu).
+tensorflow can be installed on apple silicion (M1 or M2) using the instructions [here](https://developer.apple.com/metal/tensorflow-plugin/). 
 
----
+To install ECD_control with pip on apple silicon, replace the "tensorflow" requirement in setup.py with "tensorflow-macos". 
+
+Support for tensorflow on apple GPUs is ongoing. Currently I'm unable to run ECD_control on an integrated M2 apple GPU. Running on the apple silicon CPU works, using "with tf.device("/cpu:0"):". 
+
 
 
 

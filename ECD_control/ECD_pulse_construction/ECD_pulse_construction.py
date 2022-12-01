@@ -4,6 +4,8 @@ from scipy.interpolate import interp1d
 from scipy.integrate import solve_ivp
 from scipy.signal import find_peaks
 from scipy.optimize import fmin
+from scipy.interpolate import interp1d
+from scipy.integrate import quad
 
 # note that some pulse functions also in fpga_lib are repeated here so this file can be somewhat standalone.
 
@@ -29,7 +31,11 @@ def ring_up_smoothstep(length):
 
 def rotate(theta, phi=0, sigma=8, chop=6, dt=1):
     wave = gaussian_wave(sigma=sigma, chop=chop)
-    energy = np.trapz(wave, dx=dt)
+    ts = np.arange(len(wave)) * dt
+    # to calculate the energy, we interpolate.
+    wave_interp = interp1d(x=ts, y=wave, kind="cubic")
+    # energy = np.trapz(wave, dx=dt)
+    energy, err = quad(wave_interp, a=0, b=(len(wave) - 1) * dt)
     amp = 1 / energy
     wave = (1 + 0j) * wave
     return (theta / (2.0)) * amp * np.exp(1j * phi) * wave
@@ -394,7 +400,6 @@ def conditional_displacement(
     buffer_time=4,
     curvature_correction=True,
     chi_prime_correction=True,
-    kerr_correction=True,
     pad=True,
     finite_difference=True,
     output=False,
@@ -713,6 +718,7 @@ def conditional_displacement_circuit(
     buffer_time=4,
     curvature_correction=True,
     qubit_phase_correction=True,
+    qubit_stark_shift_correction=False,
     chi_prime_correction=True,
     kerr_correction=False,
     pad=True,
@@ -720,7 +726,7 @@ def conditional_displacement_circuit(
     finite_difference=True,
     output=False,
     echo_qubit_pulses=False,
-    qubit_pulse_detunings=None,  # if desired, can supply an array of detunings for the qubit pulses. This can help with the stark shift
+    qubit_pulse_detunings=None,
 ):
     betas = np.array(betas)
     phis = np.array(phis)
@@ -782,7 +788,6 @@ def conditional_displacement_circuit(
                         buffer_time=buffer_time,
                         curvature_correction=curvature_correction,
                         chi_prime_correction=chi_prime_correction,
-                        kerr_correction=kerr_correction,
                         finite_difference=finite_difference,
                         output=output,
                         qubit_pulse_detuning=qubit_pulse_detunings[i][1],
@@ -866,10 +871,38 @@ def conditional_displacement_circuit(
         find_peaks(np.abs(qp), height=np.max(np.abs(qp)) * 0.975)[0]
         for qp in qubit_dac_pulse
     ]
+    accumulated_phase_qb = np.zeros_like(cavity_dac_pulse)
+    accumulated_phase_cav = np.zeros_like(cavity_dac_pulse)
+    # backwards compatibility:
+    qubit_dac_pulse = np.array(
+        qubit_dac_pulse[0] if len(qubit_dac_pulse) == 1 else qubit_dac_pulse
+    )
+    flip_idxs = flip_idxs[0] if len(flip_idxs) == 1 else flip_idxs
+    if kerr_correction or qubit_stark_shift_correction:
 
-    if kerr_correction:
-        print("Kerr correction not implemented yet!")
-    accumulated_phase = np.zeros_like(cavity_dac_pulse)
+        # Here, we find the classical center of mass alpha(t).
+        # we then chirp the pulse to cancel H = -4K|\alpha|^2 a^dag a
+        epsilon = cavity_dac_pulse * 1e-3 * storage.epsilon_m_MHz * 2 * np.pi
+        chi = 2 * np.pi * 1e-6 * storage.chi_kHz
+        delta = chi / 2.0
+        Ks = 2 * np.pi * 1e-9 * storage.Ks_Hz
+        # kappa =
+        kappa = 0
+        alpha = alpha_from_epsilon_nonlinear_finite_difference(
+            epsilon_array=epsilon, delta=delta, Ks=Ks, kappa=kappa, alpha_init=0 + 0j
+        )
+        ts = np.arange(len(epsilon))
+
+        if kerr_correction:
+            print("doing Kerr correction!")
+            chip_freq = -4 * Ks * np.abs(alpha) ** 2
+            accumulated_phase_cav = np.trapz(chip_freq)
+            cavity_dac_pulse = np.exp(1j * accumulated_phase_cav) * cavity_dac_pulse
+        if qubit_stark_shift_correction:
+            print("doing qubit stark shift correction!")
+            chip_freq = -chi * np.abs(alpha) ** 2
+            accumulated_phase_qb = np.trapz(chip_freq)
+            qubit_dac_pulse = np.exp(-1j * accumulated_phase_qb) * qubit_dac_pulse
 
     if pad:
         while len(cavity_dac_pulse) % 4 != 0 and len(cavity_dac_pulse) < 24:
@@ -878,16 +911,11 @@ def conditional_displacement_circuit(
                 np.pad(qp, (0, 1), mode="constant") for qp in qubit_dac_pulse
             ]
 
-    # backwards compatibility:
-    qubit_dac_pulse = (
-        qubit_dac_pulse[0] if len(qubit_dac_pulse) == 1 else qubit_dac_pulse
-    )
-    flip_idxs = flip_idxs[0] if len(flip_idxs) == 1 else flip_idxs
-
     return_dict = {
         "cavity_dac_pulse": cavity_dac_pulse,
         "qubit_dac_pulse": qubit_dac_pulse,
-        "accumulated_phase": accumulated_phase,
+        "accumulated_phase_cav": accumulated_phase_cav,
+        "accumulated_phase_qb": accumulated_phase_qb,
         "flip_idxs": flip_idxs,
         "alphas": alphas,
         "tws": tws,
