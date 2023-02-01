@@ -331,6 +331,7 @@ def get_ge_trajectories(
 def plot_trajs_complex(alpha_g, alpha_e=None, bound=None, ax=None, flip_idxs=[]):
     if ax is None:
         fig, ax = plt.subplots()
+        
     last_flip_idx = 0
     flip_idxs = np.concatenate([np.array(flip_idxs), [-1]])
     for flip_idx in flip_idxs:
@@ -404,12 +405,16 @@ def conditional_displacement(
     finite_difference=True,
     output=False,
     qubit_pulse_detuning=0,
+    system=None
 ):
     beta = float(beta) if isinstance(beta, int) else beta
     alpha = float(alpha) if isinstance(alpha, int) else alpha
-    chi = 2 * np.pi * 1e-6 * storage.chi_kHz
-    chi_prime = 2 * np.pi * 1e-9 * storage.chi_prime_Hz if chi_prime_correction else 0.0
-    Ks = 2 * np.pi * 1e-9 * storage.Ks_Hz
+    chi = 2 * np.pi * 1e-6 * storage.chi_kHz if system is None else 2*np.pi*1e-6*system.chi_kHz
+    if chi_prime_correction:
+        chi_prime = 2 * np.pi * 1e-9 * storage.chi_prime_Hz if system is None else 2 * np.pi * 1e-9 * system.chi_prime_Hz
+    else:
+        chi_prime = 0
+    Ks = 2 * np.pi * 1e-9 * storage.Ks_Hz if system is None else 2*np.pi*1e-9*system.chi_prime_Hz
     delta = chi / 2.0
     epsilon_m = 2 * np.pi * 1e-3 * storage.epsilon_m_MHz
     alpha = np.abs(alpha)
@@ -711,9 +716,9 @@ def conditional_displacement_circuit(
     betas,
     phis,
     thetas,
-    storage,
-    qubit,
-    alpha_CD,
+    storage=None,
+    qubit=None,
+    alpha_CD=30,
     final_disp=True,
     buffer_time=4,
     curvature_correction=True,
@@ -727,21 +732,23 @@ def conditional_displacement_circuit(
     output=False,
     echo_qubit_pulses=False,
     qubit_pulse_detunings=None,
+    system=None
 ):
     betas = np.array(betas)
     phis = np.array(phis)
     thetas = np.array(thetas)
+    
+    cavity_dac_pulse = []
+    # TODO: FIX THIS!
+    if type(thetas) is not list and type(thetas) is not np.ndarray:
+        thetas = [thetas]
+    if type(phis) is not list and type(thetas) is not np.ndarray:
+        phis = [phis]
     qubit_pulse_detunings = (
-        np.zeros(shape=(len(thetas), 2))
+        np.zeros(shape=(len(thetas[0]), 2))
         if qubit_pulse_detunings is None
         else np.array(qubit_pulse_detunings)
     )
-    cavity_dac_pulse = []
-    # TODO: FIX THIS!
-    if type(thetas) is not list:
-        thetas = [thetas]
-    if type(phis) is not list:
-        phis = [phis]
     qubit_dac_pulse = [[] for _ in thetas]
     alphas = []
     tws = []
@@ -750,9 +757,13 @@ def conditional_displacement_circuit(
     analytic_betas = []
     last_beta = 0
     beta_sign = +1
-
+    if storage is None:
+        storage = system.cavity
+    if qubit is None:
+        qubit = system.qubit
     if double_CD:
         betas, phis, thetas = double_circuit(betas, phis, thetas, final_disp=final_disp)
+
 
     for i, beta in enumerate(betas):
         if output:
@@ -791,6 +802,7 @@ def conditional_displacement_circuit(
                         finite_difference=finite_difference,
                         output=output,
                         qubit_pulse_detuning=qubit_pulse_detunings[i][1],
+                        system=system
                     )
                 alphas.append(alpha)
                 tws.append(tw)
@@ -798,10 +810,12 @@ def conditional_displacement_circuit(
             # getting the phase for the phase correction
 
             # TODO: minus sign.
+            chi_kHz = storage.chi_kHz if system is None else system.chi_kHz
+            Ks_Hz = storage.Ks_Hz if system is None else system.Ks_Hz
             analytic_dict = analytic_CD(
                 -1j * 2 * np.pi * 1e-3 * storage.epsilon_m_MHz * e_cd,
                 o_cd,
-                -2 * np.pi * 1e-6 * storage.chi_kHz,
+                -2 * np.pi * 1e-6 * chi_kHz,
             )
             cd_qubit_phases.append(analytic_dict["qubit_phase"])
             analytic_betas.append(analytic_dict["beta"])
@@ -883,9 +897,9 @@ def conditional_displacement_circuit(
         # Here, we find the classical center of mass alpha(t).
         # we then chirp the pulse to cancel H = -4K|\alpha|^2 a^dag a
         epsilon = cavity_dac_pulse * 1e-3 * storage.epsilon_m_MHz * 2 * np.pi
-        chi = 2 * np.pi * 1e-6 * storage.chi_kHz
+        chi = 2 * np.pi * 1e-6 * chi_kHz
         delta = chi / 2.0
-        Ks = 2 * np.pi * 1e-9 * storage.Ks_Hz
+        Ks = 2 * np.pi * 1e-9 * Ks_Hz
         # kappa =
         kappa = 0
         alpha = alpha_from_epsilon_nonlinear_finite_difference(
@@ -957,3 +971,35 @@ def analytic_CD(epsilon, Omega, chi):
         "qubit_phase": theta_prime,
         "beta": beta,
     }
+
+def geometric_phase(
+    epsilon, storage, use_chi_prime=True, use_kerr=True, use_kappa=True, flip_idxs=[]
+):
+    chi = 2 * np.pi * 1e-6 * storage.chi_kHz
+    chi_prime = 2 * np.pi * 1e-9 * storage.chi_prime_Hz if use_chi_prime else 0.0
+    Ks = 2 * np.pi * 1e-9 * storage.Ks_Hz if use_kerr else 0.0
+    delta = 2*np.pi*1e-6*storage.Delta_kHz
+    kappa = 1 / (1e3 * storage.T1_us) if use_kappa else 0.0
+    alpha_g, alpha_e = get_ge_trajectories(
+        epsilon,
+        delta=delta,
+        chi=chi,
+        chi_prime=chi_prime,
+        Ks=Ks,
+        kappa=kappa,
+        flip_idxs=flip_idxs,
+    )
+    Ag = complex_area(alpha_e)
+    Ae = complex_area(alpha_g)
+    phase = Ae - Ag  # is it e - g or g - e?
+    return phase
+
+# Formula for area around complex curve (done simply here...)
+def complex_area(complex_alpha, dt=1):
+    ts = np.arange(0, len(complex_alpha)) * dt
+    x = np.real(complex_alpha)
+    y = np.imag(complex_alpha)
+    dx_dt = np.gradient(x, dt)
+    integrand = y * dx_dt
+    area = np.trapz(integrand, x=ts)
+    return area
