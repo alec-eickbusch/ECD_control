@@ -712,6 +712,8 @@ def double_circuit(betas, phis, thetas, final_disp=True):
 
 # Note: thetas and phis can a list of lists, and it will return multiple version of the circuit. This
 # is useful if the betas are the same but the thetas/phis are changing.
+
+#CD 
 def conditional_displacement_circuit(
     betas,
     phis,
@@ -732,7 +734,8 @@ def conditional_displacement_circuit(
     output=False,
     echo_qubit_pulses=False,
     qubit_pulse_detunings=None,
-    system=None
+    system=None,
+    oscillator_detune_Hz = 0.0 #detuning from the condition Delta = +chi/2
 ):
     betas = np.array(betas)
     phis = np.array(phis)
@@ -924,6 +927,11 @@ def conditional_displacement_circuit(
             qubit_dac_pulse = [
                 np.pad(qp, (0, 1), mode="constant") for qp in qubit_dac_pulse
             ]
+
+    if np.abs(oscillator_detune_Hz) >= 0:
+        ts_ns = np.arange(len(cavity_dac_pulse))
+        cavity_dac_pulse = cavity_dac_pulse*np.exp(-1j*2*np.pi*oscillator_detune_Hz*ts_ns*1e-9)
+
 
     return_dict = {
         "cavity_dac_pulse": cavity_dac_pulse,
